@@ -1,0 +1,314 @@
+"""Testes do módulo Indicadores."""
+
+from fastapi.testclient import TestClient
+
+from app.core.seeds import ADMIN_EMAIL, ADMIN_SENHA
+from app.main import app
+from app.modules.indicadores.constants import TEMAS
+
+client = TestClient(app)
+
+
+def _login():
+    client.post("/login", data={"email": ADMIN_EMAIL, "senha": ADMIN_SENHA})
+
+
+def test_requer_login():
+    resp = client.get("/indicadores/", headers={"accept": "text/html"},
+                      follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/login"
+
+
+def test_index():
+    _login()
+    resp = client.get("/indicadores/", headers={"accept": "text/html"})
+    assert resp.status_code == 200
+    assert "Indicadores" in resp.text
+
+
+def test_todas_as_paginas_renderizam():
+    _login()
+    for tema in TEMAS:
+        resp = client.get(f"/indicadores/{tema}", headers={"accept": "text/html"})
+        assert resp.status_code == 200, f"falha em {tema}"
+        assert TEMAS[tema][0] in resp.text, f"título ausente em {tema}"
+
+
+def test_api_todos_os_temas():
+    _login()
+    for tema in TEMAS:
+        resp = client.get(f"/indicadores/api/{tema}")
+        assert resp.status_code == 200, f"falha em {tema}"
+        corpo = resp.json()
+        assert corpo["success"] is True, f"success falso em {tema}"
+        assert "charts" in corpo["data"], f"payload sem charts em {tema}"
+
+
+def test_filtros_aplicam():
+    _login()
+    resp = client.get("/indicadores/api/processos"
+                      "?data_inicial=2026-07-27&data_final=2026-07-28"
+                      "&convenio=1&transporte=Pré-hospitalar")
+    assert resp.status_code == 200
+    dados = resp.json()["data"]
+    assert dados["total_filtrado"] >= 0
+
+
+def test_filtro_recurso_usa_usb():
+    _login()
+    total = client.get("/indicadores/api/unidade").json()["data"]["total_filtrado"]
+    usa = client.get("/indicadores/api/unidade?recurso=USA").json()["data"]["total_filtrado"]
+    usb = client.get("/indicadores/api/unidade?recurso=USB").json()["data"]["total_filtrado"]
+    assert usa + usb <= total
+    # a página renderiza o novo filtro
+    resp = client.get("/indicadores/unidade", headers={"accept": "text/html"})
+    assert 'name="recurso"' in resp.text
+
+
+def test_filtro_codigo_da_ocorrencia():
+    _login()
+    total = client.get("/indicadores/api/codigos").json()["data"]["total_filtrado"]
+    verm = client.get("/indicadores/api/codigos?codigo=Vermelho").json()["data"]["total_filtrado"]
+    assert 0 <= verm <= total
+    resp = client.get("/indicadores/codigos", headers={"accept": "text/html"})
+    assert 'name="codigo"' in resp.text
+
+
+def test_filtros_multipla_selecao():
+    _login()
+    verm = client.get("/indicadores/api/codigos?codigo=Vermelho").json()["data"]["total_filtrado"]
+    amar = client.get("/indicadores/api/codigos?codigo=Amarelo").json()["data"]["total_filtrado"]
+    ambos = client.get("/indicadores/api/codigos?codigo=Vermelho&codigo=Amarelo"
+                       ).json()["data"]["total_filtrado"]
+    assert ambos == verm + amar
+    # múltiplos filtros combinados (AND entre campos, OR dentro do campo)
+    usa_usb = client.get("/indicadores/api/unidade?recurso=USA&recurso=USB"
+                         ).json()["data"]["total_filtrado"]
+    so_usa = client.get("/indicadores/api/unidade?recurso=USA").json()["data"]["total_filtrado"]
+    assert usa_usb >= so_usa
+
+
+def test_selecao_de_profissionais():
+    from urllib.parse import quote
+
+    _login()
+    geral = client.get("/indicadores/api/prof-tarm").json()["data"]
+    if not geral["profissionais_opcoes"]:
+        return  # sem dados importados
+    nomes = geral["profissionais_opcoes"][:2]
+    qs = "&".join("profissional=" + quote(n) for n in nomes)
+    selecao = client.get(f"/indicadores/api/prof-tarm?{qs}").json()["data"]
+    # séries temporais com um dataset por profissional selecionado
+    assert selecao["profissionais_selecionados"] == nomes
+    volume_semanal = selecao["charts"][0]
+    assert volume_semanal["tipo"] == "line"
+    assert [ds["label"] for ds in volume_semanal["datasets"]] == nomes
+    assert len(selecao["tables"][0]["linhas"]) == len(nomes)
+    # sem seleção: uma única linha "Geral"
+    assert [ds["label"] for ds in geral["charts"][0]["datasets"]] == ["Geral"]
+    # indicadores gerais permanecem sobre o papel inteiro
+    assert selecao["kpis"][0]["valor"] == geral["kpis"][0]["valor"]
+    # seletor só aparece nos dashboards de profissional
+    pagina = client.get("/indicadores/prof-tarm",
+                        headers={"accept": "text/html"}).text
+    assert 'name="profissional"' in pagina
+    outra = client.get("/indicadores/tempo-central",
+                       headers={"accept": "text/html"}).text
+    assert 'name="profissional"' not in outra
+
+
+def test_botoes_de_exportacao():
+    _login()
+    page = client.get("/indicadores/processos", headers={"accept": "text/html"}).text
+    # botões de exportação nos gráficos e tabelas
+    assert page.count('data-fmt="png"') >= 2
+    assert page.count('data-fmt="pdf"') >= 2
+    assert page.count('data-fmt="xlsx"') >= 2
+    assert 'id="tabela-1"' in page
+    # bibliotecas vendorizadas referenciadas e servidas
+    for asset in ["vendor/export/xlsx.full.min.js",
+                  "vendor/export/jspdf.umd.min.js",
+                  "vendor/export/jspdf.plugin.autotable.min.js",
+                  "vendor/export/html2canvas.min.js"]:
+        assert asset in page
+        resp = client.get(f"/static/{asset}")
+        assert resp.status_code == 200, asset
+
+
+def test_filtros_unidade_cidade_risco():
+    _login()
+    total = client.get("/indicadores/api/processos").json()["data"]["total_filtrado"]
+    por_cidade = client.get("/indicadores/api/processos?cidade=SERRA"
+                            ).json()["data"]["total_filtrado"]
+    assert 0 < por_cidade < total
+    combinado = client.get(
+        "/indicadores/api/processos?cidade=SERRA&cidade=VITORIA"
+        "&risco=Emergência").json()["data"]["total_filtrado"]
+    assert 0 <= combinado <= total
+    page = client.get("/indicadores/processos", headers={"accept": "text/html"}).text
+    for campo in ('name="unidade"', 'name="cidade"', 'name="risco"'):
+        assert campo in page
+
+
+def test_p4_p41_p42():
+    _login()
+    d = client.get("/indicadores/api/processos").json()["data"]
+    rotulos = [k["label"] for k in d["kpis"]]
+    assert "P4 — Chegada" in rotulos
+    assert "P4.1 — Saída de base" in rotulos
+    assert "P4.2 — Deslocamento" in rotulos
+    formulas = {l[0]: l[1] for l in d["tables"][0]["linhas"]}
+    assert formulas["P4 — Chegada"] == "Chegada no local − Data controlador"
+    assert formulas["P4.1 — Saída de base"] == "Início deslocamento − Data controlador"
+    assert formulas["P4.2 — Deslocamento"] == "Chegada no local − Início deslocamento"
+
+
+def test_tempo_resposta_primeira_chegada():
+    """Ocorrência com N empenhos: só a primeira chegada tem tempo_resposta."""
+    import pandas as pd
+
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        return
+    com_tr_possivel = df[df["dt_chegada_no_local"].notna()
+                         & df["ocorrencia"].notna()]
+    multi = com_tr_possivel.groupby("ocorrencia").size()
+    multi = multi[multi > 1]
+    if multi.empty:
+        return
+    # em toda ocorrência multi-empenho, exatamente 1 linha carrega o tempo
+    amostra = multi.index[:20]
+    for oc in amostra:
+        grupo = df[df["ocorrencia"] == oc]
+        assert grupo["tempo_resposta"].notna().sum() == 1, oc
+        linha = grupo[grupo["tempo_resposta"].notna()].iloc[0]
+        assert linha["dt_chegada_no_local"] == grupo["dt_chegada_no_local"].min()
+    # total de tempos = total de ocorrências com chegada (+ sem número)
+    esperado = com_tr_possivel["ocorrencia"].nunique() + int(
+        (df["dt_chegada_no_local"].notna() & df["ocorrencia"].isna()).sum())
+    assert int(df["tempo_resposta"].notna().sum()) == esperado
+
+
+def test_pagina_desempenho():
+    from app.modules.indicadores.constants import (DIMENSOES_DESEMPENHO,
+                                                   METRICAS_DESEMPENHO)
+
+    _login()
+    page = client.get("/indicadores/desempenho", headers={"accept": "text/html"})
+    assert page.status_code == 200
+    assert "Análise de Desempenho" in page.text
+
+    # API: padrão (tempo-resposta × unidade) e uma combinação profissional
+    d = client.get("/indicadores/api/desempenho").json()["data"]
+    assert d["metrica"] == "tempo-resposta" and d["dimensao"] == "unidade"
+    if d["chart_bar"]:
+        dados_bar = d["chart_bar"]["datasets"][0]["data"]
+        assert dados_bar == sorted(dados_bar, reverse=True)  # pior primeiro
+        assert "#dc3545" in d["chart_bar"]["datasets"][0]["colors"]
+        assert d["chart_gauss"]["datasets"][0]["label"].startswith("Geral")
+
+    d2 = client.get("/indicadores/api/desempenho?metrica=cena"
+                    "&dimensao=condutor&min_n=20").json()["data"]
+    assert d2["rotulo_metrica"] == METRICAS_DESEMPENHO["cena"][1]
+    assert d2["rotulo_dimensao"] == DIMENSOES_DESEMPENHO["condutor"][1]
+
+    # métrica/dimensão inválidas caem no padrão
+    d3 = client.get("/indicadores/api/desempenho?metrica=x&dimensao=y"
+                    ).json()["data"]
+    assert d3["metrica"] == "tempo-resposta" and d3["dimensao"] == "unidade"
+
+
+def test_tema_invalido_redireciona():
+    _login()
+    resp = client.get("/indicadores/nao-existe", headers={"accept": "text/html"},
+                      follow_redirects=False)
+    assert resp.status_code == 303
+
+
+def test_news_modificada():
+    import pandas as pd
+
+    from app.modules.indicadores.nucleo import _derivar_news
+
+    df = pd.DataFrame({
+        "fr": [16.0, 26.0, None, 16.0],
+        "fc": [80.0, 135.0, 80.0, 80.0],
+        "pas": [120.0, 85.0, 120.0, 120.0],
+        "glasgow": [15.0, 7.0, 15.0, 14.0],
+        "glicemia": [100.0, 35.0, None, None],
+    })
+    _derivar_news(df)
+    # caso 1: tudo normal -> 0 pontos, risco Baixo
+    assert df.loc[0, "news_total"] == 0
+    assert df.loc[0, "news_risco"] == "Baixo"
+    # caso 2: FR 3 + FC 3 + PAS 3 + GCS 3 + glicemia 3 = 15 -> Alto
+    assert df.loc[1, "news_total"] == 15
+    assert df.loc[1, "news_risco"] == "Alto"
+    # caso 3: núcleo incompleto (sem FR) -> sem escore
+    assert pd.isna(df.loc[2, "news_total"])
+    # caso 4: Glasgow 14 -> 1 ponto, Baixo
+    assert df.loc[3, "news_total"] == 1
+    assert df.loc[3, "news_risco"] == "Baixo"
+
+
+def test_ranking_saida_base():
+    """Tabela de ranking mensal de P4.1 por unidade (verde ≤ 2 min)."""
+    _login()
+    dados = client.get("/indicadores/api/tempo-saida-base").json()["data"]
+    ranking = [t for t in dados["tables"]
+               if t["titulo"].startswith("Ranking de Saída de Base")]
+    assert ranking, "tabela de ranking ausente"
+    t = ranking[0]
+    assert t["colunas"][0] == "Unidade"
+    assert t["colunas"][1] == "P4.1 (média)"
+    assert "Posição" in t["colunas"][2] and "Variação" in t["colunas"][3]
+    # posições em ordem crescente (1..N) e células com cor
+    posicoes = [linha[2] for linha in t["linhas"]]
+    assert posicoes == list(range(1, len(posicoes) + 1))
+    cores = {linha[1]["cls"] for linha in t["linhas"]}
+    assert cores <= {"table-success", "table-danger"}
+    # verde só até 2 min: primeiro é verde, e todo vermelho vem após verde
+    assert t["linhas"][0][1]["cls"] == "table-success"
+
+
+def test_temas_volume():
+    """Páginas de Total de Saídas de Ambulâncias e Total de Regulações."""
+    _login()
+    for tema, dataset0 in (("saidas-ambulancia", "Total"),
+                           ("regulacoes", "Regulações")):
+        dados = client.get(f"/indicadores/api/{tema}").json()["data"]
+        titulos = [c["titulo"] for c in dados["charts"]]
+        assert any("por dia" in x for x in titulos)
+        assert any("por semana" in x for x in titulos)
+        assert any("por mês" in x for x in titulos)
+        assert dados["charts"][0]["datasets"][0]["label"] == dataset0
+        assert dados["kpis"], tema
+    # saídas: datasets Total/USA/USB
+    dados = client.get("/indicadores/api/saidas-ambulancia").json()["data"]
+    assert [d["label"] for d in dados["charts"][0]["datasets"]] == \
+        ["Total", "USA", "USB"]
+
+
+def test_desconto_p41():
+    """Desconto de transmissão (rede móvel/GPS) aplicado ao P4.1."""
+    import pandas as pd
+
+    from app.modules.indicadores.nucleo import (DESCONTO_P41_PADRAO,
+                                                _com_desconto, desconto_p41)
+
+    assert DESCONTO_P41_PADRAO == 45
+    bruto = pd.Series([100.0, 45.0, 30.0, 0.0, -5.0, None])
+    ajustado = _com_desconto(bruto, 45)
+    assert ajustado[0] == 55.0        # subtrai 45 s
+    assert ajustado[1] == 1.0         # piso de 1 s (não descarta o registro)
+    assert ajustado[2] == 1.0
+    assert ajustado[3] == 0.0         # inválidos permanecem como estavam
+    assert ajustado[4] == -5.0
+    assert pd.isna(ajustado[5])
+    # desconto 0 = passthrough
+    assert _com_desconto(bruto, 0) is bruto
+    # leitura da configuração devolve inteiro >= 0
+    assert isinstance(desconto_p41(1), int) and desconto_p41(1) >= 0

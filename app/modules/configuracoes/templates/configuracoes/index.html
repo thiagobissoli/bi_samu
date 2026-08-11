@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}<li class="breadcrumb-item active">Configurações</li>{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-cog me-2"></i>Configurações da empresa (§22)</h3>
+            </div>
+            <div class="card-body">
+                {% if items %}
+                <table class="table table-striped align-middle">
+                    <thead><tr><th>Chave</th><th>Valor</th>
+                        {% if "configuracao.editar" in usuario_logado.permissoes %}<th class="text-end">Ações</th>{% endif %}
+                    </tr></thead>
+                    <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <form method="post" action="/configuracoes/salvar">
+                            <td>
+                                <code>{{ item.chave }}</code>
+                                {% if item.sensivel %}
+                                <i class="fa-solid fa-lock text-warning" title="Valor sensível — armazenado criptografado"></i>
+                                {% endif %}
+                                <input type="hidden" name="chave" value="{{ item.chave }}">
+                            </td>
+                            <td>
+                                {% if item.sensivel %}
+                                <input type="password" name="valor" class="form-control form-control-sm"
+                                       placeholder="{{ '••••• (definido — digite para trocar)' if item.definido else '(não definido)' }}"
+                                       autocomplete="new-password"
+                                       {{ "" if "configuracao.editar" in usuario_logado.permissoes else "disabled" }}>
+                                {% else %}
+                                <input type="text" name="valor" class="form-control form-control-sm" value="{{ item.valor }}"
+                                       {{ "" if "configuracao.editar" in usuario_logado.permissoes else "disabled" }}>
+                                {% endif %}
+                            </td>
+                            {% if "configuracao.editar" in usuario_logado.permissoes %}
+                            <td class="text-end text-nowrap">
+                                <button class="btn btn-outline-primary btn-sm" title="Salvar"><i class="fa-solid fa-check"></i></button>
+                        </form>
+                                {% if "configuracao.excluir" in usuario_logado.permissoes %}
+                                <form method="post" action="/configuracoes/{{ item.id }}/delete" class="d-inline"
+                                      onsubmit="return confirm('Excluir a chave {{ item.chave }}? O sistema voltará ao valor padrão.');">
+                                    <button class="btn btn-outline-danger btn-sm" title="Excluir"><i class="fa-solid fa-trash"></i></button>
+                                </form>
+                                {% endif %}
+                            </td>
+                            {% else %}
+                        </form>
+                            {% endif %}
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                <p class="text-muted mb-0"><small>
+                    <i class="fa-solid fa-lock text-warning"></i> Chaves com <code>pass</code>, <code>senha</code>,
+                    <code>token</code>, <code>secret</code> ou <code>api_key</code> no nome são criptografadas no banco
+                    e mascaradas na auditoria. As chaves <code>smtp_*</code> ativam o envio real de e-mail (§39.9);
+                    <code>timezone</code> define o fuso de exibição das datas (ex.: America/Sao_Paulo).
+                </small></p>
+                {% else %}<p class="text-muted mb-0">Nenhuma configuração.</p>{% endif %}
+            </div>
+        </div>
+    </div>
+    {% if "configuracao.editar" in usuario_logado.permissoes %}
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Nova configuração</h3></div>
+            <form method="post" action="/configuracoes/salvar">
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label class="form-label">Chave</label>
+                        <input type="text" name="chave" class="form-control" required placeholder="ex.: smtp_host">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Valor</label>
+                        <input type="text" name="valor" class="form-control">
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Adicionar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

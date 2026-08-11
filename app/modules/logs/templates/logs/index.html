@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}<li class="breadcrumb-item active">Logs</li>{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header"><h3 class="card-title"><i class="fa-solid fa-file-lines me-2"></i>Logs (§12)</h3></div>
+    <div class="card-body">
+        <form method="get" action="/logs/" class="row g-2 mb-3">
+            <div class="col-auto">
+                <select name="nivel" class="form-select form-select-sm">
+                    <option value="">Todos os níveis</option>
+                    {% for n in niveis %}<option value="{{ n }}" {{ "selected" if n == f_nivel }}>{{ n }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <select name="modulo" class="form-select form-select-sm">
+                    <option value="">Todos os módulos</option>
+                    {% for m in modulos %}<option value="{{ m }}" {{ "selected" if m == f_modulo }}>{{ m }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-auto"><button class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-filter"></i> Filtrar</button></div>
+        </form>
+        {% if pg["items"] %}
+        <table class="table table-striped table-sm align-middle">
+            <thead><tr><th>#</th><th>Data</th><th>Nível</th><th>Módulo</th><th>Mensagem</th></tr></thead>
+            <tbody>
+            {% for item in pg["items"] %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.created_at | localdt("%d/%m/%Y %H:%M:%S") }}</td>
+                <td>
+                    {% set cores = {"INFO": "info", "WARNING": "warning", "ERROR": "danger", "CRITICAL": "dark"} %}
+                    <span class="badge text-bg-{{ cores.get(item.nivel, 'secondary') }}">{{ item.nivel }}</span>
+                </td>
+                <td>{{ item.modulo }}</td>
+                <td>{{ item.mensagem }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% include "components/pagination.html" %}
+        {% else %}<p class="text-muted mb-0">Nenhum log registrado.</p>{% endif %}
+    </div>
+</div>
+{% endblock %}

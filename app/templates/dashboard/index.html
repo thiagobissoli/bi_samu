@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row g-3">
+    {% if widgets.usuarios is defined %}
+    <div class="col-lg-3 col-6">
+        <div class="small-box text-bg-primary">
+            <div class="inner"><h3>{{ widgets.usuarios }}</h3><p>Usuários</p></div>
+            <i class="small-box-icon fa-solid fa-users"></i>
+            <a href="/usuarios/" class="small-box-footer link-light">Ver todos <i class="fa-solid fa-arrow-right"></i></a>
+        </div>
+    </div>
+    {% endif %}
+    {% if widgets.empresas is defined %}
+    <div class="col-lg-3 col-6">
+        <div class="small-box text-bg-success">
+            <div class="inner"><h3>{{ widgets.empresas }}</h3><p>Empresas</p></div>
+            <i class="small-box-icon fa-solid fa-building"></i>
+            <a href="/empresas/" class="small-box-footer link-light">Ver todas <i class="fa-solid fa-arrow-right"></i></a>
+        </div>
+    </div>
+    {% endif %}
+    {% if widgets.eventos is defined %}
+    <div class="col-lg-3 col-6">
+        <div class="small-box text-bg-warning">
+            <div class="inner"><h3>{{ widgets.eventos }}</h3><p>Eventos de auditoria</p></div>
+            <i class="small-box-icon fa-solid fa-clipboard-list"></i>
+            <a href="/auditoria/" class="small-box-footer link-dark">Consultar <i class="fa-solid fa-arrow-right"></i></a>
+        </div>
+    </div>
+    {% endif %}
+    {% if widgets.erros is defined %}
+    <div class="col-lg-3 col-6">
+        <div class="small-box text-bg-danger">
+            <div class="inner"><h3>{{ widgets.erros }}</h3><p>Erros (logs)</p></div>
+            <i class="small-box-icon fa-solid fa-triangle-exclamation"></i>
+            <a href="/logs/" class="small-box-footer link-light">Ver logs <i class="fa-solid fa-arrow-right"></i></a>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if widgets.ultimos_eventos %}
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>Últimas atividades</h3>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-striped table-sm mb-0">
+                    <thead><tr><th>Data</th><th>Usuário</th><th>Ação</th><th>Módulo</th><th>Registro</th></tr></thead>
+                    <tbody>
+                    {% for e in widgets.ultimos_eventos %}
+                    <tr>
+                        <td>{{ e.created_at | localdt("%d/%m %H:%M") }}</td>
+                        <td>{{ e.usuario_nome or "—" }}</td>
+                        <td>
+                            {% set cores = {"INSERT": "success", "UPDATE": "warning", "DELETE": "danger",
+                                            "LOGIN": "primary", "LOGOUT": "secondary"} %}
+                            <span class="badge text-bg-{{ cores.get(e.acao, 'info') }}">{{ e.acao }}</span>
+                        </td>
+                        <td>{{ e.tabela }}</td>
+                        <td>{{ e.registro_id or "—" }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not widgets %}
+    <div class="col-12">
+        <div class="card"><div class="card-body">
+            <p class="mb-0">Bem-vindo! Seu perfil ainda não possui widgets liberados —
+               fale com o administrador para receber permissões (§10).</p>
+        </div></div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

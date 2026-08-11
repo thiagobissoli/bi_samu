@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block styles %}
+<style>
+    .cal-mes { border-collapse: separate; border-spacing: 2px; }
+    .cal-dia {
+        width: 26px; height: 24px; font-size: .7rem;
+        border-radius: 4px; vertical-align: middle;
+    }
+    .cal-com { background: #b7e4c7; }
+    .cal-sem {
+        background: #f8d7da; border: 1px solid #dc3545;
+        cursor: pointer; font-weight: 600;
+    }
+    .cal-sem:hover { background: #dc3545; color: #fff; }
+    .cal-legenda {
+        display: inline-block; width: 14px; height: 14px;
+        border-radius: 3px; vertical-align: text-bottom;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Download vSky</li>
+{% endblock %}
+
+{% block content %}
+{% if msg %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    {{ msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if erro %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    {{ erro }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+{% if "download_vsky.baixar" in usuario_logado.permissoes %}
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fa-solid fa-cloud-arrow-down me-2"></i>Importar Total de Registros Analítico
+        </h3>
+    </div>
+    <div class="card-body">
+        {% if not configurado %}
+        <div class="alert alert-warning mb-3">
+            As credenciais do vSky ainda não foram configuradas.
+            {% if "download_vsky.configurar" in usuario_logado.permissoes %}
+            <a href="/download_vsky/config">Configurar agora</a>.
+            {% else %}
+            Solicite a um administrador.
+            {% endif %}
+        </div>
+        {% endif %}
+        <form method="post" action="/download_vsky/importar" class="row g-2"
+              onsubmit="this.querySelector('button[type=submit]').disabled = true; this.querySelector('.spinner-border').classList.remove('d-none');">
+            <div class="col-md-3">
+                <label class="form-label" for="data_inicial">Data inicial</label>
+                <input type="date" id="data_inicial" name="data_inicial" class="form-control"
+                       required {% if not configurado %}disabled{% endif %}>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="data_final">Data final</label>
+                <input type="date" id="data_final" name="data_final" class="form-control"
+                       required {% if not configurado %}disabled{% endif %}>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100" {% if not configurado %}disabled{% endif %}>
+                    <span class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
+                    <i class="fa-solid fa-download"></i> Gerar e importar
+                </button>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <span class="text-muted small">
+                    O vSky gera o XLS e as linhas são importadas sem duplicar
+                    (registros no banco: <strong>{{ total_registros }}</strong>).
+                </span>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="card-title">
+            <i class="fa-solid fa-calendar-days me-2"></i>Cobertura de dados por dia
+        </h3>
+        {% if calendario.meses %}
+        <span class="small">
+            {{ calendario.inicio }} a {{ calendario.fim }} —
+            {% if calendario.dias_sem %}
+            <span class="badge text-bg-danger">{{ calendario.dias_sem }} dia(s) sem registros</span>
+            {% else %}
+            <span class="badge text-bg-success">sem lacunas</span>
+            {% endif %}
+        </span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        {% if not calendario.meses %}
+        <p class="text-muted mb-0">Nenhum registro importado ainda.</p>
+        {% else %}
+        <p class="text-muted small mb-2">
+            <span class="cal-legenda" style="background:#b7e4c7;"></span> dia com registros
+            <span class="cal-legenda ms-3" style="background:#f8d7da; border: 1px solid #dc3545;"></span>
+            dia <strong>sem registros</strong> — clique para preencher o período de importação
+        </p>
+        <div class="d-flex flex-wrap gap-3">
+            {% for mes in calendario.meses %}
+            <table class="table-borderless text-center cal-mes">
+                <thead>
+                    <tr><th colspan="7" class="small">{{ mes.nome }}</th></tr>
+                    <tr class="text-muted" style="font-size:.65rem;">
+                        <th>S</th><th>T</th><th>Q</th><th>Q</th><th>S</th><th>S</th><th>D</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for semana in mes.semanas %}
+                    <tr>
+                        {% for d in semana %}
+                        {% if d is none %}
+                        <td></td>
+                        {% elif d.status == "com" %}
+                        <td class="cal-dia cal-com" title="{{ d.iso }} — {{ d.n }} registros">{{ d.dia }}</td>
+                        {% elif d.status == "sem" %}
+                        <td class="cal-dia cal-sem" data-iso="{{ d.iso }}"
+                            title="{{ d.iso }} — SEM registros (clique para importar)">{{ d.dia }}</td>
+                        {% else %}
+                        <td class="cal-dia text-muted" style="opacity:.35;">{{ d.dia }}</td>
+                        {% endif %}
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="card-title"><i class="fa-solid fa-list me-2"></i>Importações</h3>
+        <div>
+            <a href="/download_vsky/registros" class="btn btn-outline-primary btn-sm">
+                <i class="fa-solid fa-table"></i> Registros importados
+            </a>
+            {% if "download_vsky.configurar" in usuario_logado.permissoes %}
+            <a href="/download_vsky/config" class="btn btn-outline-secondary btn-sm">
+                <i class="fa-solid fa-gear"></i> Configuração
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="get" action="/download_vsky/" class="row g-2 mb-3">
+            <div class="col-auto">
+                <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
+                       placeholder="Pesquisar...">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-outline-secondary btn-sm">
+                    <i class="fa-solid fa-magnifying-glass"></i> Buscar
+                </button>
+            </div>
+        </form>
+
+        {% if pg["items"] %}
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Período</th>
+                    <th>Status</th>
+                    <th>Linhas</th>
+                    <th>Novas</th>
+                    <th>Duplicadas</th>
+                    <th>Executada em</th>
+                    <th class="text-end">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in pg["items"] %}
+                <tr>
+                    <td>{{ item.id }}</td>
+                    <td>{{ item.data_inicial }} a {{ item.data_final }}</td>
+                    <td>
+                        {% if item.status == status_concluido %}
+                        <span class="badge text-bg-success">{{ status_labels.get(item.status, item.status) }}</span>
+                        {% elif item.status == "erro" %}
+                        <span class="badge text-bg-danger" {% if item.erro %}title="{{ item.erro }}"{% endif %}>
+                            {{ status_labels.get(item.status, item.status) }}
+                        </span>
+                        {% else %}
+                        <span class="badge text-bg-secondary">{{ status_labels.get(item.status, item.status) }}</span>
+                        {% endif %}
+                        {% if item.erro %}
+                        <div class="small text-danger text-truncate" style="max-width: 320px;"
+                             title="{{ item.erro }}">{{ item.erro }}</div>
+                        {% endif %}
+                    </td>
+                    <td>{{ item.total_linhas }}</td>
+                    <td><span class="text-success fw-semibold">{{ item.linhas_novas }}</span></td>
+                    <td><span class="text-muted">{{ item.linhas_duplicadas }}</span></td>
+                    <td>{{ item.created_at | localdt }}</td>
+                    <td class="text-end">
+                        {% if item.caminho %}
+                        <a href="/download_vsky/{{ item.id }}/arquivo"
+                           class="btn btn-outline-primary btn-sm" title="Baixar XLS original">
+                            <i class="fa-solid fa-file-excel"></i>
+                        </a>
+                        {% endif %}
+                        {% if "download_vsky.excluir" in usuario_logado.permissoes %}
+                        <form method="post" action="/download_vsky/{{ item.id }}/delete"
+                              class="d-inline"
+                              onsubmit="return confirm('Excluir este registro de importação? (os registros importados são mantidos)');">
+                            <button type="submit" class="btn btn-outline-danger btn-sm" title="Excluir">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% include "components/pagination.html" %}
+        {% else %}
+        <p class="text-muted mb-0">Nenhuma importação realizada.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Clicar num dia SEM registros preenche o período de importação com aquele
+// dia (expandindo o intervalo se já houver outro dia selecionado).
+document.querySelectorAll(".cal-sem").forEach(function (celula) {
+    celula.addEventListener("click", function () {
+        const iso = this.dataset.iso;
+        const ini = document.getElementById("data_inicial");
+        const fim = document.getElementById("data_final");
+        if (!ini || !fim || ini.disabled) return;
+        if (!ini.value || iso < ini.value) ini.value = iso;
+        if (!fim.value || iso > fim.value) fim.value = iso;
+        ini.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Painel de Gestão</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <span class="badge text-bg-dark fs-6 me-1">
+            <i class="fa-solid fa-calendar-week me-1"></i>
+            Última semana completa: {{ dados.semana or "—" }}
+            {% if dados.semana_periodo %}({{ dados.semana_periodo }}){% endif %}
+        </span>
+        <span class="badge text-bg-secondary fs-6">
+            <i class="fa-solid fa-chart-line me-1"></i>
+            Evolução: últimos 12 meses
+        </span>
+    </div>
+    <span class="text-muted small">
+        Filtros pré-estabelecidos por indicador · tempo resposta = 1ª ambulância a chegar
+    </span>
+</div>
+
+{% if not dados.secoes %}
+<div class="alert alert-warning">
+    Nenhum dado importado ainda — importe o relatório em
+    <a href="/download_vsky/">Download vSky</a>.
+</div>
+{% endif %}
+
+{% set ns = namespace(ci=0) %}
+{% for secao in dados.secoes %}
+<div class="card mb-4">
+    <div class="card-header text-bg-{{ secao.cor }} py-2 d-flex justify-content-between align-items-center">
+        <h3 class="card-title fs-5 mb-0">
+            <i class="fa-solid {{ secao.icone }} me-2"></i>{{ secao.titulo }}
+        </h3>
+        <span class="small opacity-75">{{ secao.nota }}</span>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for bloco in secao.blocos %}
+            {% set ns.ci = ns.ci + 1 %}
+            <div class="col-lg-{{ 12 if bloco.largura_total or secao.blocos | length == 1 else 6 }} mb-3">
+                <div class="card h-100">
+                    <div class="card-header py-1 d-flex justify-content-between align-items-center gap-2">
+                        <span class="small fw-semibold">{{ bloco.chart.titulo }}</span>
+                        <div class="btn-group btn-group-sm flex-shrink-0">
+                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 btn-exportar"
+                                    data-indice="{{ ns.ci }}" data-fmt="png">PNG</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 btn-exportar"
+                                    data-indice="{{ ns.ci }}" data-fmt="pdf">PDF</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 btn-exportar"
+                                    data-indice="{{ ns.ci }}" data-fmt="xlsx">Excel</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        {% if bloco.kpis %}
+                        {# KPIs da última semana, em cima do próprio gráfico #}
+                        <div class="row g-2 mb-3">
+                            {% for kpi in bloco.kpis %}
+                            <div class="col">
+                                <div class="border border-{{ secao.cor }} border-2 rounded-3 text-center py-2 px-1 h-100">
+                                    <div class="fs-4 fw-bold text-{{ secao.cor }}">{{ kpi.valor }}</div>
+                                    <div class="small fw-semibold text-truncate" title="{{ kpi.label }}">{{ kpi.label }}</div>
+                                    <div class="text-muted" style="font-size: .72rem;">{{ kpi.sub }}</div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if bloco.chart.height %}
+                        <div style="max-height: 420px; overflow-y: auto;">
+                            <div style="height: {{ bloco.chart.height }}px; position: relative;">
+                                <canvas id="pg-chart-{{ ns.ci }}"></canvas>
+                            </div>
+                        </div>
+                        {% else %}
+                        {# Contêiner de altura fixa: com maintainAspectRatio
+                           desligado, o Chart.js dimensiona pelo pai — sem
+                           isso a altura varia com o h-100 dos cards. #}
+                        <div style="height: 280px; position: relative;">
+                            <canvas id="pg-chart-{{ ns.ci }}"></canvas>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='vendor/chartjs/chart.umd.js') }}"></script>
+<script>
+(function () {
+    Chart.defaults.animation = false;
+    const charts = {{ dados.charts_flat | tojson }};
+    const PALETA = ["#0d6efd", "#dc3545", "#198754", "#ffc107", "#6f42c1",
+                    "#fd7e14", "#20c997", "#6c757d", "#0dcaf0", "#d63384"];
+
+    function minParaMMSS(v) {
+        if (v === null || v === undefined || isNaN(v)) return "";
+        const total = Math.round(v * 60);
+        return String(Math.floor(total / 60)).padStart(2, "0") + ":" +
+               String(total % 60).padStart(2, "0");
+    }
+
+    charts.forEach(function (spec, i) {
+        const el = document.getElementById("pg-chart-" + (i + 1));
+        if (!el) return;
+        const datasets = spec.datasets.map(function (ds, j) {
+            const cor = ds.color || PALETA[j % PALETA.length];
+            const base = {
+                label: ds.label, data: ds.data,
+                borderWidth: spec.tipo === "line" ? 2 : 1,
+                tension: 0.3, spanGaps: true,
+                backgroundColor: ds.colors ||
+                    (spec.tipo === "line" ? cor + "33" : cor + "cc"),
+                borderColor: ds.colors || cor,
+            };
+            if (spec.tipo === "line") base.fill = false;
+            return base;
+        });
+        const opts = {
+            responsive: true, maintainAspectRatio: false,
+            indexAxis: spec.horizontal ? "y" : "x",
+            plugins: { legend: { display: spec.datasets.length > 1 } },
+            scales: { x: {}, y: { beginAtZero: true } },
+        };
+        if (spec.max_y) opts.scales[spec.horizontal ? "x" : "y"].max = spec.max_y;
+        if (spec.unidade_y === "min") {
+            const eixo = spec.horizontal ? "x" : "y";
+            opts.scales[eixo].title = { display: true, text: "mm:ss" };
+            opts.scales[eixo].ticks = {
+                callback: function (v) { return minParaMMSS(v); } };
+            opts.plugins.tooltip = { callbacks: {
+                label: function (ctx) {
+                    const v = spec.horizontal ? ctx.parsed.x : ctx.parsed.y;
+                    return (ctx.dataset.label || "") + ": " + minParaMMSS(v);
+                } } };
+        }
+        new Chart(el, { type: spec.tipo, data: { labels: spec.labels,
+                        datasets: datasets }, options: opts });
+    });
+
+    // Exportação — bibliotecas carregadas sob demanda no primeiro clique
+    const LIBS = [
+        "{{ url_for('static', path='vendor/export/xlsx.full.min.js') }}",
+        "{{ url_for('static', path='vendor/export/jspdf.umd.min.js') }}",
+    ];
+    let libsPromise = null;
+    function carregarLibs() {
+        if (!libsPromise) {
+            libsPromise = LIBS.reduce(function (p, src) {
+                return p.then(function () {
+                    return new Promise(function (res, rej) {
+                        const s = document.createElement("script");
+                        s.src = src; s.onload = res; s.onerror = rej;
+                        document.head.appendChild(s);
+                    });
+                });
+            }, Promise.resolve());
+        }
+        return libsPromise;
+    }
+
+    function slugArquivo(t) {
+        return t.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+            .toLowerCase().slice(0, 60);
+    }
+
+    function canvasBranco(i) {
+        const origem = document.getElementById("pg-chart-" + i);
+        const c = document.createElement("canvas");
+        c.width = origem.width; c.height = origem.height;
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(origem, 0, 0);
+        return c;
+    }
+
+    document.querySelectorAll(".btn-exportar").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            const i = parseInt(this.dataset.indice, 10);
+            const fmt = this.dataset.fmt, el = this;
+            const spec = charts[i - 1];
+            const nome = "painel-gestao-" + slugArquivo(spec.titulo);
+            el.disabled = true;
+            carregarLibs().then(function () {
+                if (fmt === "png") {
+                    const a = document.createElement("a");
+                    a.href = canvasBranco(i).toDataURL("image/png");
+                    a.download = nome + ".png";
+                    a.click();
+                } else if (fmt === "pdf") {
+                    const c = canvasBranco(i);
+                    const pdf = new window.jspdf.jsPDF({
+                        orientation: c.width >= c.height ? "l" : "p",
+                        unit: "pt", format: "a4"});
+                    const lw = pdf.internal.pageSize.getWidth() - 40;
+                    const lh = pdf.internal.pageSize.getHeight() - 70;
+                    let w = lw, h = c.height * lw / c.width;
+                    if (h > lh) { h = lh; w = c.width * lh / c.height; }
+                    pdf.setFontSize(11);
+                    pdf.text(spec.titulo, 20, 26, { maxWidth: lw });
+                    pdf.addImage(c.toDataURL("image/png"), "PNG", 20, 44, w, h);
+                    pdf.save(nome + ".pdf");
+                } else if (fmt === "xlsx") {
+                    const linhas = [["Categoria"].concat(
+                        spec.datasets.map(d => d.label))];
+                    spec.labels.forEach(function (rot, r) {
+                        linhas.push([rot].concat(
+                            spec.datasets.map(d => d.data[r])));
+                    });
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(
+                        wb, XLSX.utils.aoa_to_sheet(linhas), "Dados");
+                    XLSX.writeFile(wb, nome + ".xlsx");
+                }
+            }).finally(function () { el.disabled = false; });
+        });
+    });
+})();
+</script>
+{% endblock %}

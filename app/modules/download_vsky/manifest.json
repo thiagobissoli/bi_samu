@@ -1,0 +1,17 @@
+{
+    "name": "Download vSky",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [],
+    "permissions": [
+        "download_vsky.listar",
+        "download_vsky.baixar",
+        "download_vsky.excluir",
+        "download_vsky.configurar"
+    ],
+    "menu": [
+        {"label": "Download vSky", "url": "/download_vsky", "icon": "fa-cloud-arrow-down",
+         "permission": "download_vsky.listar", "order": 22}
+    ],
+    "routes": ["/download_vsky"]
+}

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ page_title | default("Samu") }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/fontawesome/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/adminlte/css/adminlte.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/global.css') }}">
+    {% block styles %}{% endblock %}
+</head>
+<body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
+<div class="app-wrapper">
+
+    <nav class="app-header navbar navbar-expand bg-body">
+        <div class="container-fluid">
+            <ul class="navbar-nav">
+                <li class="nav-item">
+                    <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button">
+                        <i class="fa-solid fa-bars"></i>
+                    </a>
+                </li>
+            </ul>
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="#" id="theme-toggle" title="Alternar tema">
+                        <i class="fa-solid fa-moon"></i>
+                    </a>
+                </li>
+                {% if usuario_logado %}
+                <li class="nav-item">
+                    <a class="nav-link position-relative" href="/notificacoes/" title="Notificações">
+                        <i class="fa-solid fa-bell"></i>
+                        {% if notificacoes_nao_lidas %}
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger"
+                              style="font-size: .6rem;">{{ notificacoes_nao_lidas }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                        <i class="fa-solid fa-user me-1"></i>{{ usuario_logado.nome }}
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <a class="dropdown-item" href="/alterar-senha">
+                                <i class="fa-solid fa-key me-2"></i>Alterar senha
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="/mfa">
+                                <i class="fa-solid fa-shield-halved me-2"></i>Autenticação em duas etapas
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <form method="post" action="/logout">
+                                <button type="submit" class="dropdown-item">
+                                    <i class="fa-solid fa-right-from-bracket me-2"></i>Sair
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+    </nav>
+
+    <aside class="app-sidebar bg-body-secondary shadow">
+        <div class="sidebar-brand">
+            <a href="/" class="brand-link">
+                <span class="brand-text fw-light">Samu</span>
+            </a>
+        </div>
+        <div class="sidebar-wrapper">
+            <nav class="mt-2">
+                <ul class="nav sidebar-menu flex-column" data-lte-toggle="treeview" role="menu">
+                    <li class="nav-item">
+                        <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">
+                            <i class="nav-icon fa-solid fa-gauge"></i>
+                            <p>Dashboard</p>
+                        </a>
+                    </li>
+                    {% for item in menu | default([]) %}
+                    <li class="nav-item">
+                        <a href="{{ item.url }}"
+                           class="nav-link {% if request.url.path.startswith(item.url) %}active{% endif %}">
+                            <i class="nav-icon fa-solid {{ item.icon | default('fa-folder') }}"></i>
+                            <p>{{ item.label }}</p>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </nav>
+        </div>
+    </aside>
+
+    <main class="app-main">
+        <div class="app-content-header">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-sm-6">
+                        <h3 class="mb-0">{% block page_title %}{{ page_title | default("") }}{% endblock %}</h3>
+                    </div>
+                    <div class="col-sm-6">
+                        <ol class="breadcrumb float-sm-end">
+                            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+                            {% block breadcrumb %}{% endblock %}
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="app-content">
+            <div class="container-fluid">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        <strong>Samu</strong> — construído sobre o Framework SaaS.
+    </footer>
+</div>
+
+<script src="{{ url_for('static', path='vendor/jquery/jquery.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/adminlte/js/adminlte.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/htmx/htmx.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/alpinejs/alpine.min.js') }}" defer></script>
+<script>
+// Dark mode (§37.16) — preferência salva no navegador.
+(function () {
+    var root = document.documentElement;
+    function applySaved() {
+        var saved = localStorage.getItem("tema");
+        if (saved) { root.setAttribute("data-bs-theme", saved); }
+    }
+    applySaved();
+    // Reafirma após o load — scripts/emulações podem sobrescrever o atributo.
+    document.addEventListener("DOMContentLoaded", applySaved);
+    window.addEventListener("load", applySaved);
+    var toggle = document.getElementById("theme-toggle");
+    if (toggle) {
+        function paint() {
+            var dark = root.getAttribute("data-bs-theme") === "dark";
+            toggle.innerHTML = dark ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+        }
+        paint();
+        toggle.addEventListener("click", function (event) {
+            event.preventDefault();
+            var dark = root.getAttribute("data-bs-theme") === "dark";
+            var next = dark ? "light" : "dark";
+            root.setAttribute("data-bs-theme", next);
+            localStorage.setItem("tema", next);
+            paint();
+        });
+    }
+})();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

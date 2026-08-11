@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Alterar senha</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-key me-2"></i>Alterar senha</h3>
+            </div>
+            <form method="post" action="/alterar-senha">
+                <div class="card-body">
+                    {% if erro %}<div class="alert alert-danger py-2">{{ erro }}</div>{% endif %}
+                    {% if ok %}<div class="alert alert-success py-2">Senha alterada com sucesso.</div>{% endif %}
+                    <div class="mb-3">
+                        <label class="form-label">Senha atual</label>
+                        <input type="password" name="senha_atual" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nova senha (mín. 8 caracteres)</label>
+                        <input type="password" name="senha_nova" class="form-control" required minlength="8">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirme a nova senha</label>
+                        <input type="password" name="confirmacao" class="form-control" required minlength="8">
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-check"></i> Salvar
+                    </button>
+                    <a href="/" class="btn btn-outline-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

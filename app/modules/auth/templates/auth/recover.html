@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Recuperar senha — Samu</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/fontawesome/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/adminlte/css/adminlte.min.css') }}">
+</head>
+<body class="login-page bg-body-secondary">
+<div class="login-box">
+    <div class="login-logo"><b>Samu</b></div>
+    <div class="card">
+        <div class="card-body login-card-body">
+            {% if enviado %}
+            <div class="alert alert-success">
+                Se o e-mail existir, um link de recuperação foi gerado.
+            </div>
+            {% if link_dev %}
+            <div class="alert alert-warning">
+                <strong>Modo desenvolvimento</strong> — link direto:<br>
+                <a href="{{ link_dev }}">{{ link_dev }}</a>
+            </div>
+            {% endif %}
+            <p class="text-center mb-0"><a href="/login">Voltar ao login</a></p>
+            {% else %}
+            <p class="login-box-msg">Informe seu e-mail para recuperar a senha</p>
+            <form method="post" action="/recuperar-senha">
+                <div class="input-group mb-3">
+                    <input type="email" name="email" class="form-control" placeholder="E-mail" required autofocus>
+                    <div class="input-group-text"><i class="fa-solid fa-envelope"></i></div>
+                </div>
+                <div class="d-grid mb-2">
+                    <button type="submit" class="btn btn-primary">Enviar link</button>
+                </div>
+            </form>
+            <p class="text-center mb-0"><a href="/login">Voltar ao login</a></p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+</body>
+</html>

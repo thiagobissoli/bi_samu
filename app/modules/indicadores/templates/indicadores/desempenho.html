@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/indicadores/">Indicadores</a></li>
+<li class="breadcrumb-item active">Desempenho</li>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" action="/indicadores/desempenho" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="metrica">Métrica</label>
+                <select id="metrica" name="metrica" class="form-select form-select-sm">
+                    {% for slug, meta in metricas.items() %}
+                    <option value="{{ slug }}" {% if slug == dados.metrica %}selected{% endif %}>{{ meta[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="dimensao">Dimensão</label>
+                <select id="dimensao" name="dimensao" class="form-select form-select-sm">
+                    {% for slug, meta in dimensoes.items() %}
+                    <option value="{{ slug }}" {% if slug == dados.dimensao %}selected{% endif %}>{{ meta[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="min_n">n mínimo</label>
+                <input type="number" id="min_n" name="min_n" class="form-control form-control-sm"
+                       style="width: 5rem;" min="1" value="{{ min_n }}">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="data_inicial">Data inicial</label>
+                <input type="date" id="data_inicial" name="data_inicial"
+                       value="{{ filtros.data_inicial }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="data_final">Data final</label>
+                <input type="date" id="data_final" name="data_final"
+                       value="{{ filtros.data_final }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-auto">
+                <div class="form-check form-check-inline mb-1">
+                    <input class="form-check-input" type="checkbox" id="convenio" name="convenio"
+                           value="1" {% if filtros.convenio %}checked{% endif %}>
+                    <label class="form-check-label small" for="convenio">Convênio (GV)</label>
+                </div>
+                <div class="form-check form-check-inline mb-1">
+                    <input class="form-check-input" type="checkbox" id="iscmv" name="iscmv"
+                           value="1" {% if filtros.iscmv %}checked{% endif %}>
+                    <label class="form-check-label small" for="iscmv">ISCMV</label>
+                </div>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="fa-solid fa-chart-column"></i> Analisar
+                </button>
+                <a href="/indicadores/desempenho" class="btn btn-outline-secondary btn-sm">Limpar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<p class="text-muted mb-3">
+    <i class="fa-solid fa-ranking-star me-1"></i>
+    <strong>{{ dados.rotulo_metrica }}</strong> por <strong>{{ dados.rotulo_dimensao }}</strong>
+    — {{ dados.total }} registros válidos no filtro atual · tempo resposta considera
+    a 1ª ambulância a chegar.
+</p>
+
+{% if not dados.chart_bar %}
+<div class="alert alert-warning">Nenhum dado para os filtros selecionados.</div>
+{% else %}
+
+<div class="row mb-1">
+    {% for kpi in dados.kpis %}
+    <div class="col-6 col-md-3 mb-2">
+        <div class="card h-100">
+            <div class="card-body py-2 px-3">
+                <div class="text-muted small text-truncate" title="{{ kpi.label }}">{{ kpi.label }}</div>
+                <div class="fs-5 fw-bold">{{ kpi.valor }}</div>
+                <div class="text-muted" style="font-size: .75rem;">{{ kpi.sub }}</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="row">
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header py-2"><h3 class="card-title fs-6 mb-0">{{ dados.chart_bar.titulo }}</h3></div>
+            <div class="card-body">
+                {% if dados.chart_bar.height %}
+                <div style="max-height: 480px; overflow-y: auto;">
+                    <div style="height: {{ dados.chart_bar.height }}px; position: relative;">
+                        <canvas id="grafico-bar"></canvas>
+                    </div>
+                </div>
+                {% else %}
+                <div style="height: 360px; position: relative;">
+                    <canvas id="grafico-bar"></canvas>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header py-2"><h3 class="card-title fs-6 mb-0">{{ dados.chart_gauss.titulo }}</h3></div>
+            <div class="card-body">
+                <div style="height: 480px; position: relative;">
+                    <canvas id="grafico-gauss"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header py-2"><h3 class="card-title fs-6 mb-0">{{ dados.tabela.titulo }}</h3></div>
+    <div class="card-body table-responsive" style="max-height: 480px; overflow-y: auto;">
+        <table class="table table-sm table-striped align-middle mb-0">
+            <thead><tr>{% for col in dados.tabela.colunas %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+            <tbody>
+                {% for linha in dados.tabela.linhas %}
+                <tr>{% for celula in linha %}<td>{{ celula }}</td>{% endfor %}</tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='vendor/chartjs/chart.umd.js') }}"></script>
+<script>
+(function () {
+    const BAR = {{ dados.chart_bar | tojson }};
+    const GAUSS = {{ dados.chart_gauss | tojson }};
+    if (!BAR) return;
+    Chart.defaults.animation = false;
+
+    function minParaMMSS(v) {
+        if (v === null || v === undefined || isNaN(v)) return "";
+        const t = Math.round(v * 60);
+        return String(Math.floor(t / 60)).padStart(2, "0") + ":" +
+               String(t % 60).padStart(2, "0");
+    }
+
+    new Chart(document.getElementById("grafico-bar"), {
+        type: "bar",
+        data: { labels: BAR.labels,
+                datasets: [{ label: BAR.datasets[0].label,
+                             data: BAR.datasets[0].data,
+                             backgroundColor: BAR.datasets[0].colors,
+                             borderRadius: 4 }] },
+        options: {
+            indexAxis: "y", responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false },
+                       tooltip: { callbacks: {
+                           label: ctx => minParaMMSS(ctx.parsed.x) } } },
+            scales: { x: { title: { display: true, text: "mm:ss" },
+                           ticks: { callback: v => minParaMMSS(v) } },
+                      y: { grid: { display: false } } },
+        },
+    });
+
+    new Chart(document.getElementById("grafico-gauss"), {
+        type: "line",
+        data: { labels: GAUSS.labels,
+                datasets: GAUSS.datasets.map(ds => ({
+                    label: ds.label, data: ds.data,
+                    borderColor: ds.color, backgroundColor: ds.color + "22",
+                    borderWidth: 2, pointRadius: 0, tension: 0.35, fill: true,
+                })) },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: "bottom",
+                                 labels: { usePointStyle: true, boxHeight: 7 } },
+                       tooltip: { enabled: false } },
+            scales: { x: { ticks: { maxTicksLimit: 8 },
+                           grid: { display: false } },
+                      y: { display: false } },
+        },
+    });
+})();
+</script>
+{% endblock %}

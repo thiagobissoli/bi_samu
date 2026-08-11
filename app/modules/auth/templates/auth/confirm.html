@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Confirmação de e-mail — Samu</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/fontawesome/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/adminlte/css/adminlte.min.css') }}">
+</head>
+<body class="login-page bg-body-secondary">
+<div class="login-box">
+    <div class="login-logo"><b>Samu</b></div>
+    <div class="card">
+        <div class="card-body login-card-body text-center">
+            {% if ok %}
+            <p class="text-success fs-5"><i class="fa-solid fa-circle-check me-1"></i> E-mail confirmado com sucesso.</p>
+            {% else %}
+            <p class="text-danger fs-5"><i class="fa-solid fa-circle-xmark me-1"></i> Link inválido ou expirado.</p>
+            {% endif %}
+            <a href="/login" class="btn btn-primary">Ir para o login</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>

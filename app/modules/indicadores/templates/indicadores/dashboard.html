@@ -1,0 +1,475 @@
+{% extends "base.html" %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/select2/select2.min.css') }}">
+<style>
+    /* Select2 alinhado ao form-control-sm do Bootstrap */
+    .select2-container .select2-selection--multiple {
+        min-height: 31px;
+        font-size: .875rem;
+        border-color: var(--bs-border-color, #dee2e6);
+    }
+    .select2-container--default .select2-selection--multiple .select2-selection__choice {
+        margin-top: 3px;
+        font-size: .78rem;
+    }
+    .select2-container .select2-search--inline .select2-search__field {
+        margin-top: 5px;
+        font-size: .82rem;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/indicadores/{% if qs %}?{{ qs }}{% endif %}">Indicadores</a></li>
+<li class="breadcrumb-item active">{{ dados.titulo }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" action="/indicadores/{{ tema }}" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="data_inicial">Data inicial</label>
+                <input type="date" id="data_inicial" name="data_inicial"
+                       value="{{ filtros.data_inicial }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="data_final">Data final</label>
+                <input type="date" id="data_final" name="data_final"
+                       value="{{ filtros.data_final }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="transporte">Transporte</label>
+                <select id="transporte" name="transporte" class="form-select form-select-sm select2-multi"
+                        multiple data-width="170px">
+                    {% for op in opcoes.transportes %}
+                    <option value="{{ op }}" {% if op in filtros.transporte %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="recurso"
+                       title="Identificado pela coluna Unidade (USA/USB)">Tipo de transporte</label>
+                <select id="recurso" name="recurso" class="form-select form-select-sm select2-multi"
+                        multiple data-width="140px">
+                    {% for op in opcoes.recursos %}
+                    <option value="{{ op }}" {% if op in filtros.recurso %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="codigo">Código da ocorrência</label>
+                <select id="codigo" name="codigo" class="form-select form-select-sm select2-multi"
+                        multiple data-width="190px">
+                    {% for op in opcoes.codigos %}
+                    <option value="{{ op }}" {% if op in filtros.codigo %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="tipo">Tipo</label>
+                <select id="tipo" name="tipo" class="form-select form-select-sm select2-multi"
+                        multiple data-width="150px">
+                    {% for op in opcoes.tipos %}
+                    <option value="{{ op }}" {% if op in filtros.tipo %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto" style="max-width: 280px;">
+                <label class="form-label mb-0 small" for="motivo">Motivo</label>
+                <select id="motivo" name="motivo" class="form-select form-select-sm select2-multi"
+                        multiple data-width="280px">
+                    {% for op in opcoes.motivos %}
+                    <option value="{{ op }}" {% if op in filtros.motivo %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="unidade">Unidade</label>
+                <select id="unidade" name="unidade" class="form-select form-select-sm select2-multi"
+                        multiple data-width="150px">
+                    {% for op in opcoes.unidades %}
+                    <option value="{{ op }}" {% if op in filtros.unidade %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="cidade">Cidade</label>
+                <select id="cidade" name="cidade" class="form-select form-select-sm select2-multi"
+                        multiple data-width="170px">
+                    {% for op in opcoes.cidades %}
+                    <option value="{{ op }}" {% if op in filtros.cidade %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="risco">Risco inicial</label>
+                <select id="risco" name="risco" class="form-select form-select-sm select2-multi"
+                        multiple data-width="160px">
+                    {% for op in opcoes.riscos %}
+                    <option value="{{ op }}" {% if op in filtros.risco %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if dados.profissionais_opcoes %}
+            <div class="col-auto" style="max-width: 320px;">
+                <label class="form-label mb-0 small" for="profissional">Profissionais</label>
+                <select id="profissional" name="profissional"
+                        class="form-select form-select-sm select2-multi"
+                        multiple data-width="300px">
+                    {% for op in dados.profissionais_opcoes %}
+                    <option value="{{ op }}" {% if op in dados.profissionais_selecionados %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-auto">
+                <div class="form-check form-check-inline mb-1">
+                    <input class="form-check-input" type="checkbox" id="convenio" name="convenio"
+                           value="1" {% if filtros.convenio %}checked{% endif %}>
+                    <label class="form-check-label small" for="convenio"
+                           title="Vitória + Vila Velha + Serra + Cariacica">Convênio (GV)</label>
+                </div>
+                <div class="form-check form-check-inline mb-1">
+                    <input class="form-check-input" type="checkbox" id="iscmv" name="iscmv"
+                           value="1" {% if filtros.iscmv %}checked{% endif %}>
+                    <label class="form-check-label small" for="iscmv"
+                           title="42 viaturas do núcleo (USA 10–100, USB pares)">ISCMV</label>
+                </div>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="fa-solid fa-filter"></i> Aplicar
+                </button>
+                <a href="/indicadores/{{ tema }}" class="btn btn-outline-secondary btn-sm">Limpar</a>
+            </div>
+            <div class="col-auto ms-auto">
+                <label class="form-label mb-0 small" for="nav-tema">Dashboard</label>
+                <select id="nav-tema" class="form-select form-select-sm"
+                        onchange="location.href='/indicadores/' + this.value + location.search;">
+                    {% for slug, meta in temas.items() %}
+                    <option value="{{ slug }}" {% if slug == tema %}selected{% endif %}>{{ meta[0] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+<p class="text-muted mb-3">
+    <i class="fa-solid {{ dados.icone }} me-1"></i>{{ dados.descricao }}
+    — <strong>{{ dados.total_filtrado }}</strong> registros no filtro atual.
+</p>
+
+{% if dados.total_filtrado == 0 %}
+<div class="alert alert-warning">Nenhum registro para os filtros selecionados.</div>
+{% endif %}
+
+{% if dados.kpis %}
+<div class="row mb-1">
+    {% for kpi in dados.kpis %}
+    <div class="col-6 col-md-3 col-xl-2 mb-2">
+        <div class="card h-100">
+            <div class="card-body py-2 px-3">
+                <div class="text-muted small text-truncate" title="{{ kpi.label }}">{{ kpi.label }}</div>
+                <div class="fs-5 fw-bold">{{ kpi.valor }}</div>
+                {% if kpi.sub %}<div class="text-muted" style="font-size: .75rem;">{{ kpi.sub }}</div>{% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="row">
+    {% for chart in dados.charts %}
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
+                <h3 class="card-title fs-6 mb-0">{{ chart.titulo }}</h3>
+                <div class="btn-group btn-group-sm flex-shrink-0">
+                    <button type="button" class="btn btn-outline-secondary btn-exportar"
+                            data-tipo="chart" data-indice="{{ loop.index }}" data-fmt="png"
+                            title="Exportar imagem PNG">PNG</button>
+                    <button type="button" class="btn btn-outline-secondary btn-exportar"
+                            data-tipo="chart" data-indice="{{ loop.index }}" data-fmt="pdf"
+                            title="Exportar PDF">PDF</button>
+                    <button type="button" class="btn btn-outline-secondary btn-exportar"
+                            data-tipo="chart" data-indice="{{ loop.index }}" data-fmt="xlsx"
+                            title="Exportar dados em Excel">Excel</button>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if chart.height %}
+                {# Muitas categorias: área rolável, gráfico alto por dentro #}
+                <div style="max-height: 420px; overflow-y: auto;">
+                    <div style="height: {{ chart.height }}px; position: relative;">
+                        <canvas id="chart-{{ loop.index }}"></canvas>
+                    </div>
+                </div>
+                {% else %}
+                <canvas id="chart-{{ loop.index }}" height="230"></canvas>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% for tabela in dados.tables %}
+<div class="card mb-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
+        <h3 class="card-title fs-6 mb-0">{{ tabela.titulo }}</h3>
+        <div class="btn-group btn-group-sm flex-shrink-0">
+            <button type="button" class="btn btn-outline-secondary btn-exportar"
+                    data-tipo="table" data-indice="{{ loop.index }}" data-fmt="png"
+                    title="Exportar imagem PNG">PNG</button>
+            <button type="button" class="btn btn-outline-secondary btn-exportar"
+                    data-tipo="table" data-indice="{{ loop.index }}" data-fmt="pdf"
+                    title="Exportar PDF">PDF</button>
+            <button type="button" class="btn btn-outline-secondary btn-exportar"
+                    data-tipo="table" data-indice="{{ loop.index }}" data-fmt="xlsx"
+                    title="Exportar Excel">Excel</button>
+        </div>
+    </div>
+    <div class="card-body table-responsive" style="max-height: 420px; overflow-y: auto;">
+        <table id="tabela-{{ loop.index }}" data-titulo="{{ tabela.titulo }}"
+               class="table table-sm table-striped align-middle mb-0">
+            <thead><tr>{% for col in tabela.colunas %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+            <tbody>
+                {% for linha in tabela.linhas %}
+                <tr>{% for celula in linha %}{% if celula is mapping %}<td class="{{ celula.cls }}">{{ celula.v }}</td>{% else %}<td>{{ celula }}</td>{% endif %}{% endfor %}</tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='vendor/chartjs/chart.umd.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/select2/select2.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/select2/pt-BR.js') }}"></script>
+<script>
+$(function () {
+    $(".select2-multi").each(function () {
+        $(this).select2({
+            width: $(this).data("width") || "180px",
+            placeholder: "Todos",
+            language: "pt-BR",
+            closeOnSelect: false,
+            allowClear: false,
+        });
+    });
+});
+</script>
+<script>
+(function () {
+    // Renderização instantânea: sem animações (páginas têm 10+ gráficos)
+    Chart.defaults.animation = false;
+
+    const charts = {{ dados.charts | tojson }};
+    const PALETA = ["#0d6efd", "#dc3545", "#198754", "#ffc107", "#6f42c1",
+                    "#fd7e14", "#20c997", "#6c757d", "#0dcaf0", "#d63384"];
+
+    // Minutos decimais -> "mm:ss" (indicadores de tempo)
+    function minParaMMSS(v) {
+        if (v === null || v === undefined || isNaN(v)) return "";
+        const total = Math.round(v * 60);
+        const m = Math.floor(total / 60), s = total % 60;
+        return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+    }
+
+    charts.forEach(function (spec, i) {
+        const el = document.getElementById("chart-" + (i + 1));
+        if (!el) return;
+        const ehPizza = spec.tipo === "doughnut" || spec.tipo === "pie";
+        const datasets = spec.datasets.map(function (ds, j) {
+            const base = {
+                label: ds.label,
+                data: ds.data,
+                borderWidth: spec.tipo === "line" ? 2 : 1,
+                tension: 0.3,
+                spanGaps: true,
+            };
+            if (ehPizza) {
+                base.backgroundColor = ds.colors || PALETA;
+            } else if (ds.colors) {
+                base.backgroundColor = ds.colors;
+                base.borderColor = ds.colors;
+            } else {
+                const cor = ds.color || PALETA[j % PALETA.length];
+                base.backgroundColor = spec.tipo === "line" ? cor + "33" : cor + "cc";
+                base.borderColor = cor;
+            }
+            if (spec.tipo === "line") base.fill = false;
+            if (ds.dash) base.borderDash = ds.dash;
+            return base;
+        });
+
+        const opts = {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: spec.horizontal ? "y" : "x",
+            plugins: { legend: { display: ehPizza || spec.datasets.length > 1,
+                                 position: ehPizza ? "right" : "top" } },
+        };
+        if (!ehPizza) {
+            opts.scales = { x: {}, y: { beginAtZero: true } };
+            if (spec.max_y) opts.scales[spec.horizontal ? "x" : "y"].max = spec.max_y;
+            if (spec.unidade_y === "min") {
+                // Indicadores de tempo: eixo e tooltip em mm:ss
+                const eixoValor = spec.horizontal ? "x" : "y";
+                opts.scales[eixoValor].title = { display: true, text: "mm:ss" };
+                opts.scales[eixoValor].ticks = {
+                    callback: function (value) { return minParaMMSS(value); }
+                };
+                opts.plugins.tooltip = {
+                    callbacks: {
+                        label: function (ctx) {
+                            const v = spec.horizontal ? ctx.parsed.x : ctx.parsed.y;
+                            return (ctx.dataset.label || "") + ": " + minParaMMSS(v);
+                        }
+                    }
+                };
+            } else if (spec.unidade_y) {
+                opts.scales.y.title = { display: true, text: spec.unidade_y };
+            }
+        }
+        new Chart(el, { type: ehPizza ? "doughnut" : spec.tipo,
+                        data: { labels: spec.labels, datasets: datasets },
+                        options: opts });
+    });
+
+    // ------------------------- Exportação (PNG / PDF / Excel) -----------
+    // As bibliotecas (~1,5 MB) são carregadas sob demanda, no primeiro
+    // clique de exportação — não pesam na abertura da página.
+    const LIBS_EXPORT = [
+        "{{ url_for('static', path='vendor/export/xlsx.full.min.js') }}",
+        "{{ url_for('static', path='vendor/export/jspdf.umd.min.js') }}",
+        "{{ url_for('static', path='vendor/export/jspdf.plugin.autotable.min.js') }}",
+        "{{ url_for('static', path='vendor/export/html2canvas.min.js') }}",
+    ];
+    let libsExportPromise = null;
+    function carregarLibsExport() {
+        if (!libsExportPromise) {
+            libsExportPromise = LIBS_EXPORT.reduce(function (anterior, src) {
+                return anterior.then(function () {
+                    return new Promise(function (resolve, reject) {
+                        const s = document.createElement("script");
+                        s.src = src;
+                        s.onload = resolve;
+                        s.onerror = reject;
+                        document.head.appendChild(s);
+                    });
+                });
+            }, Promise.resolve());
+        }
+        return libsExportPromise;
+    }
+
+    const SLUG_PAGINA = {{ dados.slug | tojson }};
+
+    function slugArquivo(texto) {
+        return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+            .toLowerCase().slice(0, 60);
+    }
+
+    function baixarDataUrl(dataUrl, nome) {
+        const a = document.createElement("a");
+        a.href = dataUrl;
+        a.download = nome;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    }
+
+    // Canvas do gráfico com fundo branco (o original é transparente)
+    function canvasComFundo(i) {
+        const origem = document.getElementById("chart-" + i);
+        const c = document.createElement("canvas");
+        c.width = origem.width;
+        c.height = origem.height;
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(origem, 0, 0);
+        return c;
+    }
+
+    function pdfComImagem(canvas, titulo, nome) {
+        const pdf = new window.jspdf.jsPDF({
+            orientation: canvas.width >= canvas.height ? "l" : "p",
+            unit: "pt", format: "a4"});
+        const larguraUtil = pdf.internal.pageSize.getWidth() - 40;
+        const alturaUtil = pdf.internal.pageSize.getHeight() - 70;
+        let w = larguraUtil, h = canvas.height * larguraUtil / canvas.width;
+        if (h > alturaUtil) { h = alturaUtil; w = canvas.width * alturaUtil / canvas.height; }
+        pdf.setFontSize(11);
+        pdf.text(titulo, 20, 26, { maxWidth: larguraUtil });
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", 20, 44, w, h);
+        pdf.save(nome + ".pdf");
+    }
+
+    function exportarChart(i, fmt) {
+        const spec = charts[i - 1];
+        const nome = SLUG_PAGINA + "-" + slugArquivo(spec.titulo);
+        if (fmt === "png") {
+            baixarDataUrl(canvasComFundo(i).toDataURL("image/png"), nome + ".png");
+        } else if (fmt === "pdf") {
+            pdfComImagem(canvasComFundo(i), spec.titulo, nome);
+        } else if (fmt === "xlsx") {
+            const linhas = [["Categoria"].concat(spec.datasets.map(d => d.label))];
+            spec.labels.forEach(function (rotulo, r) {
+                linhas.push([rotulo].concat(spec.datasets.map(d => d.data[r])));
+            });
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), "Dados");
+            XLSX.writeFile(wb, nome + ".xlsx");
+        }
+    }
+
+    function exportarTabela(i, fmt) {
+        const el = document.getElementById("tabela-" + i);
+        const titulo = el.dataset.titulo || "tabela";
+        const nome = SLUG_PAGINA + "-" + slugArquivo(titulo);
+        if (fmt === "xlsx") {
+            const wb = XLSX.utils.table_to_book(el, { sheet: "Dados" });
+            XLSX.writeFile(wb, nome + ".xlsx");
+        } else if (fmt === "pdf") {
+            const pdf = new window.jspdf.jsPDF({ unit: "pt", format: "a4" });
+            pdf.setFontSize(11);
+            pdf.text(titulo, 20, 26,
+                     { maxWidth: pdf.internal.pageSize.getWidth() - 40 });
+            pdf.autoTable({ html: el, startY: 40,
+                            styles: { fontSize: 7, cellPadding: 3 },
+                            headStyles: { fillColor: [13, 110, 253] } });
+            pdf.save(nome + ".pdf");
+        } else if (fmt === "png") {
+            html2canvas(el, { backgroundColor: "#ffffff", scale: 2 })
+                .then(function (canvas) {
+                    baixarDataUrl(canvas.toDataURL("image/png"), nome + ".png");
+                });
+        }
+    }
+
+    document.querySelectorAll(".btn-exportar").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            const i = parseInt(this.dataset.indice, 10);
+            const tipo = this.dataset.tipo, fmt = this.dataset.fmt, el = this;
+            el.disabled = true;
+            carregarLibsExport().then(function () {
+                if (tipo === "chart") {
+                    exportarChart(i, fmt);
+                } else {
+                    exportarTabela(i, fmt);
+                }
+            }).finally(function () { el.disabled = false; });
+        });
+    });
+})();
+</script>
+{% endblock %}

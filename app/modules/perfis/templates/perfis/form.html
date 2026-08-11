@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/perfis/">Perfis</a></li>
+<li class="breadcrumb-item active">{{ "Editar" if item else "Novo" }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header"><h3 class="card-title">{{ "Editar" if item else "Novo" }} perfil</h3></div>
+    <form method="post" action="{{ action }}">
+        <div class="card-body">
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Nome *</label>
+                    <input type="text" name="nome" class="form-control" required value="{{ item.nome if item else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Descrição</label>
+                    <input type="text" name="descricao" class="form-control" value="{{ item.descricao or '' if item else '' }}">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="ativo" name="ativo" value="true"
+                               {{ "checked" if (item and item.ativo) or not item }}>
+                        <label class="form-check-label" for="ativo">Ativo</label>
+                    </div>
+                </div>
+            </div>
+            <label class="form-label fw-bold">Permissões (formato modulo.acao — §9)</label>
+            <div class="row">
+                {% for modulo, permissoes in grupos %}
+                <div class="col-md-4 mb-3">
+                    <div class="card card-outline">
+                        <div class="card-header py-2"><strong>{{ modulo | title }}</strong></div>
+                        <div class="card-body py-2">
+                            {% for p in permissoes %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="permissao_ids"
+                                       value="{{ p.id }}" id="perm{{ p.id }}"
+                                       {{ "checked" if item and p in item.permissoes }}>
+                                <label class="form-check-label" for="perm{{ p.id }}">
+                                    <code>{{ p.codigo }}</code>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="card-footer">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Salvar</button>
+            <a href="/perfis/" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

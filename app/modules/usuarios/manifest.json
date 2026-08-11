@@ -1,0 +1,12 @@
+{
+    "name": "Usuarios",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": ["empresas"],
+    "permissions": ["usuario.listar", "usuario.criar", "usuario.editar", "usuario.excluir"],
+    "menu": [
+        {"label": "Usuários", "url": "/usuarios", "icon": "fa-users",
+         "permission": "usuario.listar", "order": 11}
+    ],
+    "routes": ["/usuarios"]
+}

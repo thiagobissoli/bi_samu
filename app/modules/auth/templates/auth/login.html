@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login — Samu</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/fontawesome/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/adminlte/css/adminlte.min.css') }}">
+</head>
+<body class="login-page bg-body-secondary">
+<div class="login-box">
+    <div class="login-logo">
+        <b>Samu</b>
+    </div>
+    <div class="card">
+        <div class="card-body login-card-body">
+            <p class="login-box-msg">Acesse sua conta</p>
+
+            {% if erro %}<div class="alert alert-danger py-2">{{ erro }}</div>{% endif %}
+            {% if info or request.query_params.get('info') %}
+            <div class="alert alert-success py-2">{{ info or request.query_params.get('info') }}</div>
+            {% endif %}
+
+            <form method="post" action="/login">
+                <div class="input-group mb-3">
+                    <input type="email" name="email" class="form-control" placeholder="E-mail" required autofocus>
+                    <div class="input-group-text"><i class="fa-solid fa-envelope"></i></div>
+                </div>
+                <div class="input-group mb-3">
+                    <input type="password" name="senha" class="form-control" placeholder="Senha" required>
+                    <div class="input-group-text"><i class="fa-solid fa-lock"></i></div>
+                </div>
+                <div class="d-grid mb-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-right-to-bracket me-1"></i> Entrar
+                    </button>
+                </div>
+            </form>
+            <p class="mb-0 text-center">
+                <a href="/recuperar-senha">Esqueci minha senha</a>
+            </p>
+        </div>
+    </div>
+</div>
+</body>
+</html>

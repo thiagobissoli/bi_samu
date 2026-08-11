@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/download_vsky/">Download vSky</a></li>
+<li class="breadcrumb-item active">Configuração</li>
+{% endblock %}
+
+{% block content %}
+{% if erro %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    {{ erro }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-gear me-2"></i>Configuração do portal vSky</h3>
+    </div>
+    <form method="post" action="/download_vsky/config">
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label" for="base_url">URL do portal vSky</label>
+                <input type="url" id="base_url" name="base_url" class="form-control"
+                       value="{{ base_url }}" placeholder="https://gestao-es.vskysamu.com.br" required>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label" for="usuario_vsky">Usuário</label>
+                    <input type="text" id="usuario_vsky" name="usuario_vsky" class="form-control"
+                           value="{{ usuario_vsky }}" autocomplete="off" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label" for="senha_vsky">Senha</label>
+                    <input type="password" id="senha_vsky" name="senha_vsky" class="form-control"
+                           autocomplete="new-password"
+                           placeholder="{% if senha_definida %}•••••••• (deixe em branco para manter){% else %}Senha do portal vSky{% endif %}"
+                           {% if not senha_definida %}required{% endif %}>
+                    <div class="form-text">Armazenada criptografada nas configurações da empresa.</div>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="cliente_id">Cliente (opcional)</label>
+                <input type="text" id="cliente_id" name="cliente_id" class="form-control"
+                       value="{{ cliente_id }}" placeholder="Vazio = cliente padrão do portal">
+                <div class="form-text">
+                    Código do cliente no seletor do relatório (ex.: 36 = SAMU ESPIRITO SANTO).
+                    Deixe vazio para usar o cliente já selecionado no portal.
+                </div>
+            </div>
+            <hr>
+            <h5 class="mb-3"><i class="fa-solid fa-clock me-2"></i>Download automático</h5>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="auto_ativo"
+                       name="auto_ativo" value="1" {% if auto_ativo %}checked{% endif %}>
+                <label class="form-check-label" for="auto_ativo">
+                    Ativar importação automática do relatório
+                </label>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label" for="auto_modo">Frequência</label>
+                    <select id="auto_modo" name="auto_modo" class="form-select"
+                            onchange="document.getElementById('grupo-hora').classList.toggle('d-none', this.value !== 'diario');
+                                      document.getElementById('grupo-intervalo').classList.toggle('d-none', this.value !== 'intervalo');">
+                        <option value="diario" {% if auto_modo != "intervalo" %}selected{% endif %}>Diariamente</option>
+                        <option value="intervalo" {% if auto_modo == "intervalo" %}selected{% endif %}>A cada N minutos</option>
+                    </select>
+                </div>
+                <div class="col-md-3 {% if auto_modo == "intervalo" %}d-none{% endif %}" id="grupo-hora">
+                    <label class="form-label" for="auto_hora">Horário</label>
+                    <input type="time" id="auto_hora" name="auto_hora" class="form-control"
+                           value="{{ auto_hora }}">
+                </div>
+                <div class="col-md-3 {% if auto_modo != "intervalo" %}d-none{% endif %}" id="grupo-intervalo">
+                    <label class="form-label" for="auto_intervalo">Intervalo (min)</label>
+                    <input type="number" id="auto_intervalo" name="auto_intervalo"
+                           class="form-control" min="{{ auto_intervalo_minimo }}"
+                           value="{{ auto_intervalo }}">
+                    <div class="form-text">Mínimo: {{ auto_intervalo_minimo }} min</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="auto_dias">Período (últimos N dias)</label>
+                    <input type="number" id="auto_dias" name="auto_dias"
+                           class="form-control" min="1" max="31" value="{{ auto_dias }}">
+                    <div class="form-text">Linhas repetidas são descartadas (dedupe)</div>
+                </div>
+            </div>
+            {% if auto_ultima or auto_proxima %}
+            <div class="mt-3 small text-muted">
+                {% if auto_ultima %}
+                Última execução: <strong>{{ auto_ultima }}</strong>
+                {% if auto_status %}
+                — <span class="{% if auto_status.startswith('sucesso') %}text-success{% else %}text-danger{% endif %}">{{ auto_status }}</span>
+                {% endif %}<br>
+                {% endif %}
+                {% if auto_proxima %}
+                Próxima execução: <strong>{{ auto_proxima }}</strong>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        <div class="card-footer d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-floppy-disk"></i> Salvar
+            </button>
+            <a href="/download_vsky/" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

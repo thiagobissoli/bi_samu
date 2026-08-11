@@ -1,0 +1,14 @@
+{
+    "name": "Painel de Gestão",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": ["Indicadores"],
+    "permissions": [
+        "painel_gestao.visualizar"
+    ],
+    "menu": [
+        {"label": "Painel de Gestão", "url": "/painel_gestao", "icon": "fa-gauge-high",
+         "permission": "painel_gestao.visualizar", "order": 20}
+    ],
+    "routes": ["/painel_gestao"]
+}

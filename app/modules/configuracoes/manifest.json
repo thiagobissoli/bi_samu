@@ -1,0 +1,12 @@
+{
+    "name": "Configuracoes",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [],
+    "permissions": ["configuracao.listar", "configuracao.editar", "configuracao.excluir"],
+    "menu": [
+        {"label": "Configurações", "url": "/configuracoes", "icon": "fa-cog",
+         "permission": "configuracao.listar", "order": 90}
+    ],
+    "routes": ["/configuracoes"]
+}

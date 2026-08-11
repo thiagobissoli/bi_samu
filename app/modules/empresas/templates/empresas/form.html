@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/empresas/">Empresas</a></li>
+<li class="breadcrumb-item active">{{ "Editar" if item else "Nova" }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header"><h3 class="card-title">{{ "Editar" if item else "Nova" }} empresa</h3></div>
+    <form method="post" action="{{ action }}">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Razão social *</label>
+                    <input type="text" name="razao_social" class="form-control" required value="{{ item.razao_social if item else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Nome fantasia *</label>
+                    <input type="text" name="nome_fantasia" class="form-control" required value="{{ item.nome_fantasia if item else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">CNPJ *</label>
+                    <input type="text" name="cnpj" class="form-control" required value="{{ item.cnpj if item else '' }}" placeholder="00.000.000/0001-00">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">E-mail *</label>
+                    <input type="email" name="email" class="form-control" required value="{{ item.email if item else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Telefone</label>
+                    <input type="text" name="telefone" class="form-control" value="{{ item.telefone or '' if item else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Plano</label>
+                    <select name="plano" class="form-select">
+                        {% for p in ["basico", "profissional", "enterprise"] %}
+                        <option value="{{ p }}" {{ "selected" if item and item.plano == p }}>{{ p | title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        {% for s in ["ativa", "suspensa", "cancelada"] %}
+                        <option value="{{ s }}" {{ "selected" if item and item.status == s }}>{{ s | title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Salvar</button>
+            <a href="/empresas/" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

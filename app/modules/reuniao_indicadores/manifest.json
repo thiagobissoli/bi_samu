@@ -1,0 +1,15 @@
+{
+    "name": "Reunião de Indicadores",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": ["Indicadores"],
+    "permissions": [
+        "reuniao_indicadores.visualizar"
+    ],
+    "menu": [
+        {"label": "Reunião de Indicadores", "url": "/reuniao_indicadores",
+         "icon": "fa-person-chalkboard",
+         "permission": "reuniao_indicadores.visualizar", "order": 21}
+    ],
+    "routes": ["/reuniao_indicadores"]
+}

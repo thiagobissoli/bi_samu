@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/usuarios/">Usuários</a></li>
+<li class="breadcrumb-item active">{{ "Editar" if item else "Novo" }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header"><h3 class="card-title">{{ "Editar" if item else "Novo" }} usuário</h3></div>
+    <form method="post" action="{{ action }}">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Nome *</label>
+                    <input type="text" name="nome" class="form-control" required value="{{ item.nome if item else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">E-mail *</label>
+                    <input type="email" name="email" class="form-control" required value="{{ item.email if item else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Telefone</label>
+                    <input type="text" name="telefone" class="form-control" value="{{ item.telefone or '' if item else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ "Nova senha (deixe vazio para manter)" if item else "Senha *" }}</label>
+                    <input type="password" name="senha" class="form-control" minlength="8" {{ "" if item else "required" }}>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="ativo" name="ativo" value="true"
+                               {{ "checked" if (item and item.ativo) or not item }}>
+                        <label class="form-check-label" for="ativo">Ativo</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Perfis (RBAC §7)</label>
+                    <div class="row">
+                        {% for perfil in perfis %}
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="perfil_ids"
+                                       value="{{ perfil.id }}" id="perfil{{ perfil.id }}"
+                                       {{ "checked" if item and perfil in item.perfis }}>
+                                <label class="form-check-label" for="perfil{{ perfil.id }}">{{ perfil.nome }}</label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Salvar</button>
+            <a href="/usuarios/" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{# Paginação padrão (§18) — espera `pg` (dict) e opcionalmente `qs` (filtros extras) #}
+{% if pg["pages"] > 1 %}
+<nav class="d-flex justify-content-between align-items-center mt-2">
+    <small class="text-muted">
+        {{ pg["total"] }} registro(s) — página {{ pg["page"] }} de {{ pg["pages"] }}
+    </small>
+    <ul class="pagination pagination-sm mb-0">
+        <li class="page-item {{ 'disabled' if pg['page'] <= 1 }}">
+            <a class="page-link" href="?page={{ pg['page'] - 1 }}{{ qs | default('') }}">&laquo;</a>
+        </li>
+        {% for n in range(1, pg["pages"] + 1) %}
+        {% if n == pg["page"] %}
+        <li class="page-item active"><span class="page-link">{{ n }}</span></li>
+        {% elif n <= 2 or n > pg["pages"] - 2 or (n - pg["page"]) | abs <= 1 %}
+        <li class="page-item"><a class="page-link" href="?page={{ n }}{{ qs | default('') }}">{{ n }}</a></li>
+        {% elif (n - pg["page"]) | abs == 2 %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+        {% endfor %}
+        <li class="page-item {{ 'disabled' if pg['page'] >= pg['pages'] }}">
+            <a class="page-link" href="?page={{ pg['page'] + 1 }}{{ qs | default('') }}">&raquo;</a>
+        </li>
+    </ul>
+</nav>
+{% endif %}

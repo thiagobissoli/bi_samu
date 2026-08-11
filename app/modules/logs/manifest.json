@@ -1,0 +1,12 @@
+{
+    "name": "Logs",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [],
+    "permissions": ["log.listar"],
+    "menu": [
+        {"label": "Logs", "url": "/logs", "icon": "fa-file-lines",
+         "permission": "log.listar", "order": 92}
+    ],
+    "routes": ["/logs"]
+}

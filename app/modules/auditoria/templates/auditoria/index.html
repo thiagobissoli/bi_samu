@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}<li class="breadcrumb-item active">Auditoria</li>{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-clipboard-list me-2"></i>Trilha de auditoria (§11)</h3>
+    </div>
+    <div class="card-body">
+        <form method="get" action="/auditoria/" class="row g-2 mb-3">
+            <div class="col-auto">
+                <select name="tabela" class="form-select form-select-sm">
+                    <option value="">Todos os módulos</option>
+                    {% for t in tabelas %}<option value="{{ t }}" {{ "selected" if t == f_tabela }}>{{ t }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <select name="acao" class="form-select form-select-sm">
+                    <option value="">Todas as ações</option>
+                    {% for a in acoes %}<option value="{{ a }}" {{ "selected" if a == f_acao }}>{{ a }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-auto"><button class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-filter"></i> Filtrar</button></div>
+        </form>
+        {% if pg["items"] %}
+        <div class="table-responsive">
+        <table class="table table-striped table-sm align-middle">
+            <thead><tr><th>#</th><th>Data</th><th>Usuário</th><th>IP</th><th>Ação</th><th>Módulo</th><th>Registro</th><th>Alterações</th></tr></thead>
+            <tbody>
+            {% for item in pg["items"] %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.created_at | localdt("%d/%m/%Y %H:%M:%S") }}</td>
+                <td>{{ item.usuario_nome or "—" }}</td>
+                <td>{{ item.ip or "—" }}</td>
+                <td>
+                    {% set cores = {"INSERT": "success", "UPDATE": "warning", "DELETE": "danger",
+                                    "LOGIN": "primary", "LOGOUT": "secondary"} %}
+                    <span class="badge text-bg-{{ cores.get(item.acao, 'info') }}">{{ item.acao }}</span>
+                </td>
+                <td>{{ item.tabela }}</td>
+                <td>{{ item.registro_id or "—" }}</td>
+                <td style="max-width: 340px;">
+                    {% if item.valor_anterior %}
+                    <small class="text-muted d-block text-truncate" title="{{ item.valor_anterior }}">
+                        <strong>antes:</strong> {{ item.valor_anterior }}</small>
+                    {% endif %}
+                    {% if item.valor_novo %}
+                    <small class="d-block text-truncate" title="{{ item.valor_novo }}">
+                        <strong>depois:</strong> {{ item.valor_novo }}</small>
+                    {% endif %}
+                    {% if not item.valor_anterior and not item.valor_novo %}—{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% include "components/pagination.html" %}
+        {% else %}<p class="text-muted mb-0">Nenhum evento registrado.</p>{% endif %}
+    </div>
+    <div class="card-footer text-muted">
+        Registros de auditoria nunca são apagados (§11).
+    </div>
+</div>
+{% endblock %}

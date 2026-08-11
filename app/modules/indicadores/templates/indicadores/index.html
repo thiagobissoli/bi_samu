@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Indicadores</li>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+    <div class="card-body py-2 d-flex justify-content-between align-items-center flex-wrap">
+        <span>
+            <i class="fa-solid fa-database me-1"></i>
+            Base: relatório vSky "Total de Registros Analítico"
+            {% if periodo_inicio %}
+            — dados de <strong>{{ periodo_inicio }}</strong> a <strong>{{ periodo_fim }}</strong>
+            {% else %}
+            — <span class="text-danger">nenhum dado importado ainda</span>
+            {% endif %}
+        </span>
+        <a href="/download_vsky/" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-cloud-arrow-down"></i> Importar dados
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4 col-lg-3 mb-3">
+        <a href="/indicadores/desempenho{% if qs %}?{{ qs }}{% endif %}"
+           class="text-decoration-none">
+            <div class="card h-100 shadow-sm border-primary">
+                <div class="card-body">
+                    <h5 class="card-title mb-1">
+                        <i class="fa-solid fa-ranking-star me-2 text-primary"></i>Análise de Desempenho
+                    </h5>
+                    <p class="card-text text-muted small mb-0">
+                        Métrica × dimensão: Pareto dos piores, curvas normais e estatísticas
+                    </p>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% for slug, (titulo, icone, descricao) in temas.items() %}
+    <div class="col-md-4 col-lg-3 mb-3">
+        <a href="/indicadores/{{ slug }}{% if qs %}?{{ qs }}{% endif %}"
+           class="text-decoration-none">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-1">
+                        <i class="fa-solid {{ icone }} me-2 text-primary"></i>{{ titulo }}
+                    </h5>
+                    <p class="card-text text-muted small mb-0">{{ descricao }}</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

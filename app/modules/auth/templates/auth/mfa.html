@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Verificação — Samu</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/fontawesome/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/adminlte/css/adminlte.min.css') }}">
+</head>
+<body class="login-page bg-body-secondary">
+<div class="login-box">
+    <div class="login-logo"><b>Samu</b></div>
+    <div class="card">
+        <div class="card-body login-card-body">
+            <p class="login-box-msg">Digite o código do seu aplicativo autenticador</p>
+            {% if erro %}<div class="alert alert-danger py-2">{{ erro }}</div>{% endif %}
+            <form method="post" action="/login/mfa">
+                <input type="hidden" name="token" value="{{ token }}">
+                <div class="input-group mb-3">
+                    <input type="text" name="codigo" class="form-control text-center fs-4"
+                           placeholder="000000" maxlength="6" required autofocus
+                           inputmode="numeric" autocomplete="one-time-code">
+                    <div class="input-group-text"><i class="fa-solid fa-shield-halved"></i></div>
+                </div>
+                <div class="d-grid mb-2">
+                    <button type="submit" class="btn btn-primary">Verificar</button>
+                </div>
+            </form>
+            <p class="text-center mb-0"><a href="/login">Voltar ao login</a></p>
+        </div>
+    </div>
+</div>
+</body>
+</html>

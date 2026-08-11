@@ -1,0 +1,12 @@
+{
+    "name": "Auditoria",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [],
+    "permissions": ["auditoria.listar"],
+    "menu": [
+        {"label": "Auditoria", "url": "/auditoria", "icon": "fa-clipboard-list",
+         "permission": "auditoria.listar", "order": 91}
+    ],
+    "routes": ["/auditoria"]
+}

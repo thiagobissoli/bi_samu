@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Redefinir senha — Samu</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/fontawesome/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='vendor/adminlte/css/adminlte.min.css') }}">
+</head>
+<body class="login-page bg-body-secondary">
+<div class="login-box">
+    <div class="login-logo"><b>Samu</b></div>
+    <div class="card">
+        <div class="card-body login-card-body">
+            {% if not valido %}
+            <div class="alert alert-danger">Link inválido ou expirado.</div>
+            <p class="text-center mb-0"><a href="/recuperar-senha">Solicitar novo link</a></p>
+            {% else %}
+            <p class="login-box-msg">Defina sua nova senha</p>
+            {% if erro %}<div class="alert alert-danger py-2">{{ erro }}</div>{% endif %}
+            <form method="post" action="/redefinir-senha/{{ token }}">
+                <div class="input-group mb-3">
+                    <input type="password" name="senha" class="form-control"
+                           placeholder="Nova senha (mín. 8 caracteres)" required minlength="8">
+                    <div class="input-group-text"><i class="fa-solid fa-lock"></i></div>
+                </div>
+                <div class="input-group mb-3">
+                    <input type="password" name="confirmacao" class="form-control"
+                           placeholder="Confirme a nova senha" required minlength="8">
+                    <div class="input-group-text"><i class="fa-solid fa-lock"></i></div>
+                </div>
+                <div class="d-grid mb-2">
+                    <button type="submit" class="btn btn-primary">Redefinir senha</button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+</body>
+</html>

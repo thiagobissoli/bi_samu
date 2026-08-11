@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+uploads/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dev.db
+*.db
+uvicorn.log
+.uvicorn.pid
+.DS_Store
+*.egg-info/

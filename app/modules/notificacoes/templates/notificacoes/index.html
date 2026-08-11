@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}<li class="breadcrumb-item active">Notificações</li>{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="card-title"><i class="fa-solid fa-bell me-2"></i>Notificações</h3>
+        <div>
+            {% if "notificacao.enviar" in usuario_logado.permissoes %}
+            <a href="/notificacoes/enviar" class="btn btn-primary btn-sm"><i class="fa-solid fa-paper-plane"></i> Enviar</a>
+            {% endif %}
+            <form method="post" action="/notificacoes/ler-todas" class="d-inline">
+                <button class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-check-double"></i> Marcar todas como lidas</button>
+            </form>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if pg["items"] %}
+        <div class="list-group">
+            {% for item in pg["items"] %}
+            <div class="list-group-item d-flex justify-content-between align-items-start {{ '' if item.lida else 'list-group-item-primary' }}">
+                <div>
+                    {% set cores = {"info": "info", "success": "success", "warning": "warning", "danger": "danger"} %}
+                    <span class="badge text-bg-{{ cores.get(item.tipo, 'info') }} me-1">{{ item.tipo }}</span>
+                    <strong>{{ item.titulo }}</strong>
+                    <div class="text-muted">{{ item.mensagem }}</div>
+                    <small class="text-muted">{{ item.created_at | localdt }}</small>
+                </div>
+                {% if not item.lida %}
+                <form method="post" action="/notificacoes/{{ item.id }}/ler">
+                    <button class="btn btn-outline-primary btn-sm" title="Marcar como lida">
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% include "components/pagination.html" %}
+        {% else %}<p class="text-muted mb-0">Nenhuma notificação.</p>{% endif %}
+    </div>
+</div>
+{% endblock %}

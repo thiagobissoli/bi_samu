@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}<li class="breadcrumb-item active">MFA</li>{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-shield-halved me-2"></i>Autenticação em duas etapas (MFA)</h3>
+            </div>
+            <div class="card-body">
+                {% if erro %}<div class="alert alert-danger py-2">{{ erro }}</div>{% endif %}
+                {% if ok %}<div class="alert alert-success py-2">{{ ok }}</div>{% endif %}
+
+                {% if usuario_logado.mfa_habilitado %}
+                <p><span class="badge text-bg-success"><i class="fa-solid fa-check me-1"></i>MFA ativo</span></p>
+                <p class="text-muted">Para desativar, informe um código atual do autenticador.</p>
+                <form method="post" action="/mfa/desativar" class="row g-2">
+                    <div class="col-auto">
+                        <input type="text" name="codigo" class="form-control" placeholder="000000"
+                               maxlength="6" required inputmode="numeric">
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-outline-danger">Desativar MFA</button>
+                    </div>
+                </form>
+                {% else %}
+                <p>1. Adicione esta chave no seu aplicativo autenticador
+                   (Google Authenticator, Authy, 1Password...):</p>
+                <p><code class="fs-5 user-select-all">{{ secret }}</code></p>
+                <p class="text-muted"><small>URI: <code class="user-select-all">{{ uri }}</code></small></p>
+                <p>2. Digite o código de 6 dígitos gerado para confirmar:</p>
+                <form method="post" action="/mfa/ativar" class="row g-2">
+                    <div class="col-auto">
+                        <input type="text" name="codigo" class="form-control" placeholder="000000"
+                               maxlength="6" required inputmode="numeric">
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-primary">Ativar MFA</button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

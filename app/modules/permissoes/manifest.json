@@ -1,0 +1,12 @@
+{
+    "name": "Permissoes",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [],
+    "permissions": ["permissao.listar"],
+    "menu": [
+        {"label": "Permissões", "url": "/permissoes", "icon": "fa-key",
+         "permission": "permissao.listar", "order": 13}
+    ],
+    "routes": ["/permissoes"]
+}

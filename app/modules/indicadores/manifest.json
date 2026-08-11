@@ -1,0 +1,14 @@
+{
+    "name": "Indicadores",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": ["Download vSky"],
+    "permissions": [
+        "indicadores.visualizar"
+    ],
+    "menu": [
+        {"label": "Indicadores", "url": "/indicadores", "icon": "fa-chart-line",
+         "permission": "indicadores.visualizar", "order": 23}
+    ],
+    "routes": ["/indicadores"]
+}
