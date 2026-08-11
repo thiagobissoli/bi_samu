@@ -39,10 +39,16 @@ DATA_HORA_FMT = "%d/%m/%Y %H:%M:%S"
 RELATORIO_MENU_LABEL = "Total de Registros Analítico"
 
 # Prontuário (ficha "Detalhes do Atendimento") — navegação de consulta
-CONSULTA_OCORRENCIA_PATH = "/vskymanagement/restrito/consultar_ocorrencia.xhtml"
+CONSULTA_OCORRENCIA_PATH = ("/vskymanagement/restrito/cadastro/ocorrencia/"
+                            "consultar_ocorrencia.xhtml")
 CAMPO_NUMERO_OCORRENCIA = "frm_consultar_ocorrencias:itNumeroOcorrencia"
 CAMPO_CONSULTA_DATA_INICIAL = "frm_consultar_ocorrencias:itDataInicial_input"
-PRONTUARIO_PDF_LABEL = "Gerar Detalhes do Atendimento"
+# Gatilhos do PDF, por ordem de preferência: a Ficha completa só é
+# renderizada para perfis com essa permissão no vSky; os demais recebem
+# o relatório de detalhes do atendimento.
+PRONTUARIO_GATILHOS = ("Ficha de Atendimento Completa",
+                       "Gerar Detalhes do Atendimento")
+PRONTUARIO_PDF_LABEL = PRONTUARIO_GATILHOS[1]  # compatibilidade
 PRONTUARIO_TIMEOUT = 120  # segundos — geração do PDF pode demorar
 
 # Colunas do relatório "Total de Registros Analítico", na ordem do XLS.

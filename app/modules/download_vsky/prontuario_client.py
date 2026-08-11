@@ -1,14 +1,22 @@
-"""Download do prontuário PDF ("Detalhes do Atendimento") de uma ocorrência.
+"""Download do prontuário PDF de uma ocorrência do vSky.
 
-Reproduz por HTTP (JSF/PrimeFaces) o mesmo caminho que o sistema Desperdicio
-faz por Selenium: após o login (reaproveitado do VskyClient), abre a tela
-`consultar_ocorrencia.xhtml`, pesquisa pelo número da ocorrência (limpando o
-período pré-preenchido) e aciona o botão "Gerar Detalhes do Atendimento",
-recebendo o PDF em bytes.
+Reproduz por HTTP (JSF/PrimeFaces) o fluxo da tela "Consultar Ocorrências"
+(restrito/cadastro/ocorrencia/consultar_ocorrencia.xhtml): após o login
+(reaproveitado do VskyClient), pesquisa pelo número — via POST parcial
+AJAX, como o botão Pesquisar faz de verdade — e aciona o botão de PDF da
+linha do resultado, recebendo o arquivo em bytes.
 
-Como no relatório, todos os ids gerados pelo JSF (ViewState, botões
-`j_idtNN`) são extraídos das próprias páginas a cada execução — o que muda
-aqui é a tela e o gatilho, não a mecânica.
+Detalhes calibrados contra o portal real (ago/2026):
+- O formulário tem selects MÚLTIPLOS (status Finalizado/Cancelada/
+  Encerrada): todos os valores selecionados precisam ser reenviados, senão
+  a pesquisa devolve "Nenhum Registro".
+- A pesquisa só popula a lista via requisição parcial (Faces-Request:
+  partial/ajax); o POST completo re-renderiza a página sem resultado.
+- O botão de PDF depende do perfil do usuário: perfis com a permissão
+  recebem "Ficha de Atendimento Completa"; os demais, "Gerar Detalhes do
+  Atendimento" (PRONTUARIO_GATILHOS, em ordem de preferência).
+- Ids gerados pelo JSF (ViewState, j_idtNN) são extraídos das próprias
+  páginas a cada execução.
 """
 
 from __future__ import annotations
@@ -17,19 +25,18 @@ import html as html_lib
 import re
 
 from app.modules.download_vsky.constants import (
-    CAMPO_CONSULTA_DATA_INICIAL,
     CAMPO_NUMERO_OCORRENCIA,
     CONSULTA_OCORRENCIA_PATH,
-    PRONTUARIO_PDF_LABEL,
+    PRONTUARIO_GATILHOS,
     PRONTUARIO_TIMEOUT,
 )
 from app.modules.download_vsky.vsky_client import (
     VskyClient,
     VskyError,
     _first,
-    _menu_source,
     _mensagem_erro,
     _viewstate,
+    _viewstate_update,
 )
 
 FORM_CONSULTA = "frm_consultar_ocorrencias"
@@ -44,7 +51,7 @@ class ProntuarioClient(VskyClient):
         super().__init__(base_url, usuario, senha, timeout=PRONTUARIO_TIMEOUT)
 
     def baixar_prontuario(self, numero: str) -> bytes:
-        """Devolve os bytes do PDF "Detalhes do Atendimento" da ocorrência.
+        """Devolve os bytes do PDF do prontuário da ocorrência.
 
         Requer sessão autenticada (chame login() antes). Levanta
         ProntuarioError com mensagem clara em qualquer falha estrutural.
@@ -55,8 +62,8 @@ class ProntuarioClient(VskyClient):
         if page.status_code == 404:
             raise ProntuarioError(
                 "Tela de consulta de ocorrências não encontrada no portal "
-                "(consultar_ocorrencia.xhtml). A navegação do vSky pode ter "
-                "mudado.")
+                f"({CONSULTA_OCORRENCIA_PATH}). A navegação do vSky pode "
+                "ter mudado.")
         page.raise_for_status()
         html = page.text
         if "it_password" in html:  # sessão caiu -> voltou ao login
@@ -66,43 +73,58 @@ class ProntuarioClient(VskyClient):
         if viewstate is None:
             raise ProntuarioError("ViewState ausente na tela de consulta.")
         campos = _campos_do_form(html, FORM_CONSULTA)
+        if not campos:
+            raise ProntuarioError("Formulário de consulta não encontrado.")
 
-        # Preenche o número e limpa o período inicial pré-preenchido (senão a
-        # busca por número filtra pelo período padrão e não retorna nada).
-        campos[CAMPO_NUMERO_OCORRENCIA] = numero
-        for chave in list(campos):
+        # Número da ocorrência + período inicial limpo (senão a busca por
+        # número fica restrita ao período padrão pré-preenchido).
+        campos[CAMPO_NUMERO_OCORRENCIA] = [numero]
+        for chave in campos:
             if "DataInicial" in chave and chave.endswith("_input"):
-                campos[chave] = ""
-        campos[FORM_CONSULTA] = FORM_CONSULTA
-        campos["javax.faces.ViewState"] = viewstate
+                campos[chave] = [""]
 
         botao_pesquisar = _botao_por_label(html, ("pesquisar", "consultar"))
         if botao_pesquisar is None:
             raise ProntuarioError("Botão de pesquisa não encontrado na consulta.")
-        campos[botao_pesquisar] = campos.get(botao_pesquisar, "")
 
-        resultado = self.http.post(CONSULTA_OCORRENCIA_PATH, data=campos)
+        # A pesquisa real é AJAX parcial — só ela popula a lista de
+        # resultados no estado da view.
+        campos.update({
+            "javax.faces.partial.ajax": "true",
+            "javax.faces.source": botao_pesquisar,
+            "javax.faces.partial.execute": FORM_CONSULTA,
+            "javax.faces.partial.render": FORM_CONSULTA,
+            botao_pesquisar: botao_pesquisar,
+            FORM_CONSULTA: FORM_CONSULTA,
+            "javax.faces.ViewState": viewstate,
+        })
+        resultado = self.http.post(CONSULTA_OCORRENCIA_PATH, data=campos,
+                                   headers={"Faces-Request": "partial/ajax"})
         resultado.raise_for_status()
-        html_res = resultado.text
-        viewstate = _viewstate(html_res) or viewstate
+        html_res = html_lib.unescape(resultado.text)
+        viewstate = _viewstate_update(resultado.text) or viewstate
 
-        gatilho = _menu_source(html_res, PRONTUARIO_PDF_LABEL) \
-            or _botao_por_titulo(html_res, PRONTUARIO_PDF_LABEL)
+        gatilho = None
+        for titulo in PRONTUARIO_GATILHOS:
+            gatilho = _botao_por_titulo(html_res, titulo)
+            if gatilho:
+                break
         if gatilho is None:
-            if numero not in html_res:
+            if numero not in html_res or "Nenhum Registro" in html_res:
                 raise ProntuarioError(
                     f"Ocorrência {numero} não encontrada na consulta do vSky.")
             raise ProntuarioError(
-                'Botão "Gerar Detalhes do Atendimento" não localizado para a '
-                f"ocorrência {numero}.")
+                "Botão de PDF não localizado para a ocorrência "
+                f"{numero} — o usuário configurado pode não ter a permissão "
+                "no vSky.")
 
-        # Aciona o gatilho de geração — POST completo do formulário devolve o
-        # PDF (Content-Disposition: attachment). Preserva o estado do form.
-        campos_pdf = _campos_do_form(html_res, FORM_CONSULTA) or campos
-        campos_pdf[CAMPO_NUMERO_OCORRENCIA] = numero
+        # Clique no botão do PDF: POST completo com o estado do formulário
+        # devolvido pela pesquisa (o PDF vem como attachment).
+        campos_pdf = _campos_do_form(html_res, FORM_CONSULTA)
+        campos_pdf[CAMPO_NUMERO_OCORRENCIA] = [numero]
         campos_pdf[FORM_CONSULTA] = FORM_CONSULTA
         campos_pdf["javax.faces.ViewState"] = viewstate
-        campos_pdf[gatilho] = campos_pdf.get(gatilho, "")
+        campos_pdf[gatilho] = ""
 
         pdf = self.http.post(CONSULTA_OCORRENCIA_PATH, data=campos_pdf)
         pdf.raise_for_status()
@@ -114,28 +136,34 @@ class ProntuarioClient(VskyClient):
             or "O vSky não devolveu o PDF do prontuário.")
 
 
-def _campos_do_form(html: str, form_id: str) -> dict[str, str]:
-    """name -> value de todos os inputs (inclusive hidden) do formulário."""
+def _campos_do_form(html: str, form_id: str) -> dict[str, list[str] | str]:
+    """name -> valores de todos os inputs/selects do formulário.
+
+    Valores são listas: selects múltiplos (ex.: status da ocorrência)
+    precisam reenviar TODAS as opções selecionadas — colapsar para um
+    único valor faz a pesquisa devolver "Nenhum Registro".
+    """
     decoded = html_lib.unescape(html)
     m = re.search(rf'<form[^>]*id="{re.escape(form_id)}".*?</form>',
                   decoded, re.DOTALL | re.IGNORECASE)
-    trecho = m.group(0) if m else decoded
-    campos: dict[str, str] = {}
+    if m is None:
+        return {}
+    trecho = m.group(0)
+    campos: dict[str, list[str] | str] = {}
     for tag in re.finditer(r'<input\b[^>]*>', trecho, re.IGNORECASE):
         nome = _first(r'name="([^"]+)"', tag.group(0))
         if not nome:
             continue
-        campos[nome] = _first(r'value="([^"]*)"', tag.group(0)) or ""
-    # selects: mantém a opção selecionada (ou a primeira)
+        campos.setdefault(nome, [])
+        campos[nome].append(_first(r'value="([^"]*)"', tag.group(0)) or "")
     for sel in re.finditer(r'<select\b[^>]*>.*?</select>', trecho,
                            re.DOTALL | re.IGNORECASE):
         nome = _first(r'name="([^"]+)"', sel.group(0))
         if not nome:
             continue
         opcoes = re.findall(r'<option[^>]*value="([^"]*)"([^>]*)>', sel.group(0))
-        valor = next((v for v, a in opcoes if "selected" in a),
-                     opcoes[0][0] if opcoes else "")
-        campos[nome] = valor
+        marcadas = [v for v, attrs in opcoes if "selected" in attrs]
+        campos[nome] = marcadas or ([opcoes[0][0]] if opcoes else [""])
     return campos
 
 
