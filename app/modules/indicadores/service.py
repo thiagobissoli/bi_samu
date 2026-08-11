@@ -778,6 +778,16 @@ class IndicadoresService:
         ]
         charts = self._charts_volume([("Regulações", base)],
                                      "Regulações", nunique_col="ocorrencia")
+        # Distribuição por hora do dia: média de regulações por hora
+        # (regulações da hora ÷ dias com registro no período)
+        por_hora = base.groupby("hora")["ocorrencia"].nunique()
+        charts.append({
+            "tipo": "bar",
+            "titulo": "Média de regulações por hora do dia",
+            "labels": [f"{h:02d}h" for h in range(24)],
+            "datasets": [{"label": "Média por dia",
+                          "data": [round(float(por_hora.get(h, 0)) / dias, 1)
+                                   if dias else 0 for h in range(24)]}]})
         return {"kpis": kpis, "charts": charts, "tables": []}
 
     def tema_tempo_resposta(self, df: pd.DataFrame) -> dict:
