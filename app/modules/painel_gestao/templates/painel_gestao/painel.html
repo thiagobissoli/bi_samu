@@ -130,7 +130,12 @@
             responsive: true, maintainAspectRatio: false,
             indexAxis: spec.horizontal ? "y" : "x",
             plugins: { legend: { display: spec.datasets.length > 1 } },
-            scales: { x: {}, y: { beginAtZero: true } },
+            // Linhas: escala ajustada à faixa dos valores (com folga de 15%)
+            // — começar no zero achata séries que oscilam longe da base.
+            // Barras seguem partindo do zero (comparação de volume).
+            scales: { x: {}, y: spec.tipo === "line"
+                ? { beginAtZero: false, grace: "15%" }
+                : { beginAtZero: true } },
         };
         if (spec.max_y) opts.scales[spec.horizontal ? "x" : "y"].max = spec.max_y;
         if (spec.unidade_y === "min") {

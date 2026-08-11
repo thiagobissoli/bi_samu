@@ -317,7 +317,11 @@ $(function () {
                                  position: ehPizza ? "right" : "top" } },
         };
         if (!ehPizza) {
-            opts.scales = { x: {}, y: { beginAtZero: true } };
+            // Linhas: escala ajustada à faixa dos valores (folga de 15%) —
+            // partir do zero achata séries que oscilam longe da base.
+            opts.scales = { x: {}, y: spec.tipo === "line"
+                ? { beginAtZero: false, grace: "15%" }
+                : { beginAtZero: true } };
             if (spec.max_y) opts.scales[spec.horizontal ? "x" : "y"].max = spec.max_y;
             if (spec.unidade_y === "min") {
                 // Indicadores de tempo: eixo e tooltip em mm:ss
