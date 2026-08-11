@@ -385,10 +385,14 @@ class ReuniaoIndicadoresService:
         })
 
         # ---- 8. TR Vermelho USA × USB (mediana, última semana) ---------------
-        # tempo_resposta só existe na linha da 1ª ambulância a chegar
-        # (regra do núcleo) — o recurso/turno considerado é o dela.
+        # Só ocorrências com UMA unidade despachada: a contagem de empenhos
+        # roda sobre o df inteiro (antes de qualquer recorte), então um caso
+        # vermelho que recebeu apoio de outra viatura fica de fora.
+        empenhos_por_ocorr = df[df["ocorrencia"].notna()] \
+            .groupby("ocorrencia").size()
         verm = tr_ok[(tr_ok["codigo_cor"] == "vermelho")
-                     & (tr_ok["semana_iso"] == sem_ult)]
+                     & (tr_ok["semana_iso"] == sem_ult)
+                     & tr_ok["ocorrencia"].map(empenhos_por_ocorr).eq(1)]
         kpis8, dados8 = [], {"Diurno": [], "Noturno": [], "Total": []}
         si_verm = len(slides)
         for ri, recurso in enumerate(("USA", "USB")):
@@ -409,7 +413,7 @@ class ReuniaoIndicadoresService:
             "kicker": "Tempo Resposta · Convênio · Vermelho · Pré-hospitalar",
             "titulo": "Tempo Resposta — Vermelho",
             "subtitulo": "Solicitação = Pré-hospitalar (APH) · código Vermelho"
-                         " · somente a 1ª ambulância a chegar na ocorrência · "
+                         " · despachado somente 1 unidade · "
                          "VITORIA, VILA VELHA, SERRA, CARIACICA · USA e USB "
                          f"por turno · última semana ({sem_data}) · mediana "
                          "(mm:ss)",
