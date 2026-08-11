@@ -312,3 +312,37 @@ def test_desconto_p41():
     assert _com_desconto(bruto, 0) is bruto
     # leitura da configuração devolve inteiro >= 0
     assert isinstance(desconto_p41(1), int) and desconto_p41(1) >= 0
+
+
+def test_relacao_news_codigo_risco():
+    """Relação NEWS × código × risco inicial no dashboard sinais-vitais."""
+    _login()
+    dados = client.get("/indicadores/api/sinais-vitais").json()["data"]
+    titulos = [c["titulo"] for c in dados["charts"]]
+    assert any("NEWS médio por código da ocorrência" in t for t in titulos)
+    assert any("NEWS médio por risco inicial" in t for t in titulos)
+    # a restrição da base (só quem tem NEWS) é declarada nos títulos
+    assert all("pacientes com NEWS aferida" in t
+               for t in titulos if "NEWS médio por" in t or "Bandas NEWS" in t)
+    empilhados = [c for c in dados["charts"] if c.get("stacked")]
+    assert len(empilhados) == 2
+    for c in empilhados:
+        assert c["max_y"] == 100
+        assert [d["label"] for d in c["datasets"]] == \
+            ["Baixo", "Baixo-Médio", "Médio", "Alto"]
+        # cada categoria soma ~100%
+        for i in range(len(c["labels"])):
+            soma = sum(d["data"][i] for d in c["datasets"])
+            assert 99.0 <= soma <= 101.0, (c["labels"][i], soma)
+    # tabela cruzada com células coloridas
+    cruzada = [t for t in dados["tables"]
+               if "Risco inicial (triagem) × Código" in t["titulo"]]
+    assert cruzada
+    ultima = cruzada[0]["linhas"][-1]
+    assert ultima[0] == "Todos"
+    assert isinstance(ultima[-1], dict) and ultima[-1]["cls"].startswith("table-")
+    # KPIs: cobertura declarada + antecipação/subtriagem da regulação
+    rotulos = [k["label"] for k in dados["kpis"]]
+    assert "Cobertura da NEWS" in rotulos
+    assert "NEWS Alto → triagem grave" in rotulos
+    assert "NEWS Alto no risco leve" in rotulos

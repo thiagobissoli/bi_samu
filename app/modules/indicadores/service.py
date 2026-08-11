@@ -1369,9 +1369,10 @@ class IndicadoresService:
                        "datasets": [{"label": "Pacientes",
                                      "data": [int((news == s).sum()) for s in scores[:-1]]
                                      + [int((news >= 15).sum())]}]})
+        rel_kpis, rel_charts, rel_tabelas = self._relacao_news(df, cores_bandas)
         return {
-            "kpis": kpis, "charts": charts,
-            "tables": [
+            "kpis": kpis + rel_kpis, "charts": charts + rel_charts,
+            "tables": rel_tabelas + [
                 {"titulo": "Escala NEWS modificada — critérios de pontuação",
                  "colunas": ["Parâmetro", "Pontuação"],
                  "linhas": [list(c) for c in NEWS_CRITERIOS]},
@@ -1380,6 +1381,128 @@ class IndicadoresService:
                  "linhas": [list(b) for b in NEWS_BANDAS]},
             ],
         }
+
+    ORDEM_RISCO = ["Emergência", "Muito Urgente", "Urgente",
+                   "Pouco Urgente", "Não Urgente"]
+    CORES_RISCO = {"Emergência": "#dc3545", "Muito Urgente": "#fd7e14",
+                   "Urgente": "#ffc107", "Pouco Urgente": "#198754",
+                   "Não Urgente": "#0d6efd"}
+
+    def _relacao_news(self, df: pd.DataFrame, cores_bandas: dict) -> tuple:
+        """Relação NEWS × código da ocorrência × risco inicial.
+
+        A NEWS mede a gravidade fisiológica aferida na cena. O código da
+        ocorrência é a classificação da EQUIPE na cena (contemporânea aos
+        vitais); o risco inicial é a triagem da REGULAÇÃO, anterior ao
+        contato. Cruzar com o código mede a coerência da equipe com a
+        fisiologia; cruzar com o risco mede o quanto a triagem antecipou
+        a gravidade. Toda a seção condiciona em ter NEWS calculada
+        (sinais vitais completos) — a cobertura é declarada no KPI e nos
+        títulos, pois a aferição completa não é aleatória.
+        """
+        base = df[df["news_total"].notna()]
+        if base.empty:
+            return [], [], []
+        ordem_bandas = ["Baixo", "Baixo-Médio", "Médio", "Alto"]
+        min_n = 30   # esconde categorias raras (ex.: 3 casos não urgentes)
+
+        def _grupos(col: str, ordem: list[str]) -> list[str]:
+            vc = base[col].value_counts()
+            return [g for g in ordem if vc.get(g, 0) >= min_n]
+
+        def _bar_news_medio(col: str, ordem: list[str], cores: dict,
+                            rotulos: dict | None, titulo: str) -> dict:
+            g = base.groupby(col)["news_total"].agg(["mean", "count"])
+            cats = _grupos(col, ordem)
+            return {"tipo": "bar", "titulo": titulo,
+                    "labels": [f"{(rotulos or {}).get(c, c)} "
+                               f"(n={int(g.loc[c, 'count'])})" for c in cats],
+                    "datasets": [{"label": "NEWS médio",
+                                  "data": [round(float(g.loc[c, "mean"]), 2)
+                                           for c in cats],
+                                  "colors": [cores[c] for c in cats]}]}
+
+        def _stack_bandas(col: str, ordem: list[str],
+                          rotulos: dict | None, titulo: str) -> dict:
+            cats = _grupos(col, ordem)
+            tab = pd.crosstab(base[col], base["news_risco"], normalize="index") * 100
+            return {"tipo": "bar", "titulo": titulo, "stacked": True, "max_y": 100,
+                    "labels": [f"{(rotulos or {}).get(c, c)} "
+                               f"(n={int((base[col] == c).sum())})" for c in cats],
+                    "datasets": [{"label": banda,
+                                  "data": [round(float(tab.loc[c].get(banda, 0)), 1)
+                                           for c in cats],
+                                  "color": cores_bandas[banda]}
+                                 for banda in ordem_bandas]}
+
+        nota = " · pacientes com NEWS aferida"
+        ordem_cod = ["vermelho", "amarelo", "verde", "orientacao_medica",
+                     "nao_urgente"]
+        charts = [
+            _bar_news_medio("codigo_cor", ordem_cod, HEX_COR, ROTULO_COR,
+                            "NEWS médio por código da ocorrência "
+                            "(equipe na cena)" + nota),
+            _bar_news_medio("risco_inicial", self.ORDEM_RISCO, self.CORES_RISCO,
+                            None, "NEWS médio por risco inicial "
+                            "(triagem da regulação)" + nota),
+            _stack_bandas("codigo_cor", ordem_cod, ROTULO_COR,
+                          "Bandas NEWS dentro de cada código (%)" + nota),
+            _stack_bandas("risco_inicial", self.ORDEM_RISCO, None,
+                          "Bandas NEWS dentro de cada risco inicial (%)" + nota),
+        ]
+
+        # KPIs: cobertura da NEWS + antecipação/subtriagem DA REGULAÇÃO
+        # (risco inicial). O código da equipe fica nos gráficos — não entra
+        # nos KPIs para não atribuir a subtriagem ao ator errado.
+        kpis = [{"label": "Cobertura da NEWS",
+                 "valor": f"{len(base) / len(df) * 100:.1f}%",
+                 "sub": f"{len(base)} de {len(df)} registros com sinais "
+                        "vitais completos — demais ficam fora desta seção"}]
+        com_risco = base[base["risco_cor"].notna()]
+        alto_r = com_risco[com_risco["news_risco"] == "Alto"]
+        if len(alto_r):
+            pct_ant = (alto_r["risco_cor"] == "vermelho").mean() * 100
+            kpis.append({"label": "NEWS Alto → triagem grave",
+                         "valor": f"{pct_ant:.1f}%",
+                         "sub": f"dos {len(alto_r)} NEWS Alto, triados como "
+                                "Emergência/Muito Urgente"})
+        leve = com_risco[com_risco["risco_cor"].isin(["verde", "azul"])]
+        if len(leve):
+            pct_sub = (leve["news_risco"] == "Alto").mean() * 100
+            kpis.append({"label": "NEWS Alto no risco leve",
+                         "valor": f"{pct_sub:.1f}%",
+                         "sub": f"dos {len(leve)} triados Pouco/Não Urgente "
+                                "com NEWS — subtriagem da regulação"})
+
+        # Tabela cruzada risco inicial × código: NEWS médio, % Alto e n
+        cods = _grupos("codigo_cor", ordem_cod)
+        riscos = _grupos("risco_inicial", self.ORDEM_RISCO)
+
+        def _celula(sub: pd.DataFrame) -> dict | str:
+            if len(sub) < min_n:
+                return "--"
+            pct_alto = (sub["news_risco"] == "Alto").mean() * 100
+            cls = ("table-danger" if pct_alto >= 20 else
+                   "table-warning" if pct_alto >= 10 else
+                   "table-info" if pct_alto >= 5 else "table-success")
+            return {"v": f"{sub['news_total'].mean():.2f} · "
+                         f"{pct_alto:.1f}% Alto (n={len(sub)})", "cls": cls}
+
+        linhas = []
+        for r in riscos:
+            sub_r = base[base["risco_inicial"] == r]
+            linhas.append([r] + [_celula(sub_r[sub_r["codigo_cor"] == c])
+                                 for c in cods] + [_celula(sub_r)])
+        linhas.append(["Todos"] + [_celula(base[base["codigo_cor"] == c])
+                                   for c in cods] + [_celula(base)])
+        tabela = {"titulo": ("Risco inicial (triagem) × Código (equipe) — "
+                             "NEWS médio · % NEWS Alto · n — pacientes com "
+                             "NEWS aferida (verde < 5% Alto, azul < 10%, "
+                             "amarelo < 20%, vermelho >= 20%)"),
+                  "colunas": ["Risco inicial"] + [ROTULO_COR[c] for c in cods]
+                             + ["Todos os códigos"],
+                  "linhas": linhas}
+        return kpis, charts, [tabela]
 
     def tema_obito(self, df: pd.DataFrame) -> dict:
         obitos = df[df["obito_constatado"]]

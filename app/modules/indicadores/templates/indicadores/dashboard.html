@@ -322,6 +322,10 @@ $(function () {
             opts.scales = { x: {}, y: spec.tipo === "line"
                 ? { beginAtZero: false, grace: "15%" }
                 : { beginAtZero: true } };
+            if (spec.stacked) {
+                opts.scales.x.stacked = true;
+                opts.scales.y.stacked = true;
+            }
             if (spec.max_y) opts.scales[spec.horizontal ? "x" : "y"].max = spec.max_y;
             if (spec.unidade_y === "min") {
                 // Indicadores de tempo: eixo e tooltip em mm:ss
