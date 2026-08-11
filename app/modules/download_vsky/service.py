@@ -209,6 +209,7 @@ def obter_prontuario(db: Session, empresa_id: int, numero: str) -> Path:
         raise ValueError("Número de ocorrência ausente.")
     destino = prontuario_path(empresa_id, numero)
     if destino.is_file() and destino.stat().st_size > 0:
+        registrar_prontuario(db, empresa_id, numero, destino)
         return destino
 
     usuario = get_config(db, CONFIG_USUARIO, empresa_id=empresa_id)
@@ -228,7 +229,52 @@ def obter_prontuario(db: Session, empresa_id: int, numero: str) -> Path:
 
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_bytes(conteudo)
+    registrar_prontuario(db, empresa_id, numero, destino, forcar=True)
     return destino
+
+
+def _extrair_texto_pdf(caminho: Path) -> tuple[str, int]:
+    """Texto e nº de páginas do PDF (vazio se a extração falhar)."""
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(str(caminho))
+        texto = "\n".join((pg.extract_text() or "") for pg in reader.pages)
+        return texto.strip(), len(reader.pages)
+    except Exception:
+        return "", 0
+
+
+def registrar_prontuario(db: Session, empresa_id: int, numero: str,
+                         destino: Path, forcar: bool = False):
+    """Garante o registro do prontuário no banco (com texto extraído).
+
+    `forcar=True` reprocessa mesmo que já exista (download novo);
+    sem forçar, um registro existente do mesmo arquivo é reaproveitado.
+    """
+    from sqlalchemy import select
+
+    from app.modules.download_vsky.models import VskyProntuario
+
+    tamanho = destino.stat().st_size
+    registro = db.scalar(select(VskyProntuario).where(
+        VskyProntuario.empresa_id == empresa_id,
+        VskyProntuario.ocorrencia == numero,
+        VskyProntuario.deleted_at.is_(None)))
+    if registro is not None and not forcar and registro.tamanho == tamanho:
+        return registro
+
+    texto, paginas = _extrair_texto_pdf(destino)
+    if registro is None:
+        registro = VskyProntuario(empresa_id=empresa_id, ocorrencia=numero)
+        db.add(registro)
+    registro.caminho = str(destino.relative_to(Path(settings.upload_dir)))
+    registro.tamanho = tamanho
+    registro.paginas = paginas
+    registro.texto = texto[:1_000_000] or None
+    registro.baixado_em = datetime.now(timezone.utc)
+    db.commit()
+    return registro
 
 
 def absolute_path(item: VskyImportacao) -> Path:

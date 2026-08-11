@@ -123,9 +123,26 @@ def ocorrencia(
                      "chegada": r.chegada_no_local,
                      "tr": _tempo_resposta_mmss(r)} for r in irmaos]
 
+    # Prontuário já baixado do vSky (registro criado no download)
+    from app.modules.download_vsky.models import VskyProntuario
+    pront = db.scalar(select(VskyProntuario).where(
+        VskyProntuario.empresa_id == usuario.empresa_id,
+        VskyProntuario.ocorrencia == registro.ocorrencia,
+        VskyProntuario.deleted_at.is_(None))) if registro.ocorrencia else None
+    prontuario = None
+    if pront is not None:
+        prontuario = {
+            "baixado_em": pront.baixado_em.strftime("%d/%m/%Y %H:%M")
+                          if pront.baixado_em else None,
+            "tamanho_kb": round(pront.tamanho / 1024),
+            "paginas": pront.paginas,
+            "texto": pront.texto,
+        }
+
     return {"success": True, "message": "",
             "data": {"id": registro.id, "ocorrencia": registro.ocorrencia,
-                     "campos": campos, "empenhos": empenhos}, "errors": []}
+                     "campos": campos, "empenhos": empenhos,
+                     "prontuario": prontuario}, "errors": []}
 
 
 @router.get("/prontuario", summary="Baixa o PDF do prontuário da ocorrência")

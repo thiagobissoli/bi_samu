@@ -167,6 +167,14 @@
             font-weight: 600; padding: .38rem .9rem;
         }
         .drill-pront:hover { filter: brightness(1.1); }
+        .pront-texto {
+            background: #0d1420; border: 1px solid #223046; border-radius: 8px;
+            padding: .8rem 1rem; margin: .4rem 0 1rem;
+            max-height: 320px; overflow-y: auto;
+            white-space: pre-wrap; word-break: break-word;
+            font: .78rem/1.5 ui-monospace, Menlo, Consolas, monospace;
+            color: #c7d2e0;
+        }
         .drill-pront-status {
             color: var(--texto-suave); font-family: var(--mono);
             font-size: .72rem; margin-left: .5rem;
@@ -465,6 +473,11 @@
         ligarCliquesDetalhe();
     }
 
+    function escHtml(s) {
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;");
+    }
+
     function abrirOcorrencia(id) {
         const corpoEl = document.getElementById("drill-corpo");
         corpoEl.innerHTML = "<p style='padding:1rem 0;color:#8b98ab;'>carregando…</p>";
@@ -475,12 +488,26 @@
                 const d = corpo.data;
                 document.getElementById("drill-contexto").textContent =
                     "Ocorrência " + (d.ocorrencia || d.id) + " · ficha completa";
+                const temPront = !!d.prontuario;
                 let html = '<button class="drill-voltar" id="drill-voltar">' +
                            "← voltar para a lista</button>" +
                            '<a class="drill-pront" id="drill-pront" target="_blank" ' +
                            'href="/reuniao_indicadores/prontuario?id=' + d.id + '">' +
-                           "⬇ Baixar prontuário (PDF)</a>" +
+                           (temPront ? "⬇ Abrir prontuário (PDF)"
+                                     : "⬇ Baixar prontuário (PDF)") + "</a>" +
                            '<span class="drill-pront-status" id="drill-pront-status"></span>';
+                if (temPront) {
+                    const p = d.prontuario;
+                    html += '<div class="detalhe-secao">Prontuário do vSky' +
+                            (p.baixado_em ? " · baixado em " + p.baixado_em : "") +
+                            (p.paginas ? " · " + p.paginas + " pág." : "") +
+                            (p.tamanho_kb ? " · " + p.tamanho_kb + " KB" : "") +
+                            "</div>";
+                    html += p.texto
+                        ? '<pre class="pront-texto">' + escHtml(p.texto) + "</pre>"
+                        : '<p style="color:#8b98ab;">PDF registrado, mas sem ' +
+                          "texto extraível.</p>";
+                }
                 if (d.empenhos.length > 1) {
                     html += '<div class="detalhe-secao">Empenhos desta ocorrência (' +
                             d.empenhos.length + ")</div><div class='detalhe-grade'>";
@@ -519,6 +546,9 @@
                             const url = URL.createObjectURL(blob);
                             window.open(url, "_blank");
                             status.textContent = " ✓ prontuário aberto";
+                            // o download criou o registro no sistema —
+                            // recarrega a ficha para integrar o conteúdo
+                            if (!temPront) abrirOcorrencia(d.id);
                         });
                         return r.json().then(function (j) {
                             status.textContent = " ✕ " + (j.message || "falhou");

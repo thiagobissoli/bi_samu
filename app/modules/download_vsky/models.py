@@ -12,7 +12,7 @@ created_at/by, updated_at/by, deleted_at/by e version.
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, UniqueConstraint
+from sqlalchemy import DateTime, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import BaseModel
@@ -105,3 +105,26 @@ class VskyRegistroAnalitico(BaseModel):
     ultimo_j14: Mapped[str | None] = mapped_column(String(30), nullable=True)
     primeiro_j15: Mapped[str | None] = mapped_column(String(30), nullable=True)
     ultimo_j15: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+
+class VskyProntuario(BaseModel):
+    """Prontuário PDF baixado do vSky para uma ocorrência.
+
+    Registra o download (arquivo, tamanho, páginas) e guarda o texto
+    extraído do PDF — é ele que o modal da ocorrência exibe na Reunião
+    de Indicadores. Um registro por ocorrência/empresa; baixar de novo
+    atualiza o registro existente.
+    """
+
+    __tablename__ = "vsky_prontuarios"
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "ocorrencia",
+                         name="uq_vsky_prontuario_empresa_ocorrencia"),
+    )
+
+    ocorrencia: Mapped[str] = mapped_column(String(30), index=True)
+    caminho: Mapped[str] = mapped_column(String(500))       # relativo a uploads/
+    tamanho: Mapped[int] = mapped_column(default=0)         # bytes do PDF
+    paginas: Mapped[int] = mapped_column(default=0)
+    texto: Mapped[str | None] = mapped_column(Text(1_000_000), nullable=True)
+    baixado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
