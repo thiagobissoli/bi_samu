@@ -132,6 +132,9 @@ def test_excluir_configuracao():
             Configuracao.chave == "chave_temporaria", Configuracao.deleted_at.is_(None)))
         assert row is not None
         client.post(f"/configuracoes/{row.id}/delete")
+        # rollback encerra a transação aberta: no MySQL (REPEATABLE READ) o
+        # snapshot antigo esconderia o delete feito na sessão da rota.
+        db.rollback()
         db.expire_all()
         # Soft delete: some da leitura, mas a linha continua no banco (§36.7)
         assert get_config(db, "chave_temporaria", "padrao", empresa_id=1) == "padrao"

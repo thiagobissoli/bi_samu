@@ -67,6 +67,35 @@ def get_session():
         session.close()
 
 
+def _garantir_banco() -> None:
+    """Cria o próprio banco (MySQL/MariaDB) na primeira execução.
+
+    Conecta ao servidor sem selecionar schema e emite CREATE DATABASE IF
+    NOT EXISTS — assim uma instalação nova só precisa do servidor de pé e
+    das credenciais no .env. SQLite cria o arquivo sozinho; PostgreSQL
+    exige o banco criado previamente (createdb).
+    """
+    from sqlalchemy.engine import make_url
+
+    url = make_url(settings.database_url)
+    if not url.drivername.startswith("mysql") or not url.database:
+        return
+    from sqlalchemy import text
+
+    # set(database=None) seria ignorado pelo SQLAlchemy; "" conecta ao
+    # servidor sem selecionar schema.
+    servidor = create_engine(url.set(database=""))
+    try:
+        with servidor.connect() as conn:
+            conn.execute(text(
+                f"CREATE DATABASE IF NOT EXISTS `{url.database}` "
+                "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+            conn.commit()
+    finally:
+        servidor.dispose()
+
+
 def init_db() -> None:
-    """Cria as tabelas registradas (desenvolvimento). Produção: Alembic."""
+    """Cria banco e tabelas registrados (desenvolvimento). Produção: Alembic."""
+    _garantir_banco()
     Base.metadata.create_all(engine)
