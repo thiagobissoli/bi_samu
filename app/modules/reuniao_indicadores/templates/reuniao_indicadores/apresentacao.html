@@ -167,13 +167,10 @@
             font-weight: 600; padding: .38rem .9rem;
         }
         .drill-pront:hover { filter: brightness(1.1); }
-        .pront-texto {
-            background: #0d1420; border: 1px solid #223046; border-radius: 8px;
-            padding: .8rem 1rem; margin: .4rem 0 1rem;
-            max-height: 320px; overflow-y: auto;
-            white-space: pre-wrap; word-break: break-word;
-            font: .78rem/1.5 ui-monospace, Menlo, Consolas, monospace;
-            color: #c7d2e0;
+        .pront-frame {
+            width: 100%; height: 65vh; min-height: 420px;
+            border: 1px solid #223046; border-radius: 8px;
+            background: #fff; margin: .4rem 0 1rem;
         }
         .drill-pront-status {
             color: var(--texto-suave); font-family: var(--mono);
@@ -473,11 +470,6 @@
         ligarCliquesDetalhe();
     }
 
-    function escHtml(s) {
-        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
-                        .replace(/>/g, "&gt;");
-    }
-
     function abrirOcorrencia(id) {
         const corpoEl = document.getElementById("drill-corpo");
         corpoEl.innerHTML = "<p style='padding:1rem 0;color:#8b98ab;'>carregando…</p>";
@@ -503,10 +495,11 @@
                             (p.paginas ? " · " + p.paginas + " pág." : "") +
                             (p.tamanho_kb ? " · " + p.tamanho_kb + " KB" : "") +
                             "</div>";
-                    html += p.texto
-                        ? '<pre class="pront-texto">' + escHtml(p.texto) + "</pre>"
-                        : '<p style="color:#8b98ab;">PDF registrado, mas sem ' +
-                          "texto extraível.</p>";
+                    // O PDF é exibido no visualizador embutido, preservando
+                    // exatamente o layout original do arquivo.
+                    html += '<iframe class="pront-frame" title="Prontuário PDF" ' +
+                            'src="/reuniao_indicadores/prontuario?id=' + d.id +
+                            '#view=FitH"></iframe>';
                 }
                 if (d.empenhos.length > 1) {
                     html += '<div class="detalhe-secao">Empenhos desta ocorrência (' +
