@@ -168,7 +168,7 @@
         }
         .drill-pront:hover { filter: brightness(1.1); }
         .pront-frame {
-            width: 100%; height: 65vh; min-height: 420px;
+            display: block; width: 100%; height: 74vh; min-height: 480px;
             border: 1px solid #223046; border-radius: 8px;
             background: #fff; margin: .4rem 0 1rem;
         }
@@ -496,10 +496,18 @@
                             (p.tamanho_kb ? " · " + p.tamanho_kb + " KB" : "") +
                             "</div>";
                     // O PDF é exibido no visualizador embutido, preservando
-                    // exatamente o layout original do arquivo.
-                    html += '<iframe class="pront-frame" title="Prontuário PDF" ' +
-                            'src="/reuniao_indicadores/prontuario?id=' + d.id +
-                            '#view=FitH"></iframe>';
+                    // exatamente o layout original do arquivo. O <object>
+                    // degrada para o link quando o navegador não renderiza
+                    // PDF embutido.
+                    const src = "/reuniao_indicadores/prontuario?id=" + d.id;
+                    html += '<object class="pront-frame" data="' + src +
+                            '#view=FitH&toolbar=1" type="application/pdf">' +
+                            '<iframe class="pront-frame" title="Prontuário PDF" ' +
+                            'src="' + src + '#view=FitH"></iframe>' +
+                            '<p style="color:#8b98ab;">Seu navegador não exibe ' +
+                            'PDF embutido — <a href="' + src + '" target="_blank" ' +
+                            'style="color:#4da3ff;">abrir em nova aba</a>.</p>' +
+                            "</object>";
                 }
                 if (d.empenhos.length > 1) {
                     html += '<div class="detalhe-secao">Empenhos desta ocorrência (' +

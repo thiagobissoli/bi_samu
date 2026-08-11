@@ -10,14 +10,18 @@ from app.core.config import settings
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
-        response.headers.setdefault("X-Frame-Options", "DENY")
+        # SAMEORIGIN (e não DENY): a aplicação embute páginas próprias em
+        # iframe — ex.: o visualizador de PDF do prontuário no modal da
+        # ocorrência. Enquadramento por outros sites segue bloqueado.
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; style-src 'self' 'unsafe-inline'; "
             "script-src 'self' 'unsafe-inline'; img-src 'self' data:; "
-            "font-src 'self'; frame-ancestors 'none'",
+            "font-src 'self'; object-src 'self'; frame-src 'self' blob:; "
+            "frame-ancestors 'self'",
         )
         if not settings.debug:
             response.headers.setdefault(

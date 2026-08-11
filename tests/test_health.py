@@ -65,9 +65,15 @@ def test_paginacao_usuarios():
 
 
 def test_headers_seguranca():
+    """SAMEORIGIN, não DENY: o visualizador de PDF do prontuário embute
+    páginas da própria aplicação em iframe (DENY / frame-ancestors 'none'
+    deixariam o modal da ocorrência em branco, sem erro visível).
+    Enquadramento por outros sites continua barrado."""
     response = client.get("/health")
-    assert response.headers["X-Frame-Options"] == "DENY"
-    assert "Content-Security-Policy" in response.headers
+    assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    csp = response.headers["Content-Security-Policy"]
+    assert "frame-ancestors 'self'" in csp
+    assert "object-src 'self'" in csp
 
 
 def test_mfa_page():
