@@ -15,7 +15,7 @@ router = APIRouter(prefix="/reuniao_indicadores",
 
 
 @router.get("/", include_in_schema=False)
-async def apresentacao(
+def apresentacao(
     request: Request,
     usuario: Usuario = Depends(require_permission("reuniao_indicadores.visualizar")),
     db: Session = Depends(get_session),
@@ -26,7 +26,7 @@ async def apresentacao(
 
 
 @router.get("/api", summary="Deck da Reunião de Indicadores")
-async def api(
+def api(
     usuario: Usuario = Depends(require_permission("reuniao_indicadores.visualizar")),
     db: Session = Depends(get_session),
 ):
@@ -54,7 +54,7 @@ def _tempo_resposta_mmss(registro) -> str | None:
 
 
 @router.get("/drill", summary="Ocorrências que compõem um elemento de gráfico")
-async def drill(
+def drill(
     chave: str,
     usuario: Usuario = Depends(require_permission("reuniao_indicadores.visualizar")),
     db: Session = Depends(get_session),
@@ -88,7 +88,7 @@ async def drill(
 
 
 @router.get("/ocorrencia", summary="Detalhe completo de uma ocorrência")
-async def ocorrencia(
+def ocorrencia(
     id: int,
     usuario: Usuario = Depends(require_permission("reuniao_indicadores.visualizar")),
     db: Session = Depends(get_session),
@@ -129,7 +129,7 @@ async def ocorrencia(
 
 
 @router.get("/prontuario", summary="Baixa o PDF do prontuário da ocorrência")
-async def prontuario(
+def prontuario(
     id: int,
     usuario: Usuario = Depends(require_permission("reuniao_indicadores.visualizar")),
     db: Session = Depends(get_session),

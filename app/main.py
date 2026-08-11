@@ -29,7 +29,7 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
 @app.get("/health", tags=["Health"])
-async def health(db: Session = Depends(get_session)) -> dict:
+def health(db: Session = Depends(get_session)) -> dict:
     """Health check (§39.21) — inclui verificação do banco."""
     try:
         db.execute(select(1))
@@ -41,7 +41,7 @@ async def health(db: Session = Depends(get_session)) -> dict:
 
 
 @app.get("/", include_in_schema=False)
-async def dashboard(
+def dashboard(
     request: Request,
     usuario: Usuario = Depends(get_current_user),
     db: Session = Depends(get_session),

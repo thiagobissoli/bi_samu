@@ -14,7 +14,7 @@ router = APIRouter(prefix="/auditoria", tags=["Auditoria"])
 
 
 @router.get("/", include_in_schema=False)
-async def index(
+def index(
     request: Request,
     tabela: str = "",
     acao: str = "",

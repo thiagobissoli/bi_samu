@@ -15,7 +15,7 @@ router = APIRouter(prefix="/permissoes", tags=["Permissoes"])
 
 
 @router.get("/", include_in_schema=False)
-async def index(
+def index(
     request: Request,
     usuario: Usuario = Depends(require_permission("permissao.listar")),
     db: Session = Depends(get_session),

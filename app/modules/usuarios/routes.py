@@ -29,7 +29,7 @@ def _perfis(db: Session) -> list[Perfil]:
 
 
 @router.get("/", include_in_schema=False)
-async def index(
+def index(
     request: Request,
     q: str | None = None,
     page: int = 1,
@@ -49,7 +49,7 @@ async def index(
 
 
 @router.get("/create", include_in_schema=False)
-async def create_form(
+def create_form(
     request: Request,
     usuario: Usuario = Depends(require_permission("usuario.criar")),
     db: Session = Depends(get_session),
@@ -59,7 +59,7 @@ async def create_form(
 
 
 @router.post("/create", include_in_schema=False)
-async def create(
+def create(
     request: Request,
     nome: str = Form(...),
     email: str = Form(...),
@@ -95,7 +95,7 @@ async def create(
 
 
 @router.get("/{item_id}/edit", include_in_schema=False)
-async def edit_form(
+def edit_form(
     request: Request,
     item_id: int,
     usuario: Usuario = Depends(require_permission("usuario.editar")),
@@ -109,7 +109,7 @@ async def edit_form(
 
 
 @router.post("/{item_id}/edit", include_in_schema=False)
-async def edit(
+def edit(
     request: Request,
     item_id: int,
     nome: str = Form(...),
@@ -144,7 +144,7 @@ async def edit(
 
 
 @router.post("/{item_id}/delete", include_in_schema=False)
-async def delete(
+def delete(
     request: Request,
     item_id: int,
     usuario: Usuario = Depends(require_permission("usuario.excluir")),

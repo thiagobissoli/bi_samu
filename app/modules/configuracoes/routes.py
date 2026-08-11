@@ -18,7 +18,7 @@ router = APIRouter(prefix="/configuracoes", tags=["Configuracoes"])
 
 
 @router.get("/", include_in_schema=False)
-async def index(
+def index(
     request: Request,
     usuario: Usuario = Depends(require_permission("configuracao.listar")),
     db: Session = Depends(get_session),
@@ -44,7 +44,7 @@ async def index(
 
 
 @router.post("/salvar", include_in_schema=False)
-async def salvar(
+def salvar(
     request: Request,
     chave: str = Form(...),
     valor: str = Form(""),
@@ -76,7 +76,7 @@ async def salvar(
 
 
 @router.post("/{item_id}/delete", include_in_schema=False)
-async def delete(
+def delete(
     request: Request,
     item_id: int,
     usuario: Usuario = Depends(require_permission("configuracao.excluir")),

@@ -16,7 +16,7 @@ NIVEIS = ["INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 @router.get("/", include_in_schema=False)
-async def index(
+def index(
     request: Request,
     nivel: str = "",
     modulo: str = "",

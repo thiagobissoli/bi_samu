@@ -43,7 +43,7 @@ router = APIRouter(prefix="/download_vsky", tags=["Download vSky"])
 
 
 @router.on_event("startup")
-async def _iniciar_download_automatico() -> None:
+def _iniciar_download_automatico() -> None:
     """Restaura o agendamento salvo quando o servidor sobe."""
     from app.modules.download_vsky import scheduler
     try:
@@ -72,7 +72,7 @@ def _credenciais(db: Session, empresa_id: int) -> dict | None:
 
 
 @router.get("/", include_in_schema=False)
-async def index(
+def index(
     request: Request,
     q: str | None = None,
     page: int = 1,
@@ -93,7 +93,7 @@ async def index(
 
 
 @router.post("/importar", include_in_schema=False)
-async def importar(
+def importar(
     request: Request,
     data_inicial: str = Form(...),
     data_final: str = Form(...),
@@ -130,7 +130,7 @@ async def importar(
 
 
 @router.get("/registros", include_in_schema=False)
-async def registros(
+def registros(
     request: Request,
     q: str | None = None,
     page: int = 1,
@@ -145,7 +145,7 @@ async def registros(
 
 
 @router.get("/{item_id}/arquivo", include_in_schema=False)
-async def arquivo(
+def arquivo(
     item_id: int,
     usuario: Usuario = Depends(require_permission("download_vsky.listar")),
     db: Session = Depends(get_session),
@@ -162,7 +162,7 @@ async def arquivo(
 
 
 @router.post("/{item_id}/delete", include_in_schema=False)
-async def delete(
+def delete(
     request: Request,
     item_id: int,
     usuario: Usuario = Depends(require_permission("download_vsky.excluir")),
@@ -179,7 +179,7 @@ async def delete(
 
 
 @router.get("/config", include_in_schema=False)
-async def config_form(
+def config_form(
     request: Request,
     erro: str | None = None,
     usuario: Usuario = Depends(require_permission("download_vsky.configurar")),
@@ -206,7 +206,7 @@ async def config_form(
 
 
 @router.post("/config", include_in_schema=False)
-async def config_save(
+def config_save(
     request: Request,
     base_url: str = Form(""),
     usuario_vsky: str = Form(""),
@@ -267,7 +267,7 @@ async def config_save(
 # --- API REST (formato padrão §17) ---
 
 @router.get("/api", summary="Listar importações vSky")
-async def api_list(
+def api_list(
     q: str | None = None,
     usuario: Usuario = Depends(require_permission("download_vsky.listar")),
     db: Session = Depends(get_session),
@@ -279,7 +279,7 @@ async def api_list(
 
 
 @router.post("/api", summary="Importar período do vSky", status_code=201)
-async def api_importar(
+def api_importar(
     payload: ImportacaoCreate,
     usuario: Usuario = Depends(require_permission("download_vsky.baixar")),
     db: Session = Depends(get_session),

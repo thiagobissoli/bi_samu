@@ -47,12 +47,12 @@ def _login_response(db: Session, request: Request, usuario: Usuario):
 
 
 @router.get("/login", include_in_schema=False)
-async def login_form(request: Request, erro: str = "", info: str = ""):
+def login_form(request: Request, erro: str = "", info: str = ""):
     return templates.TemplateResponse(request, "auth/login.html", {"erro": erro, "info": info})
 
 
 @router.post("/login", include_in_schema=False)
-async def login(
+def login(
     request: Request,
     email: str = Form(...),
     senha: str = Form(...),
@@ -84,7 +84,7 @@ async def login(
 
 
 @router.post("/login/mfa", include_in_schema=False)
-async def login_mfa(
+def login_mfa(
     request: Request,
     token: str = Form(...),
     codigo: str = Form(...),
@@ -103,7 +103,7 @@ async def login_mfa(
 
 
 @router.post("/logout", include_in_schema=False)
-async def logout(request: Request, db: Session = Depends(get_session)):
+def logout(request: Request, db: Session = Depends(get_session)):
     token = request.cookies.get(SESSION_COOKIE)
     usuario = getattr(request.state, "user", None)
     if token:
@@ -118,7 +118,7 @@ async def logout(request: Request, db: Session = Depends(get_session)):
 
 
 @router.get("/mfa", include_in_schema=False)
-async def mfa_page(
+def mfa_page(
     request: Request,
     usuario: Usuario = Depends(get_current_user),
     db: Session = Depends(get_session),
@@ -135,7 +135,7 @@ async def mfa_page(
 
 
 @router.post("/mfa/ativar", include_in_schema=False)
-async def mfa_enable(
+def mfa_enable(
     request: Request,
     codigo: str = Form(...),
     usuario: Usuario = Depends(get_current_user),
@@ -158,7 +158,7 @@ async def mfa_enable(
 
 
 @router.post("/mfa/desativar", include_in_schema=False)
-async def mfa_disable(
+def mfa_disable(
     request: Request,
     codigo: str = Form(...),
     usuario: Usuario = Depends(get_current_user),
@@ -181,13 +181,13 @@ async def mfa_disable(
 
 
 @router.get("/recuperar-senha", include_in_schema=False)
-async def recover_form(request: Request):
+def recover_form(request: Request):
     return templates.TemplateResponse(
         request, "auth/recover.html", {"enviado": False, "link_dev": None})
 
 
 @router.post("/recuperar-senha", include_in_schema=False)
-async def recover(
+def recover(
     request: Request,
     email: str = Form(...),
     db: Session = Depends(get_session),
@@ -211,14 +211,14 @@ async def recover(
 
 
 @router.get("/redefinir-senha/{token}", include_in_schema=False)
-async def reset_form(request: Request, token: str, db: Session = Depends(get_session)):
+def reset_form(request: Request, token: str, db: Session = Depends(get_session)):
     valido = _valid_token(db, token, "recuperacao_senha") is not None
     return templates.TemplateResponse(
         request, "auth/reset.html", {"token": token, "valido": valido, "erro": ""})
 
 
 @router.post("/redefinir-senha/{token}", include_in_schema=False)
-async def reset(
+def reset(
     request: Request,
     token: str,
     senha: str = Form(...),
@@ -247,13 +247,13 @@ async def reset(
 
 
 @router.get("/alterar-senha", include_in_schema=False)
-async def change_form(request: Request, usuario: Usuario = Depends(get_current_user)):
+def change_form(request: Request, usuario: Usuario = Depends(get_current_user)):
     return render(request, "auth/change.html", usuario,
                   page_title="Alterar senha", erro="", ok=False)
 
 
 @router.post("/alterar-senha", include_in_schema=False)
-async def change(
+def change(
     request: Request,
     senha_atual: str = Form(...),
     senha_nova: str = Form(...),
@@ -281,7 +281,7 @@ async def change(
 
 
 @router.get("/confirmar-email/{token}", include_in_schema=False)
-async def confirm_email(request: Request, token: str, db: Session = Depends(get_session)):
+def confirm_email(request: Request, token: str, db: Session = Depends(get_session)):
     registro = _valid_token(db, token, "confirmacao_email")
     ok = registro is not None
     if ok:

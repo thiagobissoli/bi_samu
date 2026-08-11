@@ -17,7 +17,7 @@ router = APIRouter(prefix="/notificacoes", tags=["Notificacoes"])
 
 
 @router.get("/", include_in_schema=False)
-async def index(
+def index(
     request: Request,
     page: int = 1,
     usuario: Usuario = Depends(require_permission("notificacao.listar")),
@@ -33,7 +33,7 @@ async def index(
 
 
 @router.post("/{item_id}/ler", include_in_schema=False)
-async def marcar_lida(
+def marcar_lida(
     item_id: int,
     usuario: Usuario = Depends(require_permission("notificacao.listar")),
     db: Session = Depends(get_session),
@@ -47,7 +47,7 @@ async def marcar_lida(
 
 
 @router.post("/ler-todas", include_in_schema=False)
-async def marcar_todas(
+def marcar_todas(
     usuario: Usuario = Depends(require_permission("notificacao.listar")),
     db: Session = Depends(get_session),
 ):
@@ -63,7 +63,7 @@ async def marcar_todas(
 
 
 @router.get("/enviar", include_in_schema=False)
-async def enviar_form(
+def enviar_form(
     request: Request,
     usuario: Usuario = Depends(require_permission("notificacao.enviar")),
     db: Session = Depends(get_session),
@@ -77,7 +77,7 @@ async def enviar_form(
 
 
 @router.post("/enviar", include_in_schema=False)
-async def enviar(
+def enviar(
     request: Request,
     usuario_id: int = Form(...),
     titulo: str = Form(...),

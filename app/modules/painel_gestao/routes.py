@@ -13,7 +13,7 @@ router = APIRouter(prefix="/painel_gestao", tags=["Painel de Gestão"])
 
 
 @router.get("/", include_in_schema=False)
-async def painel(
+def painel(
     request: Request,
     usuario: Usuario = Depends(require_permission("painel_gestao.visualizar")),
     db: Session = Depends(get_session),
@@ -24,7 +24,7 @@ async def painel(
 
 
 @router.get("/api", summary="Indicadores do Painel de Gestão")
-async def api(
+def api(
     usuario: Usuario = Depends(require_permission("painel_gestao.visualizar")),
     db: Session = Depends(get_session),
 ):

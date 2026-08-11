@@ -13,6 +13,7 @@ Convenções herdadas dos legados:
 from __future__ import annotations
 
 import re
+import threading
 import time
 import unicodedata
 import warnings
@@ -63,6 +64,7 @@ _RE_SUFIXO_PROF = [
 ]
 
 _cache: dict[int, dict] = {}
+_LOCK = threading.Lock()   # uma recarga do núcleo por vez (rotas em threadpool)
 _CACHE_TTL = 600        # revalidação completa (segundos)
 _CACHE_VERIFICA = 30    # intervalo mínimo entre checagens de novidade no banco
 
@@ -117,24 +119,40 @@ def carregar(empresa_id: int = 1) -> pd.DataFrame:
     _CACHE_VERIFICA segundos — requests dentro da janela devolvem o cache
     imediatamente, sem tocar o banco. Mudar o desconto do P4.1 na
     configuração invalida o cache na próxima leitura (rederiva tudo).
+
+    Com as rotas rodando em threadpool, o lock garante uma única carga por
+    vez: threads concorrentes esperam e reaproveitam o resultado, em vez de
+    dispararem recargas simultâneas do mesmo DataFrame.
     """
+    resultado = _tentar_cache(empresa_id)
+    if resultado is not None:
+        return resultado
+    with _LOCK:
+        resultado = _tentar_cache(empresa_id)   # outra thread pode ter carregado
+        if resultado is not None:
+            return resultado
+        return _recarregar(empresa_id)
+
+
+def _tentar_cache(empresa_id: int) -> pd.DataFrame | None:
+    """Devolve o DataFrame do cache se ainda estiver válido; senão None."""
+    agora = time.time()
+    em_cache = _cache.get(empresa_id)
+    if not em_cache or em_cache["desconto"] != desconto_p41(empresa_id):
+        return None
+    if agora - em_cache["verificado_em"] < _CACHE_VERIFICA:
+        return em_cache["df"]
+    if agora - em_cache["carregado_em"] < _CACHE_TTL \
+            and _marca_banco(empresa_id) == em_cache["marca"]:
+        em_cache["verificado_em"] = agora
+        return em_cache["df"]
+    return None
+
+
+def _recarregar(empresa_id: int) -> pd.DataFrame:
     agora = time.time()
     desconto = desconto_p41(empresa_id)
-    em_cache = _cache.get(empresa_id)
-    if em_cache and em_cache["desconto"] == desconto:
-        idade_check = agora - em_cache["verificado_em"]
-        if idade_check < _CACHE_VERIFICA:
-            return em_cache["df"]
-        if agora - em_cache["carregado_em"] < _CACHE_TTL:
-            marca = _marca_banco(empresa_id)
-            if marca == em_cache["marca"]:
-                em_cache["verificado_em"] = agora
-                return em_cache["df"]
-        else:
-            marca = _marca_banco(empresa_id)
-    else:
-        marca = _marca_banco(empresa_id)
-
+    marca = _marca_banco(empresa_id)
     df = pd.read_sql_query(
         text(f"SELECT {', '.join(COLS_USADAS)} FROM vsky_registros_analiticos "
              "WHERE empresa_id = :emp AND deleted_at IS NULL"),

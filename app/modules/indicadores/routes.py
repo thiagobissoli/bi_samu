@@ -46,7 +46,7 @@ def _query_string(filtros: dict) -> str:
 
 
 @router.get("/", include_in_schema=False)
-async def index(
+def index(
     request: Request,
     usuario: Usuario = Depends(require_permission("indicadores.visualizar")),
     db: Session = Depends(get_session),
@@ -78,7 +78,7 @@ def _params_desempenho(request: Request) -> tuple[str, str, int]:
 
 
 @router.get("/desempenho", include_in_schema=False)
-async def desempenho(
+def desempenho(
     request: Request,
     usuario: Usuario = Depends(require_permission("indicadores.visualizar")),
     db: Session = Depends(get_session),
@@ -97,7 +97,7 @@ async def desempenho(
 
 
 @router.get("/api/desempenho", summary="Análise de desempenho por dimensão")
-async def api_desempenho(
+def api_desempenho(
     request: Request,
     usuario: Usuario = Depends(require_permission("indicadores.visualizar")),
     db: Session = Depends(get_session),
@@ -109,7 +109,7 @@ async def api_desempenho(
 
 
 @router.get("/api/{tema}", summary="Dados de um dashboard de indicadores")
-async def api_tema(
+def api_tema(
     tema: str,
     request: Request,
     usuario: Usuario = Depends(require_permission("indicadores.visualizar")),
@@ -125,7 +125,7 @@ async def api_tema(
 
 
 @router.get("/{tema}", include_in_schema=False)
-async def dashboard(
+def dashboard(
     tema: str,
     request: Request,
     usuario: Usuario = Depends(require_permission("indicadores.visualizar")),
