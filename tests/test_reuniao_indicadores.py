@@ -152,3 +152,32 @@ def test_menu():
     _login()
     home = client.get("/", headers={"accept": "text/html"})
     assert "Reunião de Indicadores" in home.text
+
+
+def test_indicadores_da_ocorrencia():
+    """O modal traz os indicadores calculados do empenho (mesmos do núcleo)."""
+    _login()
+    client.get("/reuniao_indicadores/api")
+    drill = client.get("/reuniao_indicadores/drill?chave=1:0:0").json()["data"]
+    if not drill["ocorrencias"]:
+        return
+    alvo = drill["ocorrencias"][0]
+    d = client.get(f"/reuniao_indicadores/ocorrencia?id={alvo['id']}"
+                   ).json()["data"]
+    inds = d["indicadores"]
+    assert inds, "sem indicadores"
+    rotulos = [i["rotulo"] for i in inds]
+    for esperado in ("Tempo de Central", "P1 · Atendimento TARM",
+                     "P4.1 · Saída de base", "Tempo de Resposta", "Plantão"):
+        assert esperado in rotulos, esperado
+    # todo item traz situação válida para o template colorir
+    assert all(i["situacao"] in ("ok", "alerta", "ruim", "neutro")
+               for i in inds)
+    # os tempos saem em mm:ss (ou "—" quando ausentes)
+    import re
+    p1 = next(i for i in inds if i["rotulo"].startswith("P1"))
+    assert p1["valor"] == "—" or re.fullmatch(r"\d{2}:\d{2}", p1["valor"])
+    # o SLA do P1 é avaliado quando há valor
+    if p1["valor"] != "—":
+        assert p1["situacao"] in ("ok", "ruim")
+        assert "meta" in p1["sub"]

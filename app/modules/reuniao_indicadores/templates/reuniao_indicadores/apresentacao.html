@@ -167,6 +167,32 @@
             font-weight: 600; padding: .38rem .9rem;
         }
         .drill-pront:hover { filter: brightness(1.1); }
+        .ind-grade {
+            display: grid; gap: .6rem; margin: .4rem 0 1rem;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+        }
+        .ind-card {
+            background: #0d1420; border: 1px solid #223046;
+            border-left: 3px solid #445a78; border-radius: 8px;
+            padding: .55rem .8rem;
+        }
+        .ind-card.ok    { border-left-color: #2ecc71; }
+        .ind-card.alerta{ border-left-color: #f1c40f; }
+        .ind-card.ruim  { border-left-color: #e74c3c; }
+        .ind-rotulo {
+            font-family: var(--mono); font-size: .58rem; letter-spacing: .1em;
+            text-transform: uppercase; color: var(--texto-suave);
+        }
+        .ind-valor {
+            font-size: 1.15rem; font-weight: 600; color: #eaf1f8;
+            margin-top: .15rem; font-variant-numeric: tabular-nums;
+        }
+        .ind-card.ok .ind-valor     { color: #7ee2a8; }
+        .ind-card.alerta .ind-valor { color: #f5d76e; }
+        .ind-card.ruim .ind-valor   { color: #ff8a7a; }
+        .ind-sub {
+            font-size: .64rem; color: #8b98ab; margin-top: .1rem;
+        }
         .pront-frame {
             display: block; width: 100%; height: 74vh; min-height: 480px;
             border: 1px solid #223046; border-radius: 8px;
@@ -481,6 +507,7 @@
                 document.getElementById("drill-contexto").textContent =
                     "Ocorrência " + (d.ocorrencia || d.id) + " · ficha completa";
                 const temPront = !!d.prontuario;
+                const inds = d.indicadores || [];
                 let html = '<button class="drill-voltar" id="drill-voltar">' +
                            "← voltar para a lista</button>" +
                            '<a class="drill-pront" id="drill-pront" target="_blank" ' +
@@ -488,6 +515,18 @@
                            (temPront ? "⬇ Abrir prontuário (PDF)"
                                      : "⬇ Baixar prontuário (PDF)") + "</a>" +
                            '<span class="drill-pront-status" id="drill-pront-status"></span>';
+                if (inds.length) {
+                    html += '<div class="detalhe-secao">Indicadores desta ' +
+                            "ocorrência</div><div class='ind-grade'>";
+                    inds.forEach(function (i) {
+                        html += '<div class="ind-card ' + i.situacao + '">' +
+                                '<div class="ind-rotulo">' + i.rotulo + "</div>" +
+                                '<div class="ind-valor">' + i.valor + "</div>" +
+                                (i.sub ? '<div class="ind-sub">' + i.sub +
+                                         "</div>" : "") + "</div>";
+                    });
+                    html += "</div>";
+                }
                 if (temPront) {
                     const p = d.prontuario;
                     html += '<div class="detalhe-secao">Prontuário do vSky' +

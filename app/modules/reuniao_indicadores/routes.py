@@ -141,8 +141,108 @@ def ocorrencia(
 
     return {"success": True, "message": "",
             "data": {"id": registro.id, "ocorrencia": registro.ocorrencia,
+                     "indicadores": _indicadores_da_ocorrencia(
+                         usuario.empresa_id, registro.id),
                      "campos": campos, "empenhos": empenhos,
                      "prontuario": prontuario}, "errors": []}
+
+
+def _mmss(segundos) -> str | None:
+    """Segundos -> mm:ss (None quando ausente)."""
+    import pandas as pd
+
+    if segundos is None or pd.isna(segundos):
+        return None
+    s = int(round(float(segundos)))
+    return f"{s // 60:02d}:{s % 60:02d}"
+
+
+def _indicadores_da_ocorrencia(empresa_id: int, registro_id: int) -> list[dict]:
+    """Indicadores calculados deste empenho, direto do núcleo.
+
+    Reaproveita as derivações já feitas para os dashboards (P1–P9, tempo
+    de central e de resposta, assertividade, NEWS, plantão) — assim o
+    modal mostra exatamente os mesmos números dos gráficos, sem recálculo
+    paralelo. Cada item traz `situacao` (ok/alerta/ruim/neutro) para o
+    template colorir.
+    """
+    import pandas as pd
+
+    from app.modules.indicadores import nucleo
+    from app.modules.indicadores.constants import (ADEQUACAO, CAP_TEMPO,
+                                                   SLA_P1, SLA_P2_POR_COR)
+
+    df = nucleo.carregar(empresa_id)
+    linha = df[df["id"] == registro_id]
+    if linha.empty:
+        return []
+    r = linha.iloc[0]
+    itens: list[dict] = []
+
+    def add(rotulo, valor, sub="", situacao="neutro"):
+        itens.append({"rotulo": rotulo, "valor": valor or "—",
+                      "sub": sub, "situacao": situacao})
+
+    def tempo(col, rotulo, sub="", limite=None):
+        v = r.get(col)
+        cap = CAP_TEMPO.get(col, 14400)
+        if pd.isna(v) or not (0 < float(v) < cap):
+            add(rotulo, None, sub or "sem registro válido")
+            return
+        situacao = "neutro"
+        if limite:
+            situacao = "ok" if float(v) <= limite else "ruim"
+            sub = (sub + " · " if sub else "") + f"meta {_mmss(limite)}"
+        add(rotulo, _mmss(v), sub, situacao)
+
+    # --- tempos do fluxo (mesmas definições dos dashboards) ---
+    cor = r.get("codigo_cor")
+    tempo("t_central", "Tempo de Central", "controlador − abertura")
+    tempo("t_p1", "P1 · Atendimento TARM", "TARM − abertura", SLA_P1)
+    tempo("t_p2", "P2 · Regulação médica", "regulador − TARM",
+          SLA_P2_POR_COR.get(cor))
+    tempo("t_p3", "P3 · Despacho", "controlador − regulador")
+    tempo("t_p4", "P4 · Tempo de chegada", "chegada − controlador")
+    tempo("t_p4_1", "P4.1 · Saída de base", "início desloc. − controlador",
+          120)
+    tempo("t_p4_2", "P4.2 · Deslocamento", "chegada − início desloc.")
+    tempo("t_p5_6_7", "P5-7 · Tempo de cena", "saída p/ hospital − chegada")
+    tempo("t_p8", "P8 · Transporte", "chegada hospital − saída p/ hospital")
+    tempo("t_p9", "P9 · Transf. de cuidados", "encerrado − chegada hospital")
+
+    tr = r.get("tempo_resposta")
+    if pd.isna(tr):
+        add("Tempo de Resposta", None,
+            "outra viatura chegou antes nesta ocorrência")
+    elif not (0 < float(tr) < CAP_TEMPO.get("tempo_resposta", 14400)):
+        add("Tempo de Resposta", None, "fora da faixa de validade")
+    else:
+        add("Tempo de Resposta", _mmss(tr), "chegada − abertura · 1ª unidade")
+
+    # --- classificações ---
+    from app.modules.indicadores.service import ROTULO_COR
+    risco = r.get("risco_cor")
+    if cor in ADEQUACAO and not pd.isna(risco):
+        ok = risco in ADEQUACAO[cor]
+        add("Assertividade", "Adequado" if ok else "Inadequado",
+            f"código {ROTULO_COR.get(cor, cor)} × triagem "
+            f"{ROTULO_COR.get(risco, risco)}", "ok" if ok else "ruim")
+    news = r.get("news_total")
+    if not pd.isna(news):
+        banda = r.get("news_risco")
+        add("NEWS modificada", f"{int(news)} · {banda}",
+            "FR+FC+PAS+Glasgow aferidos",
+            {"Alto": "ruim", "Médio": "alerta",
+             "Baixo-Médio": "alerta"}.get(banda, "ok"))
+    add("Plantão", r.get("plantao"), r.get("semana_iso") or "")
+    add("Tipo de unidade", r.get("recurso"), r.get("unidade_curta") or "")
+    perfil = [nome for chave, nome in
+              (("iscmv", "ISCMV"), ("convenio", "Convênio"))
+              if bool(r.get(chave))]
+    add("Perfil", " · ".join(perfil) if perfil else "Fora do recorte", "")
+    if bool(r.get("obito_constatado")):
+        add("Óbito", "Constatado", "", "ruim")
+    return itens
 
 
 @router.get("/prontuario", summary="Baixa o PDF do prontuário da ocorrência")
