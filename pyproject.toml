@@ -27,6 +27,8 @@ dependencies = [
     "apscheduler>=3.10",
     "pymysql>=1.1",
     "pypdf>=4.0",
+    "reportlab>=4.0",
+    "matplotlib>=3.8",
 ]
 
 [project.optional-dependencies]

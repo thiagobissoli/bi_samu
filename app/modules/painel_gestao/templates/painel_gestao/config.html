@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/painel_gestao/">Painel de Gestão</a></li>
+<li class="breadcrumb-item active">Envio automático</li>
+{% endblock %}
+
+{% block content %}
+{% if erro %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    {{ erro }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if ok %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    {{ ok }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fa-solid fa-envelope-circle-check me-2"></i>
+            Envio automático do Relatório de Gestão
+        </h3>
+    </div>
+    <form method="post" action="/painel_gestao/config">
+        <div class="card-body">
+            <p class="text-muted">
+                O relatório enviado é exatamente o mesmo do botão
+                <strong>Relatório de Gestão (PDF)</strong> do painel, anexado
+                ao e-mail.
+            </p>
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="email_ativo"
+                       name="email_ativo" value="1" {% if email_ativo %}checked{% endif %}>
+                <label class="form-check-label" for="email_ativo">
+                    Ativar envio automático por e-mail
+                </label>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="destinatarios">Destinatários</label>
+                <textarea id="destinatarios" name="destinatarios" rows="2"
+                          class="form-control"
+                          placeholder="diretor@samu.es.gov.br, coordenacao@samu.es.gov.br"
+                >{{ destinatarios }}</textarea>
+                <div class="form-text">
+                    Separe por vírgula ou ponto e vírgula. Cada destinatário
+                    recebe uma cópia com o PDF em anexo.
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label" for="email_modo">Frequência</label>
+                    <select id="email_modo" name="email_modo" class="form-select">
+                        <option value="semanal" {% if email_modo == "semanal" %}selected{% endif %}>
+                            Semanal
+                        </option>
+                        <option value="diario" {% if email_modo == "diario" %}selected{% endif %}>
+                            Diária
+                        </option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="email_dia">Dia da semana</label>
+                    <select id="email_dia" name="email_dia" class="form-select">
+                        {% for sigla, nome in dias.items() %}
+                        <option value="{{ sigla }}" {% if email_dia == sigla %}selected{% endif %}>
+                            {{ nome | capitalize }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Usado apenas na frequência semanal.</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="email_hora">Hora</label>
+                    <input type="time" id="email_hora" name="email_hora"
+                           class="form-control" value="{{ email_hora }}">
+                </div>
+            </div>
+
+            <div class="alert alert-secondary mt-3 mb-0">
+                <div class="row">
+                    <div class="col-md-4">
+                        <strong>Próximo envio</strong><br>
+                        <span class="text-muted">{{ proxima or "—" }}</span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Último envio</strong><br>
+                        <span class="text-muted">{{ ultima or "nunca" }}</span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Resultado</strong><br>
+                        <span class="text-muted">{{ status or "—" }}</span>
+                    </div>
+                </div>
+            </div>
+
+            {% if not smtp_configurado %}
+            <div class="alert alert-warning mt-3 mb-0">
+                <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                O SMTP não está configurado — sem ele o envio não sai (o
+                conteúdo apenas vai para os Logs). Configure
+                <code>smtp_host</code>, <code>smtp_port</code>,
+                <code>smtp_user</code>, <code>smtp_pass</code> e
+                <code>smtp_from</code> em
+                <a href="/configuracoes/">Configurações</a>.
+            </div>
+            {% endif %}
+        </div>
+        <div class="card-footer d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-floppy-disk me-1"></i>Salvar
+            </button>
+            <button type="submit" name="enviar_agora" value="1"
+                    class="btn btn-outline-secondary">
+                <i class="fa-solid fa-paper-plane me-1"></i>Salvar e enviar agora
+            </button>
+            <a href="/painel_gestao/" class="btn btn-link ms-auto">Voltar ao painel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

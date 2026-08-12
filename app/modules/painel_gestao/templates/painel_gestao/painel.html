@@ -17,9 +17,24 @@
             Evolução: últimos 12 meses
         </span>
     </div>
-    <span class="text-muted small">
-        Filtros pré-estabelecidos por indicador · tempo resposta = 1ª ambulância a chegar
-    </span>
+    <div class="d-flex align-items-center gap-2">
+        <span class="text-muted small">
+            Filtros pré-estabelecidos por indicador · tempo resposta = 1ª ambulância a chegar
+        </span>
+        {% if dados.secoes %}
+        <button type="button" class="btn btn-danger btn-sm flex-shrink-0"
+                id="btn-relatorio">
+            <i class="fa-solid fa-file-pdf me-1"></i>Relatório de Gestão (PDF)
+        </button>
+        <span class="small text-muted" id="relatorio-status"></span>
+        {% if "painel_gestao.configurar" in usuario_logado.permissoes %}
+        <a href="/painel_gestao/config" class="btn btn-outline-secondary btn-sm
+                 flex-shrink-0" title="Envio automático por e-mail">
+            <i class="fa-solid fa-envelope-circle-check"></i>
+        </a>
+        {% endif %}
+        {% endif %}
+    </div>
 </div>
 
 {% if not dados.secoes %}
@@ -232,6 +247,32 @@
             }).finally(function () { el.disabled = false; });
         });
     });
+
+    // Relatório de Gestão: gerado no servidor (mesmo documento usado
+    // pelo envio automático por e-mail), baixado via fetch para poder
+    // mostrar o progresso e tratar falha.
+    const btnRel = document.getElementById("btn-relatorio");
+    if (btnRel) {
+        const status = document.getElementById("relatorio-status");
+        btnRel.addEventListener("click", function () {
+            btnRel.disabled = true;
+            status.textContent = "gerando…";
+            fetch("/painel_gestao/relatorio.pdf").then(function (r) {
+                if (!r.ok) throw new Error("falha");
+                return r.blob();
+            }).then(function (blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "relatorio-gestao.pdf";
+                a.click();
+                URL.revokeObjectURL(url);
+                status.textContent = "✓ relatório baixado";
+            }).catch(function () {
+                status.textContent = "✕ falha ao gerar";
+            }).finally(function () { btnRel.disabled = false; });
+        });
+    }
 })();
 </script>
 {% endblock %}
