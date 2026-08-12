@@ -28,6 +28,11 @@ else
     PYTHON="python3"
 fi
 
+# Garante que "app" resolva para ESTE projeto. Sem isso, outro projeto
+# instalado no mesmo Python que também exponha um pacote "app" pode ser
+# carregado no lugar — com outro banco e sem as credenciais do vSky.
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+
 nohup "$PYTHON" -m uvicorn app.main:app --host 0.0.0.0 --port "$PORT" \
     >> "$LOG_FILE" 2>&1 &
 echo $! > "$PID_FILE"

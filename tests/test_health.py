@@ -148,3 +148,23 @@ def test_excluir_configuracao():
         assert ainda_existe.deleted_at is not None
     finally:
         db.close()
+
+
+def test_app_carregado_e_deste_projeto():
+    """Trava o pacote `app` a este diretório.
+
+    O nome `app` é genérico: outro projeto instalado no mesmo Python que
+    exponha um pacote `app` pode ser carregado no lugar deste, com outro
+    banco e sem as configurações gravadas (sintoma: 'credenciais
+    perdidas' a cada reinício). O teste falha se isso acontecer.
+    """
+    from pathlib import Path
+
+    import app.core.config as cfg
+    import app.main as principal
+
+    raiz = Path(__file__).resolve().parent.parent
+    assert Path(principal.__file__).resolve().parent.parent == raiz
+    assert Path(cfg.__file__).resolve().parents[2] == raiz
+    # o .env do projeto é o que vale (independe do diretório de execução)
+    assert cfg.BASE_DIR == raiz

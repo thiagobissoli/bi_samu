@@ -72,6 +72,30 @@ def dashboard(
                   page_title="Dashboard", widgets=widgets)
 
 
+def _banner_inicializacao() -> None:
+    """Registra qual código e qual banco estão em uso.
+
+    Outro projeto instalado no mesmo Python que também exponha um pacote
+    chamado `app` pode ser carregado no lugar deste — o sintoma é o
+    sistema subir "vazio" (sem as configurações e credenciais gravadas),
+    porque na verdade é outra aplicação, com outro banco. Sem este aviso
+    a troca é silenciosa; com ele, aparece na primeira linha do log.
+    """
+    import logging
+    import re
+
+    logger = logging.getLogger("uvicorn.error")
+    banco = re.sub(r"//[^:]+:[^@]+@", "//***:***@", settings.database_url)
+    logger.info("Aplicação: %s", BASE_DIR.parent)
+    logger.info("Banco de dados: %s", banco)
+    if banco.startswith("sqlite") and (BASE_DIR.parent / ".env").is_file():
+        logger.warning(
+            "SQLite em uso apesar de existir .env no projeto — confira se o "
+            "pacote 'app' carregado é mesmo o deste diretório (%s).",
+            BASE_DIR)
+
+
+_banner_inicializacao()
 discover_modules(app)
 init_db()
 
