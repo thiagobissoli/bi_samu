@@ -462,12 +462,14 @@
                      ? " · exibindo as " + d.exibidos + " primeiras" : "") +
                     " · clique numa linha para ver a ocorrência completa";
                 document.getElementById("drill-contexto").textContent = listaContexto;
-                const colunas = [["ocorrencia", "Ocorrência"], ["data", "Data"],
-                                 ["tr", "T. Resposta"],
-                                 ["cidade", "Cidade"], ["bairro", "Bairro"],
+                const colunas = [["ocorrencia", "Ocorrência"],
+                                 ["data", "Data e hora"],
+                                 ["cidade", "Cidade"], ["motivo", "Motivo"],
                                  ["unidade", "Unidade"], ["codigo", "Código"],
-                                 ["risco", "Risco"], ["situacao", "Situação"],
-                                 ["motivo", "Motivo"]];
+                                 ["tr", "T. Resposta"], ["p2", "P2"],
+                                 ["p3", "P3"], ["p4_1", "P4.1"],
+                                 ["p4_2", "P4.2"]];
+                const tempoCols = ["tr", "p2", "p3", "p4_1", "p4_2"];
                 let html = "<table><thead><tr>" + colunas.map(
                     c => "<th>" + c[1] + "</th>").join("") + "</tr></thead><tbody>";
                 d.ocorrencias.forEach(function (o) {
@@ -475,7 +477,8 @@
                         + colunas.map(function (c) {
                         const v = o[c[0]] || "—";
                         const cls = c[0] === "ocorrencia" ? ' class="ocorr"'
-                                  : (c[0] === "tr" ? ' class="tr"' : "");
+                                  : (tempoCols.indexOf(c[0]) >= 0
+                                     ? ' class="tr"' : "");
                         return "<td" + cls + ' title="' +
                                String(v).replace(/"/g, "&quot;") + '">' + v + "</td>";
                     }).join("") + "</tr>";

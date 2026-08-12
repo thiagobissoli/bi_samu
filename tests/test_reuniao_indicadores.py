@@ -59,9 +59,16 @@ def test_drill_down():
     assert dados["total"] > 0
     assert 0 < dados["exibidos"] <= 300
     primeira = dados["ocorrencias"][0]
-    for campo in ("id", "ocorrencia", "data", "tr", "cidade", "unidade",
-                  "situacao"):
-        assert campo in primeira
+    for campo in ("id", "ocorrencia", "data", "cidade", "motivo", "unidade",
+                  "codigo", "tr", "p2", "p3", "p4_1", "p4_2"):
+        assert campo in primeira, campo
+    # tempos em mm:ss (ou nulos quando ausentes/fora da faixa)
+    import re
+    for campo in ("tr", "p2", "p3", "p4_1", "p4_2"):
+        valor = primeira[campo]
+        assert valor is None or re.fullmatch(r"\d{2}:\d{2}", valor), campo
+    # data com hora, para distinguir empenhos do mesmo dia
+    assert re.fullmatch(r"\d{2}/\d{2}/\d{4} \d{2}:\d{2}", primeira["data"])
     # o total do drill bate com o nº de despachos (empenhos) da semana
     assert dados["total"] >= deck["slides"][1]["chart"]["datasets"][0]["data"][ultimo]
     # chave inexistente devolve vazio, sem erro

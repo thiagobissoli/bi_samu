@@ -1,5 +1,6 @@
 """Endpoints do módulo Reunião de Indicadores (§35.2)."""
 
+import pandas as pd
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -59,32 +60,48 @@ def drill(
     usuario: Usuario = Depends(require_permission("reuniao_indicadores.visualizar")),
     db: Session = Depends(get_session),
 ):
-    from sqlalchemy import select
-
-    from app.modules.download_vsky.models import VskyRegistroAnalitico as R
+    from app.modules.indicadores import nucleo
+    from app.modules.indicadores.constants import CAP_TEMPO
 
     ids = ReuniaoIndicadoresService(usuario.empresa_id).ids_drill(chave)
     linhas = []
     if ids:
-        registros = db.scalars(
-            select(R).where(R.id.in_(ids[:DRILL_LIMITE]))
-            .order_by(R.data_ocorrencia_dt)).all()
-        linhas = [{
-            "id": r.id,
-            "ocorrencia": r.ocorrencia,
-            "data": r.data_ocorrencia,
-            "tr": _tempo_resposta_mmss(r),
-            "cidade": r.cidade,
-            "bairro": r.bairro,
-            "unidade": r.unidade,
-            "codigo": r.codigo_da_ocorrencia,
-            "risco": r.risco_inicial,
-            "situacao": r.situacao_atendimento,
-            "motivo": r.motivo,
-        } for r in registros]
+        # Os tempos vêm do núcleo (mesma fonte dos gráficos e dos
+        # indicadores do modal) — nada é recalculado aqui.
+        df = nucleo.carregar(usuario.empresa_id)
+        sel = df[df["id"].isin(ids[:DRILL_LIMITE])].sort_values("dt_ocorr")
+
+        def mm(valor, col):
+            cap = CAP_TEMPO.get(col, 14400)
+            if valor is None or pd.isna(valor) or not (0 < float(valor) < cap):
+                return None
+            return _mmss(valor)
+
+        for _, r in sel.iterrows():
+            data = r["dt_ocorr"]
+            linhas.append({
+                "id": int(r["id"]),
+                "ocorrencia": r["ocorrencia"],
+                "data": None if pd.isna(data)
+                        else data.strftime("%d/%m/%Y %H:%M"),
+                "cidade": _texto(r["cidade"]),
+                "motivo": _texto(r["motivo"]),
+                "unidade": _texto(r["unidade_curta"]) or _texto(r["unidade"]),
+                "codigo": _texto(r["codigo_da_ocorrencia"]),
+                "tr": mm(r["tempo_resposta"], "tempo_resposta"),
+                "p2": mm(r["t_p2"], "t_p2"),
+                "p3": mm(r["t_p3"], "t_p3"),
+                "p4_1": mm(r["t_p4_1"], "t_p4_1"),
+                "p4_2": mm(r["t_p4_2"], "t_p4_2"),
+            })
     return {"success": True, "message": "",
             "data": {"total": len(ids), "exibidos": len(linhas),
                      "ocorrencias": linhas}, "errors": []}
+
+
+def _texto(valor) -> str | None:
+    """Valor de célula do DataFrame como texto (NaN vira None)."""
+    return None if valor is None or pd.isna(valor) else str(valor)
 
 
 @router.get("/ocorrencia", summary="Detalhe completo de uma ocorrência")
@@ -149,8 +166,6 @@ def ocorrencia(
 
 def _mmss(segundos) -> str | None:
     """Segundos -> mm:ss (None quando ausente)."""
-    import pandas as pd
-
     if segundos is None or pd.isna(segundos):
         return None
     s = int(round(float(segundos)))
