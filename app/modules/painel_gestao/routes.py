@@ -54,9 +54,20 @@ def relatorio_pdf(
     db: Session = Depends(get_session),
 ):
     """Relatório de Gestão em PDF — mesmo documento do envio automático."""
-    from fastapi.responses import Response
+    from fastapi.responses import JSONResponse, Response
 
-    from app.modules.painel_gestao.relatorio import gerar_pdf
+    try:
+        from app.modules.painel_gestao.relatorio import gerar_pdf
+    except ImportError as exc:
+        # Instalação desatualizada (matplotlib/reportlab entraram depois):
+        # mensagem acionável em vez de 500 com stack trace.
+        return JSONResponse(status_code=503, content={
+            "success": False,
+            "message": ("Bibliotecas do relatório ausentes nesta instalação "
+                        f"({exc.name}). Atualize as dependências: ative o "
+                        "ambiente virtual e rode 'pip install -e .' na pasta "
+                        "do projeto, depois reinicie o servidor."),
+            "data": None, "errors": [str(exc)]})
 
     dados = PainelGestaoService(usuario.empresa_id).montar()
     pdf = gerar_pdf(dados)

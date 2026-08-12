@@ -258,7 +258,14 @@
             btnRel.disabled = true;
             status.textContent = "gerando…";
             fetch("/painel_gestao/relatorio.pdf").then(function (r) {
-                if (!r.ok) throw new Error("falha");
+                if (!r.ok) {
+                    // o servidor devolve o motivo em JSON (ex.: dependência
+                    // ausente após uma atualização) — mostrar em vez de
+                    // um "falhou" genérico
+                    return r.json().then(function (j) {
+                        throw new Error(j.message || "falha ao gerar");
+                    }, function () { throw new Error("falha ao gerar"); });
+                }
                 return r.blob();
             }).then(function (blob) {
                 const url = URL.createObjectURL(blob);
@@ -268,8 +275,8 @@
                 a.click();
                 URL.revokeObjectURL(url);
                 status.textContent = "✓ relatório baixado";
-            }).catch(function () {
-                status.textContent = "✕ falha ao gerar";
+            }).catch(function (e) {
+                status.textContent = "✕ " + (e.message || "falha ao gerar");
             }).finally(function () { btnRel.disabled = false; });
         });
     }
