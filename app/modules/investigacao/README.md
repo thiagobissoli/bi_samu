@@ -49,3 +49,56 @@ Somente leitura: consome o núcleo do módulo **indicadores**
 (`nucleo.carregar`, cache compartilhado) e não persiste nada. O tempo de
 resposta usa o mesmo teto de validade dos dashboards — valores fora da
 faixa aparecem vazios em vez de passarem por medição boa.
+
+## Dossiê da ocorrência
+
+Ao investigar um número, além da disponibilidade das viaturas a página
+reúne:
+
+1. **Indicadores medidos** — os mesmos dos dashboards (P1–P9, tempo de
+   central e de resposta, assertividade, NEWS, plantão), lidos do núcleo;
+2. **Onde o tempo foi consumido** — cada etapa comparada à sua meta e à
+   **referência do serviço** (mediana do próprio SAMU em casos com o
+   mesmo código de gravidade e tipo de viatura, com o n da amostra). As
+   etapas acima da meta ou 1,5× acima da referência são apontadas como
+   contribuintes do atraso, com o excesso em mm:ss e o % do tempo de
+   resposta. Quando faltam marcações, o resumo informa quanto do tempo
+   **não** é explicado — esse vão não se atribui a ninguém;
+3. **Prontuário** — baixa o PDF do vSky (ou serve do cache), registra
+   páginas/tamanho e extrai o texto;
+4. **Análise do evento por IA** — ver abaixo.
+
+## Análise por IA
+
+Três instrumentos numa única chamada, com saída em JSON:
+
+- **Protocolo de Londres** — incidente, falhas ativas, fatores
+  contribuintes por categoria (com a evidência que os sustenta),
+  barreiras que falharam e recomendações com prazo e tipo;
+- **Diagrama de Ishikawa** — efeito e causas prováveis pelos 6M;
+- **Matriz de risco** — probabilidade × impacto, nível e mitigações.
+
+O modelo **não calcula** indicadores nem decide se houve atraso: recebe
+esse material já pronto e verificado, e o interpreta. O prompt proíbe
+inventar dados, exige apontar lacunas e orienta a analisar processo, não
+pessoas. O resultado é persistido (`investigacao_analises`) para não
+repetir a chamada a cada abertura.
+
+### Provedores
+
+Configuráveis em `/investigacao/config` (permissão
+`investigacao.configurar`): **OpenAI**, **Anthropic** e **Ollama
+(local)**. Chaves guardadas criptografadas (§39.29). Há botão de teste
+de conexão.
+
+Modelos de raciocínio no Ollama (qwen3, deepseek-r1…) devolvem o texto
+no campo `thinking` em vez de `response` — o cliente trata os dois.
+
+### Privacidade (LGPD)
+
+OpenAI e Anthropic processam o conteúdo **fora da rede do SAMU**, e o
+prontuário contém dados pessoais e de saúde (LGPD art. 11). Para
+analisar o texto integral, o indicado é o **Ollama local**. Ao usar
+provedor externo, a anonimização vem ligada por padrão: remove nome do
+paciente, CPF, CNS e telefone — mas não garante que a narrativa deixe de
+identificar alguém, e a tela diz isso.

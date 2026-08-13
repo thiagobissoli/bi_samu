@@ -1,0 +1,390 @@
+{# Dossiê da ocorrência: indicadores medidos, decomposição do atraso,
+   prontuário e análise por IA. Incluído por index.html quando há uma
+   ocorrência investigada. #}
+
+{# ------------------------------------------------- indicadores medidos #}
+<div class="card mb-3">
+    <div class="card-header py-2">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-solid fa-gauge-high me-2"></i>
+            Indicadores desta ocorrência
+        </h3>
+    </div>
+    <div class="card-body">
+        <div class="row g-2">
+            {% for i in dossie.indicadores %}
+            <div class="col-6 col-md-4 col-xl-3">
+                <div class="border rounded-3 p-2 h-100
+                    {% if i.situacao == 'ok' %}border-success
+                    {% elif i.situacao == 'ruim' %}border-danger
+                    {% elif i.situacao == 'alerta' %}border-warning{% endif %}">
+                    <div class="text-muted text-uppercase"
+                         style="font-size:.62rem; letter-spacing:.08em;">
+                        {{ i.rotulo }}
+                    </div>
+                    <div class="fs-5 fw-bold
+                        {% if i.situacao == 'ok' %}text-success
+                        {% elif i.situacao == 'ruim' %}text-danger
+                        {% elif i.situacao == 'alerta' %}text-warning{% endif %}">
+                        {{ i.valor }}
+                    </div>
+                    {% if i.sub %}
+                    <div class="text-muted" style="font-size:.68rem;">{{ i.sub }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{# ------------------------------------------------ decomposição do atraso #}
+{% if dossie.atraso and dossie.atraso.etapas %}
+<div class="card mb-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-solid fa-stopwatch me-2"></i>
+            Onde o tempo foi consumido
+        </h3>
+        {% if dossie.atraso.tempo_resposta %}
+        <span class="badge text-bg-dark">
+            Tempo de resposta {{ dossie.atraso.tempo_resposta }}
+        </span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <div class="alert
+            {% if dossie.atraso.contribuintes %}alert-warning{% else %}alert-success{% endif %}">
+            {{ dossie.atraso.resumo }}
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Etapa</th><th>Medido</th><th>Meta</th>
+                        <th>Referência do serviço</th><th>Comparação</th>
+                        <th>% do T. Resposta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in dossie.atraso.etapas %}
+                    <tr class="{% if e.situacao == 'ruim' %}table-danger{% endif %}">
+                        <td>
+                            <span class="fw-semibold">{{ e.rotulo }}</span>
+                            <span class="d-block text-muted small">{{ e.papel }}</span>
+                        </td>
+                        <td class="font-monospace fw-bold">
+                            {{ e.valor or "—" }}
+                        </td>
+                        <td class="font-monospace">
+                            {% if e.meta %}
+                            {{ e.meta }}
+                            {% if e.estourou_meta %}
+                            <span class="badge text-bg-danger">estourou</span>
+                            {% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="font-monospace">
+                            {{ e.referencia or "—" }}
+                            {% if e.amostra %}
+                            <span class="text-muted small">(n={{ e.amostra }})</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if e.vezes_referencia %}
+                            <span class="{% if e.vezes_referencia > 1.5 %}text-danger fw-bold{% endif %}">
+                                {{ e.vezes_referencia }}×
+                            </span>
+                            {% if e.excesso %}
+                            <span class="text-muted small">
+                                (+{{ e.excesso }})
+                            </span>
+                            {% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>{% if e.pct_do_total %}{{ e.pct_do_total }}%{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="form-text mt-2">
+            <i class="fa-solid fa-circle-info me-1"></i>
+            A <strong>referência do serviço</strong> é a mediana do próprio
+            SAMU em casos comparáveis (mesmo código de gravidade e tipo de
+            viatura) — "atrasou" significa que levou mais do que o serviço
+            costuma levar, não uma meta externa. Etapas sem marcação não
+            podem ser atribuídas a ninguém.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ---------------------------------------------------------- prontuário #}
+<div class="card mb-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-solid fa-file-pdf me-2"></i>Prontuário do atendimento
+        </h3>
+        <div class="d-flex gap-2 align-items-center">
+            {% if dossie.prontuario %}
+            <span class="small text-muted">
+                baixado em {{ dossie.prontuario.baixado_em }} ·
+                {{ dossie.prontuario.paginas }} pág. ·
+                {{ dossie.prontuario.tamanho_kb }} KB
+            </span>
+            {% endif %}
+            <a class="btn btn-sm btn-outline-danger"
+               href="/investigacao/prontuario?ocorrencia={{ investigacao.ocorrencia }}"
+               target="_blank">
+                <i class="fa-solid fa-download me-1"></i>
+                {% if dossie.prontuario %}Abrir PDF{% else %}Baixar do vSky{% endif %}
+            </a>
+        </div>
+    </div>
+    {% if dossie.prontuario and dossie.prontuario.texto %}
+    <div class="card-body">
+        <details>
+            <summary class="small text-muted">
+                Ver o texto extraído do PDF ({{ dossie.prontuario.texto | length }} caracteres)
+            </summary>
+            <pre class="border rounded-3 p-2 mt-2 mb-0" style="max-height: 320px;
+                 overflow:auto; white-space: pre-wrap; font-size:.72rem;">{{ dossie.prontuario.texto }}</pre>
+        </details>
+    </div>
+    {% else %}
+    <div class="card-body text-muted small">
+        Prontuário ainda não baixado — clique em <strong>Baixar do vSky</strong>
+        para trazer o PDF e extrair o texto.
+    </div>
+    {% endif %}
+</div>
+
+{# -------------------------------------------------------- análise por IA #}
+<div class="card mb-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-solid fa-robot me-2"></i>
+            Análise do evento — Protocolo de Londres, Ishikawa e matriz de risco
+        </h3>
+        {% if "investigacao.configurar" in usuario_logado.permissoes %}
+        <a href="/investigacao/config" class="btn btn-sm btn-outline-secondary">
+            <i class="fa-solid fa-gear me-1"></i>Configurar IA
+        </a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        {% if erro_ia %}
+        <div class="alert alert-danger">{{ erro_ia }}</div>
+        {% endif %}
+
+        {% if not ia_config.pronto %}
+        <div class="alert alert-secondary mb-0">
+            <i class="fa-solid fa-plug-circle-xmark me-1"></i>
+            Nenhum provedor de IA configurado.
+            {% if "investigacao.configurar" in usuario_logado.permissoes %}
+            <a href="/investigacao/config">Configure OpenAI, Anthropic ou
+            Ollama (local)</a> para gerar a análise.
+            {% else %}
+            Peça a um administrador para configurar.
+            {% endif %}
+        </div>
+        {% else %}
+        <form method="post" action="/investigacao/analisar"
+              class="row g-2 align-items-center mb-3">
+            <input type="hidden" name="ocorrencia"
+                   value="{{ investigacao.ocorrencia }}">
+            <div class="col-auto">
+                <button class="btn btn-primary">
+                    <i class="fa-solid fa-wand-magic-sparkles me-1"></i>
+                    {% if dossie.analise_ia %}Refazer análise{% else %}Analisar evento{% endif %}
+                </button>
+            </div>
+            <div class="col-auto form-check ms-2">
+                <input class="form-check-input" type="checkbox" value="1"
+                       id="incluir_prontuario" name="incluir_prontuario">
+                <label class="form-check-label small" for="incluir_prontuario">
+                    Incluir o texto do prontuário (baixa do vSky se preciso)
+                </label>
+            </div>
+            <div class="col-auto form-check">
+                <input class="form-check-input" type="checkbox" value="1"
+                       id="anonimizar" name="anonimizar"
+                       {% if not ia_config.local %}checked{% endif %}>
+                <label class="form-check-label small" for="anonimizar">
+                    Anonimizar dados do paciente
+                </label>
+            </div>
+            <div class="col-12">
+                <div class="form-text">
+                    {{ ia_config.provedor }} · modelo
+                    <code>{{ ia_config.modelo }}</code>
+                    {% if ia_config.local %}
+                    <span class="badge text-bg-info">processamento local</span>
+                    {% else %}
+                    <span class="badge text-bg-warning">
+                        envia o conteúdo para fora da rede do SAMU
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+
+        {% if dossie.analise_ia %}
+        {% set a = dossie.analise_ia %}
+        <div class="alert alert-info d-flex justify-content-between flex-wrap gap-2">
+            <div>
+                <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                <strong>Hipóteses geradas por IA</strong> a partir dos dados
+                acima — precisam de validação da equipe antes de virar
+                conclusão ou ação. Analisam processo, não pessoas.
+            </div>
+            <div class="small text-muted text-nowrap">
+                {{ a.provedor }} · {{ a.modelo }} · {{ a.gerado_em }}
+                {% if a.com_prontuario %}· com prontuário{% endif %}
+                {% if a.anonimizado %}· anonimizado{% endif %}
+            </div>
+        </div>
+
+        {% if a.sintese %}
+        <p class="fs-6">{{ a.sintese }}</p>
+        {% endif %}
+
+        {# ---- Protocolo de Londres ---- #}
+        {% if a.londres %}
+        <h5 class="mt-4"><i class="fa-solid fa-sitemap me-2"></i>Protocolo de Londres</h5>
+        {% if a.londres.incidente %}
+        <p class="mb-2"><strong>Incidente:</strong> {{ a.londres.incidente }}</p>
+        {% endif %}
+        <div class="row g-3">
+            {% if a.londres.falhas_ativas %}
+            <div class="col-md-6">
+                <div class="border rounded-3 p-2 h-100">
+                    <div class="fw-semibold small text-uppercase text-muted">
+                        Falhas ativas
+                    </div>
+                    <ul class="mb-0 small">
+                        {% for f in a.londres.falhas_ativas %}<li>{{ f }}</li>{% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+            {% if a.londres.barreiras_que_falharam %}
+            <div class="col-md-6">
+                <div class="border rounded-3 p-2 h-100">
+                    <div class="fw-semibold small text-uppercase text-muted">
+                        Barreiras que falharam
+                    </div>
+                    <ul class="mb-0 small">
+                        {% for b in a.londres.barreiras_que_falharam %}<li>{{ b }}</li>{% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% if a.londres.fatores_contribuintes %}
+        <div class="table-responsive mt-3">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr><th>Categoria</th><th>Fator contribuinte</th><th>Evidência</th></tr>
+                </thead>
+                <tbody>
+                    {% for f in a.londres.fatores_contribuintes %}
+                    <tr>
+                        <td><span class="badge text-bg-secondary">{{ f.categoria }}</span></td>
+                        <td>{{ f.fator }}</td>
+                        <td class="small text-muted">{{ f.evidencia }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        {% if a.londres.recomendacoes %}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr><th>Recomendação</th><th>Prazo</th><th>Tipo</th><th>Responsável sugerido</th></tr>
+                </thead>
+                <tbody>
+                    {% for r in a.londres.recomendacoes %}
+                    <tr>
+                        <td>{{ r.acao }}</td>
+                        <td><span class="badge
+                            {% if r.prazo == 'imediato' %}text-bg-danger
+                            {% elif r.prazo == 'curto' %}text-bg-warning
+                            {% else %}text-bg-secondary{% endif %}">{{ r.prazo }}</span></td>
+                        <td class="small">{{ r.tipo }}</td>
+                        <td class="small">{{ r.responsavel_sugerido }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        {% endif %}
+
+        {# ---- Ishikawa ---- #}
+        {% if a.ishikawa %}
+        <h5 class="mt-4"><i class="fa-solid fa-fish-fins me-2"></i>Diagrama de Ishikawa</h5>
+        {% if a.ishikawa.efeito %}
+        <p class="mb-2"><strong>Efeito:</strong> {{ a.ishikawa.efeito }}</p>
+        {% endif %}
+        <div class="row g-2">
+            {% for esp in a.ishikawa.espinhas %}
+            <div class="col-md-4">
+                <div class="border rounded-3 p-2 h-100">
+                    <div class="fw-semibold">{{ esp.categoria }}</div>
+                    <ul class="mb-0 small">
+                        {% for c in esp.causas %}<li>{{ c }}</li>{% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {# ---- Matriz de risco ---- #}
+        {% if a.matriz_risco %}
+        {% set m = a.matriz_risco %}
+        <h5 class="mt-4"><i class="fa-solid fa-table-cells me-2"></i>Matriz de risco</h5>
+        <div class="row g-3 align-items-center">
+            <div class="col-md-3">
+                <div class="border border-3 rounded-3 text-center p-3
+                    {% if m.nivel == 'extremo' %}border-danger
+                    {% elif m.nivel == 'alto' %}border-warning
+                    {% elif m.nivel == 'moderado' %}border-info
+                    {% else %}border-success{% endif %}">
+                    <div class="fs-4 fw-bold text-uppercase
+                        {% if m.nivel == 'extremo' %}text-danger
+                        {% elif m.nivel == 'alto' %}text-warning
+                        {% elif m.nivel == 'moderado' %}text-info
+                        {% else %}text-success{% endif %}">{{ m.nivel }}</div>
+                    <div class="small text-muted">
+                        {{ m.probabilidade }} × {{ m.impacto }}
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-9">
+                <p class="mb-1">{{ m.justificativa }}</p>
+                {% if m.mitigacoes %}
+                <ul class="mb-0 small">
+                    {% for x in m.mitigacoes %}<li>{{ x }}</li>{% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if a.lacunas_de_dados %}
+        <div class="alert alert-secondary mt-4 mb-0">
+            <strong>Lacunas de dados que limitam esta análise:</strong>
+            <ul class="mb-0 small">
+                {% for l in a.lacunas_de_dados %}<li>{{ l }}</li>{% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+    </div>
+</div>

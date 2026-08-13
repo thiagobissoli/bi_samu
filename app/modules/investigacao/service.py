@@ -21,6 +21,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 import pandas as pd
+from sqlalchemy import select
 
 from app.modules.indicadores import nucleo
 from app.modules.investigacao.constants import (
@@ -223,6 +224,7 @@ class InvestigacaoService:
 
         return {
             "ocorrencia": numero,
+            "registro_id": int(alvo["id"]),
             "momento": momento.strftime("%d/%m/%Y %H:%M"),
             "dia": momento.strftime("%Y-%m-%d"),
             "cidade": cidade,
@@ -238,6 +240,51 @@ class InvestigacaoService:
             "n_ocupadas": len(ocupadas),
             "n_livres": len(livres),
             "veredito": veredito,
+        }
+
+    def dossie(self, db, numero: str) -> dict:
+        """Tudo que se sabe da ocorrência, para a tela e para a IA.
+
+        Reúne: a investigação de disponibilidade, os indicadores medidos
+        (mesma fonte dos dashboards), a decomposição do atraso, o
+        prontuário já baixado e a última análise por IA.
+        """
+        from app.modules.download_vsky.models import VskyProntuario
+        from app.modules.indicadores.ocorrencia import indicadores_da_ocorrencia
+        from app.modules.investigacao.analise import decompor_atraso
+        from app.modules.investigacao.ia_analise import ultima_analise
+
+        inv = self.investigar(numero)
+        if inv.get("erro"):
+            return {"investigacao": inv}
+
+        from app.modules.download_vsky.models import VskyRegistroAnalitico as R
+
+        registro_id = inv.get("registro_id")
+        # Nome do paciente vem da tabela bruta (fora do núcleo): serve só
+        # para a anonimização antes de enviar texto a provedor externo.
+        registro = db.scalar(select(R).where(R.id == registro_id)) \
+            if registro_id else None
+        inv["paciente"] = (registro.paciente or "") if registro else ""
+        prontuario = db.scalar(select(VskyProntuario).where(
+            VskyProntuario.empresa_id == self.empresa_id,
+            VskyProntuario.ocorrencia == numero,
+            VskyProntuario.deleted_at.is_(None)))
+        return {
+            "investigacao": inv,
+            "indicadores": (indicadores_da_ocorrencia(self.empresa_id,
+                                                      registro_id)
+                            if registro_id else []),
+            "atraso": (decompor_atraso(self.empresa_id, registro_id)
+                       if registro_id else {}),
+            "prontuario": {
+                "baixado_em": (prontuario.baixado_em.strftime("%d/%m/%Y %H:%M")
+                               if prontuario and prontuario.baixado_em else None),
+                "paginas": prontuario.paginas if prontuario else 0,
+                "tamanho_kb": round(prontuario.tamanho / 1024) if prontuario else 0,
+                "texto": prontuario.texto if prontuario else None,
+            } if prontuario else None,
+            "analise_ia": ultima_analise(db, self.empresa_id, numero),
         }
 
     def cruzamentos(self, dia: str) -> dict:

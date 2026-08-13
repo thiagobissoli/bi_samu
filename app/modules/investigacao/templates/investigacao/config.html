@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/investigacao/">Investigação de Eventos</a></li>
+<li class="breadcrumb-item active">Configuração da IA</li>
+{% endblock %}
+
+{% block content %}
+{% if erro %}
+<div class="alert alert-danger alert-dismissible fade show">
+    {{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if ok %}
+<div class="alert alert-success alert-dismissible fade show">
+    {{ ok }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fa-solid fa-robot me-2"></i>Provedor de IA para análise de eventos
+        </h3>
+    </div>
+    <form method="post" action="/investigacao/config">
+        <div class="card-body">
+            <div class="alert alert-warning">
+                <i class="fa-solid fa-user-shield me-1"></i>
+                <strong>Dados de paciente.</strong>
+                OpenAI e Anthropic processam o conteúdo <strong>fora da rede
+                do SAMU</strong>. O prontuário contém dados pessoais e de
+                saúde (LGPD, art. 11). Para analisar o texto integral do
+                prontuário, prefira o <strong>Ollama (local)</strong>, que
+                roda na própria máquina. Ao usar provedor externo, mantenha a
+                anonimização ligada — ela remove nome, CPF, CNS e telefone,
+                mas não garante que a narrativa deixe de identificar alguém.
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label" for="provedor">Provedor</label>
+                    <select class="form-select" id="provedor" name="provedor">
+                        <option value="">— desativado —</option>
+                        {% for chave, nome in provedores.items() %}
+                        <option value="{{ chave }}"
+                            {% if cfg.provedor == chave %}selected{% endif %}>
+                            {{ nome }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="modelo">Modelo</label>
+                    <input type="text" class="form-control" id="modelo"
+                           name="modelo" value="{{ cfg.modelo }}"
+                           placeholder="ex.: {{ sugeridos.get(cfg.provedor) or 'gpt-4o-mini' }}">
+                    <div class="form-text">
+                        Sugestões: OpenAI <code>{{ sugeridos.openai }}</code> ·
+                        Anthropic <code>{{ sugeridos.anthropic }}</code> ·
+                        Ollama <code>{{ sugeridos.ollama }}</code>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="api_key">Chave de API</label>
+                    <input type="password" class="form-control" id="api_key"
+                           name="api_key" autocomplete="new-password"
+                           placeholder="{% if cfg.chave_definida %}•••••••• (deixe em branco para manter){% else %}Não usada pelo Ollama{% endif %}">
+                    <div class="form-text">Guardada criptografada (§39.29).</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="base_url">
+                        Endereço do Ollama
+                    </label>
+                    <input type="text" class="form-control" id="base_url"
+                           name="base_url" value="{{ cfg.base_url }}"
+                           placeholder="http://localhost:11434">
+                    <div class="form-text">
+                        Só se aplica ao provedor local. Instale em
+                        <code>ollama.com</code> e baixe o modelo com
+                        <code>ollama pull {{ sugeridos.ollama }}</code>.
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-secondary mt-3 mb-0">
+                <strong>Situação:</strong>
+                {% if cfg.pronto %}
+                <span class="badge text-bg-success">pronto</span>
+                {{ provedores.get(cfg.provedor) }} · modelo
+                <code>{{ cfg.modelo }}</code>
+                {% if cfg.local %}
+                <span class="badge text-bg-info">processamento local</span>
+                {% else %}
+                <span class="badge text-bg-warning">envia dados para fora</span>
+                {% endif %}
+                {% elif cfg.provedor %}
+                <span class="badge text-bg-danger">falta a chave de API</span>
+                {% else %}
+                <span class="badge text-bg-secondary">desativado</span> —
+                a análise por IA não aparece na investigação.
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-footer d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-floppy-disk me-1"></i>Salvar
+            </button>
+            <button type="submit" name="testar" value="1"
+                    class="btn btn-outline-secondary">
+                <i class="fa-solid fa-plug-circle-check me-1"></i>Salvar e testar conexão
+            </button>
+            <a href="/investigacao/" class="btn btn-link ms-auto">
+                Voltar à investigação
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

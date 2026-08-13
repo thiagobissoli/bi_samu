@@ -2,14 +2,23 @@
     "name": "Investigação de Eventos",
     "version": "1.0.0",
     "author": "Framework SaaS",
-    "dependencies": ["Indicadores"],
+    "dependencies": [
+        "Indicadores"
+    ],
     "permissions": [
-        "investigacao.visualizar"
+        "investigacao.visualizar",
+        "investigacao.configurar"
     ],
     "menu": [
-        {"label": "Investigação de Eventos", "url": "/investigacao",
-         "icon": "fa-magnifying-glass-chart",
-         "permission": "investigacao.visualizar", "order": 24}
+        {
+            "label": "Investigação de Eventos",
+            "url": "/investigacao",
+            "icon": "fa-magnifying-glass-chart",
+            "permission": "investigacao.visualizar",
+            "order": 24
+        }
     ],
-    "routes": ["/investigacao"]
+    "routes": [
+        "/investigacao"
+    ]
 }
