@@ -1,5 +1,7 @@
 """Testes do módulo Download vSky."""
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -301,3 +303,59 @@ def test_periodo_invalido_na_api(monkeypatch):
                                  "data_final": "2026-08-01"})
     assert response.status_code == 422
     assert response.json()["success"] is False
+
+
+def test_download_automatico_usa_formato_de_data_aceito(monkeypatch):
+    """O job agendado deve chamar a importação no formato dd/mm/aaaa.
+
+    Passar ISO (aaaa-mm-dd) fazia toda execução automática falhar com
+    'Datas devem estar no formato dd/mm/aaaa' — e o erro só aparecia no
+    status da configuração, nunca na importação manual.
+    """
+    from app.core.config_service import get_config, set_config
+    from app.core.database import SessionLocal
+    from app.modules.download_vsky import scheduler
+    from app.modules.download_vsky.constants import (CONFIG_AUTO_STATUS,
+                                                     STATUS_CONCLUIDO)
+    from app.modules.download_vsky.validators import validar_periodo
+
+    recebido = {}
+
+    class ServicoFalso:
+        def __init__(self, db, empresa_id):
+            pass
+
+        def importar_periodo(self, data_inicial, data_final, *a, **k):
+            # o validador real é quem reprovava as datas do agendador
+            recebido["periodo"] = validar_periodo(data_inicial, data_final)
+
+            class Item:
+                status = STATUS_CONCLUIDO
+                linhas_novas = 3
+                linhas_duplicadas = 1
+                erro = None
+            return Item()
+
+    import app.modules.download_vsky.service as servico_mod
+    monkeypatch.setattr(servico_mod, "DownloadVskyService", ServicoFalso)
+
+    db = SessionLocal()
+    try:
+        set_config(db, "vsky_usuario", "u", empresa_id=1)
+        set_config(db, "vsky_senha", "s", empresa_id=1)
+    finally:
+        db.close()
+
+    scheduler.executar_download_automatico(1)
+
+    assert "periodo" in recebido, "a importação não chegou a ser chamada"
+    inicial, final = recebido["periodo"]
+    assert re.fullmatch(r"\d{2}/\d{2}/\d{4}", inicial), inicial
+    assert re.fullmatch(r"\d{2}/\d{2}/\d{4}", final), final
+
+    db = SessionLocal()
+    try:
+        status = get_config(db, CONFIG_AUTO_STATUS, empresa_id=1) or ""
+    finally:
+        db.close()
+    assert status.startswith("sucesso"), status

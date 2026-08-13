@@ -31,6 +31,7 @@ from app.modules.download_vsky.constants import (
     CONFIG_CLIENTE_ID,
     CONFIG_SENHA,
     CONFIG_USUARIO,
+    DATA_FMT,
     DEFAULT_BASE_URL,
     STATUS_CONCLUIDO,
 )
@@ -71,8 +72,10 @@ def executar_download_automatico(empresa_id: int = 1) -> None:
         dias = int(get_config(db, CONFIG_AUTO_DIAS, "2", empresa_id) or 2)
         hoje = date.today()
         inicio = hoje - timedelta(days=max(dias - 1, 0))
+        # importar_periodo espera dd/mm/aaaa (DATA_FMT) — a tela converte
+        # o valor do input date antes de chamar; aqui formatamos direto.
         item = DownloadVskyService(db, empresa_id).importar_periodo(
-            inicio.strftime("%Y-%m-%d"), hoje.strftime("%Y-%m-%d"),
+            inicio.strftime(DATA_FMT), hoje.strftime(DATA_FMT),
             base_url, usuario, senha,
             cliente_id=get_config(db, CONFIG_CLIENTE_ID, empresa_id=empresa_id))
         if item.status == STATUS_CONCLUIDO:
