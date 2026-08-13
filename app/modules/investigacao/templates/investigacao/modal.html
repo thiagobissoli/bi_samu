@@ -1,0 +1,31 @@
+{#  Fragmento de visualização rápida (§35.6, §37.13).
+
+    Não estende base.html: é carregado por HTMX dentro do modal da listagem,
+    então precisa devolver só o miolo.  #}
+<div class="modal-header">
+    <h5 class="modal-title"><i class="fa-solid fa-folder-open me-2"></i>{{ item.nome }}</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+</div>
+<div class="modal-body">
+    <dl class="row mb-0">
+        <dt class="col-sm-4">Descrição</dt>
+        <dd class="col-sm-8">{{ item.descricao or "—" }}</dd>
+
+        <dt class="col-sm-4">Status</dt>
+        <dd class="col-sm-8">
+            {% if item.ativo %}<span class="badge text-bg-success">Ativo</span>
+            {% else %}<span class="badge text-bg-secondary">Inativo</span>{% endif %}
+        </dd>
+
+        <dt class="col-sm-4">Criado em</dt>
+        <dd class="col-sm-8">{{ item.created_at | localdt }}</dd>
+    </dl>
+</div>
+<div class="modal-footer">
+    <a href="/investigacao/{{ item.id }}" class="btn btn-primary btn-sm">
+        <i class="fa-solid fa-up-right-from-square"></i> Abrir completo
+    </a>
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+        Fechar
+    </button>
+</div>

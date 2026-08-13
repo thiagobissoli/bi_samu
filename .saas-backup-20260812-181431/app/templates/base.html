@@ -8,47 +8,9 @@
     <link rel="stylesheet" href="{{ url_for('static', path='vendor/bootstrap/css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='vendor/adminlte/css/adminlte.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='css/global.css') }}">
-    {% if aparencia.cor_primaria %}
-    <style>
-        /* Cor primária da empresa (§22) */
-        :root, [data-bs-theme=light], [data-bs-theme=dark] {
-            --bs-primary: {{ aparencia.cor_primaria }};
-            --bs-primary-rgb: {{ aparencia.cor_rgb }};
-            --bs-link-color: {{ aparencia.cor_primaria }};
-            --bs-link-hover-color: {{ aparencia.cor_hover }};
-            --bs-link-color-rgb: {{ aparencia.cor_rgb }};
-            --bs-link-hover-color-rgb: {{ aparencia.cor_rgb }};
-        }
-        .btn-primary {
-            --bs-btn-bg: {{ aparencia.cor_primaria }};
-            --bs-btn-border-color: {{ aparencia.cor_primaria }};
-            --bs-btn-hover-bg: {{ aparencia.cor_hover }};
-            --bs-btn-hover-border-color: {{ aparencia.cor_hover }};
-            --bs-btn-active-bg: {{ aparencia.cor_hover }};
-            --bs-btn-active-border-color: {{ aparencia.cor_hover }};
-            --bs-btn-disabled-bg: {{ aparencia.cor_primaria }};
-            --bs-btn-disabled-border-color: {{ aparencia.cor_primaria }};
-        }
-        .btn-outline-primary {
-            --bs-btn-color: {{ aparencia.cor_primaria }};
-            --bs-btn-border-color: {{ aparencia.cor_primaria }};
-            --bs-btn-hover-bg: {{ aparencia.cor_primaria }};
-            --bs-btn-hover-border-color: {{ aparencia.cor_primaria }};
-            --bs-btn-active-bg: {{ aparencia.cor_primaria }};
-            --bs-btn-active-border-color: {{ aparencia.cor_primaria }};
-        }
-        .text-bg-primary { background-color: {{ aparencia.cor_primaria }} !important; }
-        .badge.text-bg-primary { background-color: {{ aparencia.cor_primaria }} !important; }
-        .pagination { --bs-pagination-active-bg: {{ aparencia.cor_primaria }};
-                      --bs-pagination-active-border-color: {{ aparencia.cor_primaria }};
-                      --bs-pagination-color: {{ aparencia.cor_primaria }}; }
-        .form-check-input:checked { background-color: {{ aparencia.cor_primaria }};
-                                    border-color: {{ aparencia.cor_primaria }}; }
-    </style>
-    {% endif %}
     {% block styles %}{% endblock %}
 </head>
-<body class="{{ aparencia.body_class }}">
+<body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
 <div class="app-wrapper">
 
     <nav class="app-header navbar navbar-expand bg-body">
@@ -106,13 +68,10 @@
         </div>
     </nav>
 
-    <aside class="app-sidebar bg-body-secondary shadow"{% if aparencia.sidebar_tema == "escuro" %} data-bs-theme="dark"{% endif %}>
+    <aside class="app-sidebar bg-body-secondary shadow">
         <div class="sidebar-brand">
             <a href="/" class="brand-link">
-                {% if aparencia.logo_arquivo_id %}
-                <img src="/logo" alt="Logo" class="brand-image opacity-75 shadow">
-                {% endif %}
-                <span class="brand-text fw-light">{{ aparencia.brand_nome }}</span>
+                <span class="brand-text fw-light">Samu</span>
             </a>
         </div>
         <div class="sidebar-wrapper">
@@ -176,10 +135,9 @@
 // Dark mode (§37.16) — preferência salva no navegador.
 (function () {
     var root = document.documentElement;
-    var padraoEmpresa = "{{ 'dark' if aparencia.tema == 'escuro' else 'light' }}";
     function applySaved() {
-        var saved = localStorage.getItem("tema") || padraoEmpresa;
-        root.setAttribute("data-bs-theme", saved);
+        var saved = localStorage.getItem("tema");
+        if (saved) { root.setAttribute("data-bs-theme", saved); }
     }
     applySaved();
     // Reafirma após o load — scripts/emulações podem sobrescrever o atributo.

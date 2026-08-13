@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Investigação de Eventos</li>
+{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/select2/select2.min.css') }}">
+<style>
+    .tl-regua { display: flex; margin-left: 210px; border-bottom: 1px solid #dee2e6; }
+    .tl-hora {
+        flex: 1 0 0; text-align: center; font-size: .68rem; color: #6c757d;
+        font-variant-numeric: tabular-nums; padding-bottom: .25rem;
+        border-left: 1px solid #eef1f4;
+    }
+    .tl-linha { display: flex; align-items: center; margin-bottom: .5rem; }
+    .tl-nome {
+        width: 210px; flex-shrink: 0; padding-right: .75rem;
+        font-size: .78rem; font-weight: 600; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+    }
+    .tl-trilha {
+        position: relative; flex: 1; height: 30px; background: #eef0f3;
+        border-radius: 8px;
+    }
+    .tl-periodo {
+        position: absolute; top: 3px; height: 24px; border-radius: 6px;
+        background: #e2564a; cursor: pointer; border: 1px solid #cf4438;
+    }
+    .tl-periodo.fora { background: #6f42c1; border-color: #59339e; }
+    .tl-periodo:hover { filter: brightness(1.15); }
+    .tl-legenda span { display: inline-flex; align-items: center; gap: .35rem; }
+    .tl-caixa { width: 22px; height: 13px; border-radius: 4px; display: inline-block; }
+    .sit-ocupada { border-left: 4px solid #dc3545; }
+    .sit-atendeu { border-left: 4px solid #6f42c1; }
+    .sit-sem_empenho { border-left: 4px solid #198754; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ------------------------------------------------ investigar ocorrência #}
+<div class="card mb-3">
+    <div class="card-header py-2">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-solid fa-magnifying-glass-chart me-2"></i>
+            Investigar ocorrência
+        </h3>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small mb-1" for="ocorrencia">
+                    Número da ocorrência
+                </label>
+                <input type="text" class="form-control" id="ocorrencia"
+                       name="ocorrencia" value="{{ filtros.ocorrencia }}"
+                       placeholder="ex.: 2715799">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-primary">
+                    <i class="fa-solid fa-magnifying-glass me-1"></i>Investigar
+                </button>
+            </div>
+            <div class="col text-muted small">
+                Mostra a situação de todas as viaturas sediadas no município
+                da ocorrência no instante do acionamento.
+            </div>
+        </form>
+
+        {% if investigacao %}
+        {% if investigacao.erro %}
+        <div class="alert alert-warning mt-3 mb-0">{{ investigacao.erro }}</div>
+        {% else %}
+        <hr>
+        <div class="row g-3">
+            <div class="col-lg-5">
+                <div class="border rounded-3 p-3 h-100">
+                    <div class="fw-bold fs-5">
+                        Ocorrência {{ investigacao.ocorrencia }}
+                        {% if investigacao.fora_do_municipio %}
+                        <span class="badge text-bg-warning">viatura de outro município</span>
+                        {% else %}
+                        <span class="badge text-bg-success">viatura do próprio município</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-muted small mb-2">
+                        Acionamento em {{ investigacao.momento }}
+                    </div>
+                    <dl class="row mb-0 small">
+                        <dt class="col-5">Município da ocorrência</dt>
+                        <dd class="col-7">{{ investigacao.cidade or "—" }}</dd>
+                        <dt class="col-5">Viatura que atendeu</dt>
+                        <dd class="col-7">{{ investigacao.unidade }}</dd>
+                        <dt class="col-5">Sede da viatura</dt>
+                        <dd class="col-7">{{ investigacao.municipio_unidade or "—" }}</dd>
+                        <dt class="col-5">Código / risco</dt>
+                        <dd class="col-7">
+                            {{ investigacao.codigo or "—" }} ·
+                            {{ investigacao.risco or "—" }}
+                        </dd>
+                        <dt class="col-5">Motivo</dt>
+                        <dd class="col-7">{{ investigacao.motivo or "—" }}</dd>
+                        <dt class="col-5">Tempo de resposta</dt>
+                        <dd class="col-7">{{ investigacao.tempo_resposta or "—" }}</dd>
+                        <dt class="col-5">Viaturas empenhadas</dt>
+                        <dd class="col-7">{{ investigacao.empenhos_na_ocorrencia }}</dd>
+                    </dl>
+                </div>
+            </div>
+            <div class="col-lg-7">
+                <div class="alert
+                    {% if investigacao.n_livres and investigacao.fora_do_municipio %}alert-warning
+                    {% elif investigacao.fora_do_municipio %}alert-success
+                    {% else %}alert-secondary{% endif %} mb-2">
+                    <strong>Conclusão:</strong> {{ investigacao.veredito }}
+                </div>
+                {% if investigacao.situacoes %}
+                <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Viatura de {{ investigacao.cidade }}</th>
+                                <th>Situação no acionamento</th>
+                                <th>Detalhe</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for s in investigacao.situacoes %}
+                            <tr class="sit-{{ s.status }}">
+                                <td class="fw-semibold">{{ s.unidade }}</td>
+                                <td>
+                                    {% if s.status == "ocupada" %}
+                                    <span class="badge text-bg-danger">Ocupada</span>
+                                    <span class="small text-muted d-block">
+                                        oc {{ s.ocorrencia }} · {{ s.desde }} → {{ s.ate }}
+                                    </span>
+                                    {% elif s.status == "atendeu" %}
+                                    <span class="badge text-bg-primary">Atendeu esta</span>
+                                    {% else %}
+                                    <span class="badge text-bg-success">Sem empenho</span>
+                                    <span class="small text-muted d-block">
+                                        {% if s.desde %}livre desde {{ s.desde }}{% endif %}
+                                        {% if s.ate %} · próximo às {{ s.ate }}{% endif %}
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td class="small text-muted">{{ s.detalhe }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="form-text mt-2">
+                    <i class="fa-solid fa-circle-info me-1"></i>
+                    <strong>Sem empenho</strong> significa apenas que não há
+                    atendimento registrado no instante — a viatura pode estar
+                    fora de escala, em manutenção ou indisponível por motivo
+                    que o relatório do vSky não informa.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+
+{# ------------------------------------------------------------- timeline #}
+<div class="card mb-3">
+    <div class="card-header text-bg-dark py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-regular fa-clock me-2"></i>Dia {{ timeline.dia }}
+        </h3>
+        <span class="badge text-bg-light">
+            {{ timeline.total_unidades }} unidade(s) ·
+            {{ timeline.total_periodos }} período(s) ocupado(s)
+        </span>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end mb-3">
+            <input type="hidden" name="ocorrencia" value="{{ filtros.ocorrencia }}">
+            <div class="col-auto">
+                <label class="form-label small mb-1" for="dia">Data</label>
+                <input type="date" class="form-control" id="dia" name="dia"
+                       value="{{ filtros.dia }}"
+                       min="{{ opcoes.dia_min }}" max="{{ opcoes.dia_max }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small mb-1" for="municipio">
+                    Município da viatura
+                </label>
+                <select class="form-select select2-multi" id="municipio"
+                        name="municipio" multiple data-width="100%">
+                    {% for m in opcoes.municipios %}
+                    <option value="{{ m }}"
+                        {% if m in filtros.municipios %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small mb-1" for="unidade">Viatura</label>
+                <select class="form-select select2-multi" id="unidade"
+                        name="unidade" multiple data-width="100%">
+                    {% for u in opcoes.unidades %}
+                    <option value="{{ u }}"
+                        {% if u in filtros.unidades %}selected{% endif %}>{{ u }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-primary">
+                    <i class="fa-solid fa-filter me-1"></i>Aplicar
+                </button>
+            </div>
+        </form>
+
+        <div class="tl-legenda small text-muted mb-3 d-flex gap-4 flex-wrap">
+            <span><i class="tl-caixa" style="background:#eef0f3"></i>
+                  Sem empenho registrado</span>
+            <span><i class="tl-caixa" style="background:#e2564a"></i>
+                  Ocupada (início do deslocamento → encerramento)</span>
+            <span><i class="tl-caixa" style="background:#6f42c1"></i>
+                  Ocupada em outro município</span>
+        </div>
+        <div class="form-text mt--1 mb-3">
+            <i class="fa-solid fa-circle-info me-1"></i>
+            O trecho claro indica apenas que não há atendimento registrado —
+            a viatura pode estar fora de escala, em manutenção ou
+            indisponível por motivo que o relatório do vSky não informa.
+            Clique numa barra para investigar aquela ocorrência.
+        </div>
+
+        {% if timeline.unidades %}
+        <div style="overflow-x: auto;">
+            <div style="min-width: 900px;">
+                <div class="tl-regua">
+                    {% for h in range(24) %}
+                    <div class="tl-hora">{{ "%02d"|format(h) }}h</div>
+                    {% endfor %}
+                </div>
+                <div class="pt-2">
+                    {% for u in timeline.unidades %}
+                    <div class="tl-linha">
+                        <div class="tl-nome" title="{{ u.unidade }} · ocupação {{ u.ocupacao_pct }}% do dia">
+                            {{ u.unidade }}
+                        </div>
+                        <div class="tl-trilha">
+                            {% for p in u.periodos %}
+                            <a class="tl-periodo{% if p.fora %} fora{% endif %}"
+                               style="left: {{ p.esquerda }}%; width: {{ p.largura }}%;"
+                               href="?ocorrencia={{ p.ocorrencia }}"
+                               title="Oc. {{ p.ocorrencia }} · {{ p.inicio }} → {{ p.fim }} ({{ p.duracao }}){% if p.cidade %} · {{ p.cidade }}{% endif %}{% if p.codigo %} · {{ p.codigo }}{% endif %}{% if p.motivo %} · {{ p.motivo }}{% endif %} — clique para investigar"></a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% if timeline.total_unidades > timeline.unidades | length %}
+        <div class="alert alert-info mt-3 mb-0 py-2 small">
+            Exibindo {{ timeline.unidades | length }} de
+            {{ timeline.total_unidades }} viaturas — use os filtros de
+            município ou viatura para restringir.
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="alert alert-warning mb-0">
+            Nenhum empenho com horários registrados neste dia
+            {% if filtros.municipios or filtros.unidades %}para os filtros
+            selecionados{% endif %}.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# ------------------------------------------ pauta: empenhos de outro município #}
+<div class="card">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-solid fa-triangle-exclamation me-2 text-warning"></i>
+            Empenhos de outro município em {{ cruzamentos.dia }}
+        </h3>
+        <span class="badge text-bg-secondary">{{ cruzamentos.casos | length }} caso(s)</span>
+    </div>
+    <div class="card-body p-0">
+        {% if cruzamentos.casos %}
+        <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
+            <table class="table table-sm table-striped table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Hora</th><th>Ocorrência</th><th>Viatura</th>
+                        <th>Sede da viatura</th><th>Município da ocorrência</th>
+                        <th>Código</th><th>T. Resposta</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in cruzamentos.casos %}
+                    <tr>
+                        <td class="font-monospace">{{ c.hora }}</td>
+                        <td class="fw-semibold">{{ c.ocorrencia }}</td>
+                        <td>{{ c.unidade }}</td>
+                        <td>{{ c.municipio_unidade }}</td>
+                        <td>{{ c.cidade }}</td>
+                        <td>{{ c.codigo }}</td>
+                        <td class="font-monospace">{{ c.tempo_resposta or "—" }}</td>
+                        <td>
+                            <a class="btn btn-outline-primary btn-sm py-0"
+                               href="?dia={{ cruzamentos.dia }}&ocorrencia={{ c.ocorrencia }}">
+                                Investigar
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-3 text-muted">
+            Nenhum empenho de viatura de outro município neste dia.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='vendor/select2/select2.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/select2/pt-BR.js') }}"></script>
+<script>
+$(function () {
+    $(".select2-multi").select2({
+        width: "100%", placeholder: "Todos", language: "pt-BR",
+        closeOnSelect: false, allowClear: false,
+    });
+});
+</script>
+{% endblock %}

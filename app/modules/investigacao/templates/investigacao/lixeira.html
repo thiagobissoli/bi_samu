@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% import "macros/ui.html" as ui %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/investigacao/">Investigacao</a></li>
+<li class="breadcrumb-item active">Lixeira</li>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="card-title"><i class="fa-solid fa-trash-can me-2"></i>Lixeira — Investigacao</h3>
+        <a href="/investigacao/" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-arrow-left"></i> Voltar à listagem
+        </a>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">
+            Registros excluídos continuam no banco (§36.7) e podem ser restaurados.
+            Eles não aparecem em nenhuma listagem, relatório ou exportação.
+        </p>
+        {{ ui.barra_busca("/investigacao/lixeira", q) }}
+        {% if pg["items"] %}
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr><th>#</th><th>Nome</th><th>Descrição</th>
+                    <th>Excluído em</th><th class="text-end">Ações</th></tr>
+            </thead>
+            <tbody>
+            {% for item in pg["items"] %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.nome }}</td>
+                <td>{{ item.descricao or "—" }}</td>
+                <td>{{ item.deleted_at | localdt }}
+                    <small class="text-muted d-block">{{ item.deleted_at | humanizar }}</small></td>
+                <td class="text-end">
+                    <form method="post" action="/investigacao/{{ item.id }}/restaurar"
+                          class="d-inline" data-confirm="Restaurar {{ item.nome }}?">
+                        <button class="btn btn-outline-success btn-sm" title="Restaurar">
+                            <i class="fa-solid fa-rotate-left"></i> Restaurar
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% include "components/pagination.html" %}
+        {% else %}
+        {{ ui.vazio("A lixeira está vazia.", icone="fa-trash-can") }}
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

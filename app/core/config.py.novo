@@ -1,0 +1,27 @@
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Configuração centralizada (§35.23) — valores vêm do .env, nunca fixos."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    app_name: str = "Samu"
+    debug: bool = False
+    secret_key: str = "trocar-em-producao"
+    # SQLite por padrão (desenvolvimento). Produção: PostgreSQL 16+ (§36.2).
+    database_url: str = "sqlite:///./dev.db"
+    redis_url: str = "redis://localhost:6379/0"
+    timezone: str = "UTC"
+    upload_dir: str = "uploads"
+    default_language: str = "pt-BR"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()

@@ -40,31 +40,6 @@ def health(db: Session = Depends(get_session)) -> dict:
             "app": settings.app_name, "database": database}
 
 
-@app.get("/logo", include_in_schema=False)
-def logo(request: Request, db: Session = Depends(get_session)):
-    """Logo da empresa (§22) — usada na sidebar e nas telas de login."""
-    from fastapi import HTTPException
-    from fastapi.responses import FileResponse
-
-    from app.core.auth import user_from_request
-    from app.core.config_service import get_config
-    from app.core.storage import absolute_path
-    from app.models import Arquivo
-
-    usuario = user_from_request(request, db)
-    empresa_id = usuario.empresa_id if usuario else 1
-    arquivo_id = get_config(db, "logo_arquivo_id", empresa_id=empresa_id)
-    if not arquivo_id:
-        raise HTTPException(status_code=404)
-    arquivo = db.get(Arquivo, int(arquivo_id))
-    if arquivo is None or arquivo.deleted_at is not None:
-        raise HTTPException(status_code=404)
-    path = absolute_path(arquivo)
-    if not path.is_file():
-        raise HTTPException(status_code=404)
-    return FileResponse(path, media_type=arquivo.mime_type)
-
-
 @app.get("/", include_in_schema=False)
 def dashboard(
     request: Request,

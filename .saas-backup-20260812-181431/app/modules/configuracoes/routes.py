@@ -1,7 +1,7 @@
 """Configurações por empresa (§22) — chave/valor com cache (§39.12),
 criptografia de chaves sensíveis (§39.29) e auditoria mascarada."""
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -96,71 +96,3 @@ def delete(
                                      "valor": mask_value(item.chave, anterior)},
                      usuario=usuario, request=request)
     return RedirectResponse("/configuracoes/", status_code=303)
-
-
-# --- Aparência (template AdminLTE por empresa — §22, §24, §37) ---
-
-
-@router.get("/aparencia", include_in_schema=False)
-def aparencia_form(
-    request: Request,
-    usuario: Usuario = Depends(require_permission("configuracao.editar")),
-    db: Session = Depends(get_session),
-):
-    from app.core.appearance import get_appearance
-
-    return render(request, "configuracoes/aparencia.html", usuario,
-                  page_title="Aparência", a=get_appearance(db, usuario.empresa_id))
-
-
-@router.post("/aparencia", include_in_schema=False)
-def aparencia_salvar(
-    request: Request,
-    brand_nome: str = Form(""),
-    tema: str = Form("claro"),
-    sidebar_tema: str = Form("auto"),
-    layout_fixo: str = Form("nao"),
-    header_fixo: str = Form("nao"),
-    footer_fixo: str = Form("nao"),
-    sidebar_mini: str = Form("nao"),
-    sidebar_colapsada: str = Form("nao"),
-    cor_primaria: str = Form(""),
-    cor_padrao: str = Form("nao"),
-    logo: UploadFile | None = File(None),
-    remover_logo: str = Form("nao"),
-    usuario: Usuario = Depends(require_permission("configuracao.editar")),
-    db: Session = Depends(get_session),
-):
-    from app.core.appearance import APPEARANCE_KEYS, get_appearance
-    from app.core.storage import save_upload
-
-    antes = get_appearance(db, usuario.empresa_id)
-
-    valores = {
-        "brand_nome": brand_nome.strip(),
-        "tema": tema, "sidebar_tema": sidebar_tema,
-        "layout_fixo": layout_fixo, "header_fixo": header_fixo,
-        "footer_fixo": footer_fixo, "sidebar_mini": sidebar_mini,
-        "sidebar_colapsada": sidebar_colapsada,
-        "cor_primaria": "" if cor_padrao == "sim" else cor_primaria.strip(),
-    }
-    for chave, valor in valores.items():
-        set_config(db, chave, valor, usuario.empresa_id, updated_by=usuario.id)
-
-    if remover_logo == "sim":
-        set_config(db, "logo_arquivo_id", "", usuario.empresa_id, updated_by=usuario.id)
-    elif logo is not None and logo.filename:
-        try:
-            arquivo = save_upload(db, logo, usuario.empresa_id, "sistema",
-                                  created_by=usuario.id)
-            set_config(db, "logo_arquivo_id", str(arquivo.id),
-                       usuario.empresa_id, updated_by=usuario.id)
-        except ValueError:
-            pass  # tipo/tamanho inválido: mantém a logo atual
-
-    depois = get_appearance(db, usuario.empresa_id)
-    record_audit(db, tabela="configuracoes", acao="UPDATE", registro_id=None,
-                 valor_anterior={k: antes.get(k) for k in APPEARANCE_KEYS},
-                 valor_novo={k: depois.get(k) for k in APPEARANCE_KEYS},
-                 usuario=usuario, request=request)
-    return RedirectResponse("/configuracoes/aparencia", status_code=303)

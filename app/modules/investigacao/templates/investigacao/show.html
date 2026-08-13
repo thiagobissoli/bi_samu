@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% import "macros/ui.html" as ui %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/investigacao/">Investigacao</a></li>
+<li class="breadcrumb-item active">{{ item.nome }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title"><i class="fa-solid fa-folder-open me-2"></i>{{ item.nome }}</h3>
+                <div class="d-flex gap-2">
+                    {% if "investigacao.editar" in usuario_logado.permissoes %}
+                    {{ ui.botao_editar("/investigacao/" ~ item.id ~ "/edit") }}
+                    {% endif %}
+                    {% if "investigacao.excluir" in usuario_logado.permissoes %}
+                    {{ ui.botao_excluir("/investigacao/" ~ item.id ~ "/delete",
+                                        "Excluir " ~ item.nome ~ "?") }}
+                    {% endif %}
+                    <a href="/investigacao/" class="btn btn-outline-secondary btn-sm">
+                        <i class="fa-solid fa-arrow-left"></i> Voltar
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Nome</dt>
+                    <dd class="col-sm-9">{{ item.nome }}</dd>
+
+                    <dt class="col-sm-3">Descrição</dt>
+                    <dd class="col-sm-9">{{ item.descricao or "—" }}</dd>
+
+                    <dt class="col-sm-3">Status</dt>
+                    <dd class="col-sm-9">{{ ui.badge_status(item.ativo) }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-circle-info me-2"></i>Registro</h3>
+            </div>
+            <div class="card-body">
+                {#  Campos base de toda tabela (§36.4) — rastreabilidade. #}
+                <dl class="row mb-0 small">
+                    <dt class="col-6">Código</dt>
+                    <dd class="col-6">#{{ item.id }}</dd>
+
+                    <dt class="col-6">Criado em</dt>
+                    <dd class="col-6">{{ item.created_at | localdt }}</dd>
+
+                    <dt class="col-6">Atualizado</dt>
+                    <dd class="col-6">
+                        {{ item.updated_at | localdt }}
+                        <span class="text-muted d-block">{{ item.updated_at | humanizar }}</span>
+                    </dd>
+
+                    <dt class="col-6">Versão</dt>
+                    <dd class="col-6">{{ item.version }}</dd>
+                </dl>
+            </div>
+            {% if "auditoria.listar" in usuario_logado.permissoes %}
+            <div class="card-footer">
+                <a href="/auditoria/?tabela=investigacao" class="btn btn-outline-secondary btn-sm">
+                    <i class="fa-solid fa-clipboard-list"></i> Ver auditoria do módulo
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

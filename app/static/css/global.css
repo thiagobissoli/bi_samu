@@ -1,2 +1,29 @@
 /* Customizações globais do projeto (§35.15).
    Nunca alterar os arquivos de vendor/ diretamente. */
+
+/* Select2 no tema escuro: o CSS do vendor mantém as etiquetas claras,
+   e a cor de texto herdada do tema também é clara — o rótulo ficava
+   invisível em todos os filtros multi-seleção. */
+[data-bs-theme="dark"] .select2-container--default .select2-selection--multiple,
+[data-bs-theme="dark"] .select2-container--default .select2-selection--single,
+[data-bs-theme="dark"] .select2-dropdown {
+    background-color: var(--bs-body-bg);
+    border-color: var(--bs-border-color);
+}
+[data-bs-theme="dark"] .select2-container--default .select2-selection__choice {
+    background-color: var(--bs-tertiary-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+[data-bs-theme="dark"] .select2-container--default .select2-selection__choice__remove,
+[data-bs-theme="dark"] .select2-container--default .select2-selection__rendered,
+[data-bs-theme="dark"] .select2-container--default .select2-results__option {
+    color: var(--bs-body-color);
+}
+[data-bs-theme="dark"] .select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background-color: var(--bs-primary);
+    color: #fff;
+}
+[data-bs-theme="dark"] .select2-container--default .select2-search__field {
+    color: var(--bs-body-color);
+}

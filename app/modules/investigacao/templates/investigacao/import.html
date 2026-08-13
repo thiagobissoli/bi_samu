@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/investigacao/">Investigacao</a></li>
+<li class="breadcrumb-item active">Importar</li>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-file-import me-2"></i>Importar Investigacao</h3>
+            </div>
+            <form method="post" action="/investigacao/import" enctype="multipart/form-data">
+                <div class="card-body">
+                    {% if erro %}<div class="alert alert-danger py-2">{{ erro }}</div>{% endif %}
+                    <div class="mb-3">
+                        <label class="form-label">Arquivo *</label>
+                        <input type="file" name="arquivo" class="form-control"
+                               accept=".csv,.xlsx,.xlsm" required>
+                        <small class="text-muted">CSV (separado por <code>;</code>) ou Excel.</small>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="tudo_ou_nada"
+                               value="sim" id="tudo_ou_nada" checked>
+                        <label class="form-check-label" for="tudo_ou_nada">
+                            Importar somente se <strong>todas</strong> as linhas forem válidas
+                        </label>
+                    </div>
+                    <p class="mb-1"><strong>Colunas esperadas:</strong></p>
+                    <p class="mb-0">
+                        {% for coluna in colunas %}<code>{{ coluna }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+                        — apenas <code>nome</code> é obrigatório.
+                    </p>
+                </div>
+                <div class="card-footer d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-upload"></i> Importar
+                    </button>
+                    <a href="/investigacao/import/modelo" class="btn btn-outline-secondary">
+                        <i class="fa-solid fa-download"></i> Baixar modelo
+                    </a>
+                    <a href="/investigacao/" class="btn btn-outline-secondary ms-auto">Voltar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if resultado %}
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-list-check me-2"></i>Relatório</h3>
+            </div>
+            <div class="card-body">
+                <div class="row text-center mb-3">
+                    <div class="col-4">
+                        <div class="fs-3">{{ resultado.total }}</div>
+                        <small class="text-muted">linhas lidas</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="fs-3 text-success">{{ importadas }}</div>
+                        <small class="text-muted">importadas</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="fs-3 text-danger">{{ resultado.invalidas | length }}</div>
+                        <small class="text-muted">com erro</small>
+                    </div>
+                </div>
+
+                {% if resultado.invalidas and not importadas %}
+                <div class="alert alert-warning py-2">
+                    Nada foi importado: há linhas inválidas e a opção
+                    “somente se todas forem válidas” estava marcada.
+                </div>
+                {% elif importadas %}
+                <div class="alert alert-success py-2">
+                    {{ importadas }} registro(s) importado(s) com sucesso.
+                </div>
+                {% endif %}
+
+                {% if resultado.colunas_ignoradas %}
+                <p class="text-muted"><small>Colunas ignoradas:
+                    {% for c in resultado.colunas_ignoradas %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+                </small></p>
+                {% endif %}
+
+                {% if resultado.invalidas %}
+                <table class="table table-sm table-striped">
+                    <thead><tr><th>Linha</th><th>Erros</th><th>Conteúdo</th></tr></thead>
+                    <tbody>
+                    {% for linha in resultado.invalidas[:50] %}
+                    <tr>
+                        <td>{{ linha.numero }}</td>
+                        <td class="text-danger">{{ linha.erros | join("; ") }}</td>
+                        <td><small>{{ linha.dados }}</small></td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% if resultado.invalidas | length > 50 %}
+                <p class="text-muted"><small>Mostrando 50 de {{ resultado.invalidas | length }} erros.</small></p>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

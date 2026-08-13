@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/configuracoes/">Configurações</a></li>
+<li class="breadcrumb-item active">Aparência</li>
+{% endblock %}
+
+{% block content %}
+<form method="post" action="/configuracoes/aparencia" enctype="multipart/form-data">
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-image me-2"></i>Identidade</h3>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Nome do sistema (sidebar)</label>
+                    <input type="text" name="brand_nome" class="form-control"
+                           value="{{ a.brand_nome }}" maxlength="60">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Logo</label>
+                    {% if a.logo_arquivo_id %}
+                    <div class="mb-2 p-2 border rounded d-flex align-items-center gap-3">
+                        <img src="/logo" alt="Logo atual" style="max-height: 48px;">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="remover_logo"
+                                   value="sim" id="remover_logo">
+                            <label class="form-check-label" for="remover_logo">Remover logo atual</label>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <input type="file" name="logo" class="form-control" accept="image/*">
+                    <small class="text-muted">PNG/JPG/SVG, até 25 MB. Exibida na sidebar e na tela de login.</small>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label">Cor primária</label>
+                    <div class="d-flex align-items-center gap-3">
+                        <input type="color" name="cor_primaria" class="form-control form-control-color"
+                               value="{{ a.cor_primaria or '#0d6efd' }}">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="cor_padrao"
+                                   value="sim" id="cor_padrao" {{ "checked" if not a.cor_primaria }}>
+                            <label class="form-check-label" for="cor_padrao">Usar cor padrão (Bootstrap)</label>
+                        </div>
+                    </div>
+                    <small class="text-muted">Aplicada em botões, links, paginação e destaques.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-table-columns me-2"></i>Tema e layout (AdminLTE)</h3>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 mb-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Tema padrão</label>
+                        <select name="tema" class="form-select">
+                            <option value="claro" {{ "selected" if a.tema == "claro" }}>Claro</option>
+                            <option value="escuro" {{ "selected" if a.tema == "escuro" }}>Escuro</option>
+                        </select>
+                        <small class="text-muted">Cada usuário pode sobrepor pelo botão da navbar.</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Sidebar</label>
+                        <select name="sidebar_tema" class="form-select">
+                            <option value="auto" {{ "selected" if a.sidebar_tema == "auto" }}>Acompanha o tema</option>
+                            <option value="escuro" {{ "selected" if a.sidebar_tema == "escuro" }}>Sempre escura</option>
+                        </select>
+                    </div>
+                </div>
+                <hr>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="layout_fixo" value="sim"
+                           id="layout_fixo" {{ "checked" if a.layout_fixo == "sim" }}>
+                    <label class="form-check-label" for="layout_fixo">
+                        Sidebar fixa <small class="text-muted">(layout-fixed)</small>
+                    </label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="header_fixo" value="sim"
+                           id="header_fixo" {{ "checked" if a.header_fixo == "sim" }}>
+                    <label class="form-check-label" for="header_fixo">
+                        Navbar fixa no topo <small class="text-muted">(fixed-header)</small>
+                    </label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="footer_fixo" value="sim"
+                           id="footer_fixo" {{ "checked" if a.footer_fixo == "sim" }}>
+                    <label class="form-check-label" for="footer_fixo">
+                        Rodapé fixo <small class="text-muted">(fixed-footer)</small>
+                    </label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="sidebar_mini" value="sim"
+                           id="sidebar_mini" {{ "checked" if a.sidebar_mini == "sim" }}>
+                    <label class="form-check-label" for="sidebar_mini">
+                        Sidebar mini ao colapsar <small class="text-muted">(sidebar-mini — mostra só os ícones)</small>
+                    </label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="sidebar_colapsada" value="sim"
+                           id="sidebar_colapsada" {{ "checked" if a.sidebar_colapsada == "sim" }}>
+                    <label class="form-check-label" for="sidebar_colapsada">
+                        Iniciar com a sidebar colapsada <small class="text-muted">(sidebar-collapse)</small>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card">
+            <div class="card-footer d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fa-solid fa-check"></i> Salvar aparência
+                </button>
+                <a href="/configuracoes/aparencia" class="btn btn-outline-secondary">Cancelar</a>
+                <span class="text-muted ms-auto align-self-center">
+                    <small>As alterações valem para toda a empresa (§22) e são auditadas (§11).</small>
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+</form>
+{% endblock %}

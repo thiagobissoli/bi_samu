@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% import "macros/campos.html" as campos %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/investigacao/">Investigacao</a></li>
+<li class="breadcrumb-item active">{{ "Editar" if item else "Novo" }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fa-solid fa-{{ "pen" if item else "plus" }} me-2"></i>
+            {{ "Editar" if item else "Novo" }} — Investigacao
+        </h3>
+    </div>
+    <form method="post" action="{{ action }}">
+        <div class="card-body">
+            {#  Macros de campo (§35.9): label, obrigatoriedade, ajuda e máscara
+                padronizados. Veja macros/campos.html para a lista completa —
+                texto, email, senha, numero, moeda, data, cpf, cnpj, telefone,
+                cep, select, textarea, checkbox e switch. #}
+            <div class="row">
+                {{ campos.texto("nome", "Nome", item.nome if item else "",
+                                obrigatorio=True, coluna="col-md-6 mb-3") }}
+                {{ campos.switch("ativo", "Ativo",
+                                 marcado=(item.ativo if item else True),
+                                 coluna="col-md-6 mb-3 d-flex align-items-end") }}
+            </div>
+            {{ campos.textarea("descricao", "Descrição",
+                               item.descricao if item else "") }}
+        </div>
+        {{ campos.acoes(voltar="/investigacao/") }}
+    </form>
+</div>
+{% endblock %}

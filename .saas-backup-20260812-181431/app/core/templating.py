@@ -42,11 +42,8 @@ def render(request: Request, name: str, usuario=None, **context):
     notificações não lidas (§21) e o fuso da empresa (§22)."""
     from app.core.modules import get_menu
 
-    from app.core.appearance import default_appearance, get_appearance
-
     nao_lidas = 0
     tz = "UTC"
-    aparencia = default_appearance()
     if usuario is not None:
         from app.core.config import settings
         from app.core.config_service import get_config
@@ -57,7 +54,6 @@ def render(request: Request, name: str, usuario=None, **context):
         try:
             nao_lidas = unread_count(db, usuario.id)
             tz = get_config(db, "timezone", settings.timezone, usuario.empresa_id)
-            aparencia = get_appearance(db, usuario.empresa_id)
         finally:
             db.close()
 
@@ -66,7 +62,6 @@ def render(request: Request, name: str, usuario=None, **context):
         "usuario_logado": usuario,
         "notificacoes_nao_lidas": nao_lidas,
         "tz": tz,
-        "aparencia": aparencia,
         **context,
     }
     return templates.TemplateResponse(request, name, ctx)

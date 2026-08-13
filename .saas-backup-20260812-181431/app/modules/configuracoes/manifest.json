@@ -6,9 +6,7 @@
     "permissions": ["configuracao.listar", "configuracao.editar", "configuracao.excluir"],
     "menu": [
         {"label": "Configurações", "url": "/configuracoes", "icon": "fa-cog",
-         "permission": "configuracao.listar", "order": 90},
-        {"label": "Aparência", "url": "/configuracoes/aparencia", "icon": "fa-palette",
-         "permission": "configuracao.editar", "order": 89}
+         "permission": "configuracao.listar", "order": 90}
     ],
     "routes": ["/configuracoes"]
 }
