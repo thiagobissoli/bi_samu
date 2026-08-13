@@ -64,9 +64,29 @@ reúne:
    contribuintes do atraso, com o excesso em mm:ss e o % do tempo de
    resposta. Quando faltam marcações, o resumo informa quanto do tempo
    **não** é explicado — esse vão não se atribui a ninguém;
-3. **Prontuário** — baixa o PDF do vSky (ou serve do cache), registra
+3. **Fatores do tempo de resposta (meta 10 min)** — ver abaixo;
+4. **Prontuário** — baixa o PDF do vSky (ou serve do cache), registra
    páginas/tamanho e extrai o texto;
-4. **Análise do evento por IA** — ver abaixo.
+5. **Análise do evento por IA** — ver abaixo.
+
+## Fatores do tempo de resposta
+
+A meta é **10 minutos**. Passando disso, a página separa o que é
+**distância estrutural** do que é **anormalidade no percurso**, do
+**horário** e do **atraso de processo** — cada um com o número que o
+sustenta:
+
+| Fator | Como é apurado |
+|---|---|
+| Distância | O mesmo trajeto (aquela viatura → aquela cidade) costuma levar quanto? Se o caso está até 1,25× dessa mediana, o trajeto é longo por si só |
+| Percurso | Acima disso, o deslocamento foi atípico *para aquele mesmo trajeto* — trânsito, rota ou acesso; a causa concreta precisa ser apurada com a equipe |
+| Horário | A faixa horária é sistematicamente mais lenta naquela cidade? Compara a mediana da faixa com as demais; quando a diferença é pequena, o texto diz que o horário **não** explica |
+| Origem da viatura | Quanto as viaturas sediadas na cidade levam até lá, versus o que esta levou |
+| Processo | Etapas P1–P4.1 acima da meta ou da referência — tempo gasto antes de a viatura estar a caminho |
+
+O vSky não registra rota nem condição de tráfego. O que o sistema pode
+afirmar é a comparação com o histórico do próprio serviço — e é isso que
+ele afirma, nada além.
 
 ## Análise por IA
 

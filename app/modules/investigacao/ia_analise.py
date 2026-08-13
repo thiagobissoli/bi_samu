@@ -39,6 +39,16 @@ SISTEMA = (
 
 ESQUEMA = """{
   "sintese": "2-3 frases sobre o que aconteceu e o que chama atenção",
+  "tempo_resposta": {
+    "acima_da_meta": true,
+    "causa_predominante": "distancia|percurso|transito|origem_da_viatura|processo|indisponibilidade|indeterminado",
+    "explicacao": "por que o tempo passou de 10 min, citando os números apurados",
+    "fatores": [
+      {"fator": "o que contribuiu", "tipo": "distancia|percurso|transito|origem_da_viatura|processo|indisponibilidade",
+       "evidencia": "o número que sustenta", "evitavel": "sim|parcialmente|nao",
+       "o_que_fazer": "ação concreta para reduzir este fator"}
+    ]
+  },
   "londres": {
     "incidente": "o que ocorreu, em uma frase",
     "falhas_ativas": ["ações ou omissões na ponta que afetaram o caso"],
@@ -104,6 +114,18 @@ def _bloco_atraso(atraso: dict) -> str:
     return texto
 
 
+def _bloco_fatores_tr(fatores: dict) -> str:
+    """Fatores já apurados do tempo de resposta acima de 10 min."""
+    if not fatores.get("aplicavel"):
+        return fatores.get("motivo", "Tempo de resposta não medido.")
+    linhas = [fatores["resumo"]]
+    if fatores.get("fatores"):
+        linhas.append("Fatores apurados nos dados (com evidência):")
+        for f in fatores["fatores"]:
+            linhas.append(f"- [{f['tipo']}] {f['titulo']}: {f['evidencia']}")
+    return "\n".join(linhas)
+
+
 def _bloco_ocupacao(inv: dict) -> str:
     if not inv.get("situacoes"):
         return "Não há viatura sediada no município da ocorrência na base."
@@ -141,6 +163,9 @@ def montar_prompt(dossie: dict, texto_prontuario: str = "") -> str:
         "# Indicadores medidos deste atendimento",
         _bloco_indicadores(dossie.get("indicadores") or []),
         "",
+        "# Tempo de resposta frente à meta de 10 minutos",
+        _bloco_fatores_tr(dossie.get("fatores_tr") or {}),
+        "",
         "# Decomposição do tempo, etapa por etapa",
         "(a 'referência do serviço' é a mediana do próprio SAMU em casos "
         "comparáveis — mesmo código de gravidade e tipo de viatura)",
@@ -159,7 +184,14 @@ def montar_prompt(dossie: dict, texto_prontuario: str = "") -> str:
     partes += [
         "",
         "# Tarefa",
-        "Analise este evento com três instrumentos: (1) Protocolo de Londres "
+        "A meta de tempo de resposta do serviço é 10 minutos. A prioridade "
+        "da análise é explicar o que fez este atendimento passar (ou não) "
+        "dessa meta: distância do trajeto, condição do percurso (trânsito, "
+        "rota, acesso), origem da viatura, indisponibilidade das viaturas "
+        "locais e atrasos nas etapas de processo (P1 a P4.1). Use os "
+        "fatores já apurados acima — eles vêm com o número que os sustenta "
+        "— e diga quais são evitáveis pelo serviço e quais são estruturais.",
+        "Analise o evento com três instrumentos: (1) Protocolo de Londres "
         "(análise de causa raiz de incidentes assistenciais), (2) Diagrama "
         "de Ishikawa (6M) e (3) matriz de risco probabilidade × impacto.",
         "Responda no formato JSON abaixo, preenchendo todos os campos:",

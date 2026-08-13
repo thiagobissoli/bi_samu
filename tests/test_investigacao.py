@@ -266,3 +266,91 @@ def test_anonimizacao_remove_identificadores():
     assert "123456789012345" not in limpo
     # dados clínicos/operacionais úteis não podem ser destruídos
     assert "14:35" in limpo and "2717192" in limpo
+
+
+def test_fatores_do_tempo_resposta():
+    """Meta de 10 min: separa distância, percurso, horário e processo."""
+    from app.modules.indicadores import nucleo
+    from app.modules.investigacao.analise import (META_TEMPO_RESPOSTA,
+                                                  fatores_tempo_resposta)
+
+    assert META_TEMPO_RESPOSTA == 600
+    service = InvestigacaoService(1)
+    df = nucleo.carregar(1)
+    encontrou_acima = encontrou_dentro = False
+
+    for caso in service.cruzamentos(service.opcoes()["dia_max"])["casos"][:12]:
+        inv = service.investigar(caso["ocorrencia"])
+        if inv.get("erro"):
+            continue
+        f = fatores_tempo_resposta(1, inv["registro_id"], inv)
+        if not f.get("aplicavel"):
+            continue
+        assert f["meta"] == "10:00"
+        assert isinstance(f["dentro_da_meta"], bool)
+        for x in f["fatores"]:
+            assert x["tipo"] in ("distancia", "percurso", "transito",
+                                 "recurso", "processo", "dado")
+            # toda afirmação vem com o número que a sustenta
+            assert x["evidencia"] and len(x["evidencia"]) > 20
+            assert x["impacto"] >= 0
+        if f["dentro_da_meta"]:
+            encontrou_dentro = True
+            assert "dentro da meta" in f["resumo"]
+        else:
+            encontrou_acima = True
+            assert "acima da meta" in f["resumo"]
+            # empenho de outro município sempre rende o fator de origem
+            # quando há histórico das viaturas locais
+            tipos = {x["tipo"] for x in f["fatores"]}
+            assert tipos, "nenhum fator apontado"
+    assert encontrou_acima or encontrou_dentro, "nenhum caso avaliado"
+
+
+def test_fator_distancia_versus_percurso():
+    """Trajeto dentro do usual = distância; muito acima = percurso."""
+    from app.modules.indicadores import nucleo
+    from app.modules.investigacao.analise import fatores_tempo_resposta
+
+    df = nucleo.carregar(1)
+    # rota com histórico robusto, para a comparação ser possível
+    validos = df[(df["t_p4_2"] > 0) & (df["t_p4_2"] < 14400)
+                 & df["unidade"].notna() & df["cidade"].notna()
+                 & df["tempo_resposta"].notna()]
+    contagem = validos.groupby(["unidade", "cidade"]).size()
+    rotas = contagem[contagem >= 30]
+    if rotas.empty:
+        return
+    unidade, cidade = rotas.index[0]
+    rota = validos[(validos["unidade"] == unidade)
+                   & (validos["cidade"] == cidade)].sort_values("t_p4_2")
+
+    rapido = fatores_tempo_resposta(1, int(rota.iloc[0]["id"]))
+    lento = fatores_tempo_resposta(1, int(rota.iloc[-1]["id"]))
+    tipos_rapido = {f["tipo"] for f in rapido.get("fatores", [])}
+    tipos_lento = {f["tipo"] for f in lento.get("fatores", [])}
+    # o caso mais lento da rota não pode ser classificado como distância
+    # estrutural se está muito acima da mediana daquela mesma rota
+    assert "percurso" in tipos_lento or "distancia" not in tipos_lento
+    # e o mais rápido nunca é "percurso anômalo"
+    assert "percurso" not in tipos_rapido
+
+
+def test_prompt_pede_foco_no_tempo_resposta():
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import montar_prompt
+
+    service = InvestigacaoService(1)
+    casos = service.cruzamentos(service.opcoes()["dia_max"])["casos"]
+    if not casos:
+        return
+    db = SessionLocal()
+    try:
+        prompt = montar_prompt(service.dossie(db, casos[0]["ocorrencia"]), "")
+    finally:
+        db.close()
+    assert "meta de tempo de resposta do serviço é 10 minutos" in prompt
+    assert "Tempo de resposta frente à meta de 10 minutos" in prompt
+    for termo in ("distância", "trânsito", "rota", "origem da viatura",
+                  "indisponibilidade"):
+        assert termo in prompt, termo

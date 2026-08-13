@@ -251,7 +251,8 @@ class InvestigacaoService:
         """
         from app.modules.download_vsky.models import VskyProntuario
         from app.modules.indicadores.ocorrencia import indicadores_da_ocorrencia
-        from app.modules.investigacao.analise import decompor_atraso
+        from app.modules.investigacao.analise import (decompor_atraso,
+                                                      fatores_tempo_resposta)
         from app.modules.investigacao.ia_analise import ultima_analise
 
         inv = self.investigar(numero)
@@ -277,6 +278,9 @@ class InvestigacaoService:
                             if registro_id else []),
             "atraso": (decompor_atraso(self.empresa_id, registro_id)
                        if registro_id else {}),
+            "fatores_tr": (fatores_tempo_resposta(self.empresa_id, registro_id,
+                                                  inv)
+                           if registro_id else {}),
             "prontuario": {
                 "baixado_em": (prontuario.baixado_em.strftime("%d/%m/%Y %H:%M")
                                if prontuario and prontuario.baixado_em else None),

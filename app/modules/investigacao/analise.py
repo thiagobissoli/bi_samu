@@ -42,6 +42,12 @@ FATOR_ALERTA = 1.5      # 50% acima da referência
 MINIMO_RELEVANTE = 60   # segundos — ignora diferenças irrelevantes
 MINIMO_AMOSTRA = 30     # casos comparáveis para a referência ser confiável
 
+# Meta de tempo de resposta adotada pelo serviço
+META_TEMPO_RESPOSTA = 600      # 10 minutos
+MINIMO_AMOSTRA_ROTA = 10       # trajetos iguais para a rota servir de base
+FAIXAS_HORARIAS = [(-1, 5, "00h–05h"), (5, 9, "06h–09h"), (9, 13, "10h–13h"),
+                   (13, 17, "14h–17h"), (17, 21, "18h–21h"), (21, 24, "22h–23h")]
+
 
 def _meta(col: str, cor: str | None) -> int | None:
     if col == "t_p1":
@@ -173,4 +179,207 @@ def _resumo(contribuintes: list[dict], total: float | None,
                   f"{cobertura['nao_explicado']} sem marcação"
                   + (f" (faltam {', '.join(cobertura['faltando'])})."
                      if cobertura["faltando"] else "."))
+    return texto
+
+
+# ------------------------------------------- fatores do tempo de resposta
+
+def _faixa_horaria(hora: int) -> str:
+    for ini, fim, rotulo in FAIXAS_HORARIAS:
+        if ini < hora <= fim:
+            return rotulo
+    return FAIXAS_HORARIAS[-1][2]
+
+
+def _mediana(serie: pd.Series) -> float | None:
+    return float(serie.median()) if len(serie) else None
+
+
+def fatores_tempo_resposta(empresa_id: int, registro_id: int,
+                           investigacao: dict | None = None) -> dict:
+    """Por que o tempo de resposta passou de 10 min, com evidência.
+
+    Separa o que é **distância estrutural** (o trajeto é longo mesmo) do
+    que é **anormalidade no percurso** (trânsito, rota, atraso na saída)
+    e do que é **atraso de processo** (central, regulação, despacho),
+    comparando o caso com o histórico do próprio serviço:
+
+    - o mesmo trajeto (aquela viatura até aquela cidade) costuma levar
+      quanto? se o caso está na média do trajeto, a causa é distância;
+    - a mesma cidade, na mesma faixa horária, costuma levar mais que nas
+      outras faixas? é o que se pode dizer sobre trânsito com estes
+      dados (o relatório não traz rota nem condição de tráfego);
+    - as viaturas sediadas na própria cidade levam quanto até lá? mede o
+      custo de ter mandado viatura de fora.
+    """
+    df = nucleo.carregar(empresa_id)
+    linha = df[df["id"] == registro_id]
+    if linha.empty:
+        return {"aplicavel": False}
+    r = linha.iloc[0]
+
+    tr = r.get("tempo_resposta")
+    cap = CAP_TEMPO.get("tempo_resposta", 14400)
+    if pd.isna(tr) or not (0 < float(tr) < cap):
+        return {"aplicavel": False,
+                "motivo": "Tempo de resposta não medido para este empenho."}
+    tr = float(tr)
+    excesso = tr - META_TEMPO_RESPOSTA
+    dentro = excesso <= 0
+
+    fatores: list[dict] = []
+    cidade, unidade = r.get("cidade"), r.get("unidade")
+    desloc = r.get("t_p4_2")
+    desloc_valido = (not pd.isna(desloc)
+                     and 0 < float(desloc) < CAP_TEMPO.get("t_p4_2", 14400))
+    base_desl = df[(df["t_p4_2"] > 0) & (df["t_p4_2"] < CAP_TEMPO.get("t_p4_2", 14400))]
+
+    # 1. Distância: o mesmo trajeto costuma levar quanto?
+    if desloc_valido and cidade and unidade:
+        rota = base_desl[(base_desl["unidade"] == unidade)
+                         & (base_desl["cidade"] == cidade)]
+        med_rota = _mediana(rota["t_p4_2"])
+        if med_rota and len(rota) >= MINIMO_AMOSTRA_ROTA:
+            razao = float(desloc) / med_rota
+            if razao <= 1.25:
+                fatores.append({
+                    "tipo": "distancia",
+                    "titulo": "Distância do trajeto (estrutural)",
+                    "evidencia": (
+                        f"O deslocamento levou {mmss(desloc)}; este mesmo "
+                        f"trajeto ({unidade} → {cidade}) costuma levar "
+                        f"{mmss(med_rota)} (n={len(rota)}). O tempo está "
+                        "dentro do usual — o trajeto é longo por si só, não "
+                        "houve anormalidade no percurso."),
+                    "impacto": round(float(desloc)),
+                })
+            else:
+                fatores.append({
+                    "tipo": "percurso",
+                    "titulo": "Deslocamento acima do usual neste trajeto",
+                    "evidencia": (
+                        f"O deslocamento levou {mmss(desloc)}, {razao:.1f}× o "
+                        f"usual deste trajeto ({mmss(med_rota)}, n={len(rota)}). "
+                        "Sugere condição do percurso naquele momento — "
+                        "trânsito, rota, bloqueio ou dificuldade de acesso. "
+                        "O relatório do vSky não registra rota nem tráfego, "
+                        "então a causa exata precisa ser apurada com a equipe."),
+                    "impacto": round(float(desloc) - med_rota),
+                })
+        elif med_rota:
+            fatores.append({
+                "tipo": "dado",
+                "titulo": "Trajeto sem histórico suficiente",
+                "evidencia": (
+                    f"Só há {len(rota)} registro(s) de {unidade} até {cidade} "
+                    "— pouco para dizer se o deslocamento deste caso foi "
+                    "atípico."),
+                "impacto": 0,
+            })
+
+    # 2. Trânsito: a faixa horária é sistematicamente pior naquela cidade?
+    if desloc_valido and cidade and not pd.isna(r.get("hora")):
+        na_cidade = base_desl[base_desl["cidade"] == cidade]
+        if len(na_cidade) >= MINIMO_AMOSTRA:
+            faixa = _faixa_horaria(int(r["hora"]))
+            marca = na_cidade["hora"].map(lambda h: _faixa_horaria(int(h)))
+            desta_faixa = na_cidade[marca == faixa]
+            outras = na_cidade[marca != faixa]
+            m_faixa, m_outras = _mediana(desta_faixa["t_p4_2"]), _mediana(outras["t_p4_2"])
+            if m_faixa and m_outras and len(desta_faixa) >= MINIMO_AMOSTRA_ROTA:
+                dif = m_faixa - m_outras
+                if dif >= 60:
+                    fatores.append({
+                        "tipo": "transito",
+                        "titulo": f"Faixa horária mais lenta em {cidade} ({faixa})",
+                        "evidencia": (
+                            f"Nesta faixa o deslocamento até {cidade} tem "
+                            f"mediana {mmss(m_faixa)} (n={len(desta_faixa)}), "
+                            f"contra {mmss(m_outras)} nas demais faixas — "
+                            f"{mmss(dif)} a mais, compatível com trânsito no "
+                            "horário."),
+                        "impacto": round(dif),
+                    })
+                else:
+                    fatores.append({
+                        "tipo": "transito",
+                        "titulo": "Horário não explica o atraso",
+                        "evidencia": (
+                            f"O deslocamento até {cidade} nesta faixa ({faixa}) "
+                            f"tem mediana {mmss(m_faixa)}, praticamente igual "
+                            f"às demais faixas ({mmss(m_outras)}). O horário "
+                            "não é uma explicação plausível aqui."),
+                        "impacto": 0,
+                    })
+
+    # 3. Custo de ter mandado viatura de outro município
+    inv = investigacao or {}
+    if desloc_valido and cidade and inv.get("fora_do_municipio"):
+        locais = base_desl[
+            (base_desl["cidade"] == cidade)
+            & (base_desl["unidade"].str.split(" - ", n=1).str[1].str.strip()
+               .map(lambda m: bool(m) and nucleo.norm_txt(m)
+                    == nucleo.norm_txt(cidade)))]
+        med_locais = _mediana(locais["t_p4_2"])
+        if med_locais and len(locais) >= MINIMO_AMOSTRA_ROTA:
+            fatores.append({
+                "tipo": "recurso",
+                "titulo": "Viatura de outro município (percurso maior)",
+                "evidencia": (
+                    f"{unidade} levou {mmss(desloc)} até {cidade}; as viaturas "
+                    f"sediadas em {cidade} levam em mediana {mmss(med_locais)} "
+                    f"(n={len(locais)}) — diferença de "
+                    f"{mmss(float(desloc) - med_locais)}. "
+                    + (inv.get("veredito") or "")),
+                "impacto": round(float(desloc) - med_locais),
+            })
+
+    # 4. Atrasos de processo (etapas antes de sair para o local)
+    atraso = decompor_atraso(empresa_id, registro_id)
+    for e in atraso.get("contribuintes", []):
+        if e["col"] in ("t_p1", "t_p2", "t_p3", "t_p4_1"):
+            fatores.append({
+                "tipo": "processo",
+                "titulo": f"Atraso de processo em {e['rotulo']}",
+                "evidencia": (
+                    f"{e['valor']} ({e['papel']})"
+                    + (f", meta {e['meta']}" if e["meta"] else "")
+                    + (f", {e['vezes_referencia']}× a referência "
+                       f"{e['referencia']} (n={e['amostra']})"
+                       if e["vezes_referencia"] else "")
+                    + ". Tempo consumido antes de a viatura estar a caminho."),
+                "impacto": max(e["excesso_segundos"], 0),
+            })
+
+    fatores.sort(key=lambda f: f["impacto"], reverse=True)
+    return {
+        "aplicavel": True,
+        "meta": mmss(META_TEMPO_RESPOSTA),
+        "tempo_resposta": mmss(tr),
+        "dentro_da_meta": dentro,
+        "excesso": mmss(excesso) if excesso > 0 else None,
+        "fatores": fatores,
+        "resumo": _resumo_fatores(dentro, tr, excesso, fatores),
+    }
+
+
+def _resumo_fatores(dentro: bool, tr: float, excesso: float,
+                    fatores: list[dict]) -> str:
+    if dentro:
+        return (f"Tempo de resposta {mmss(tr)} — dentro da meta de "
+                f"{mmss(META_TEMPO_RESPOSTA)}.")
+    if not fatores:
+        return (f"Tempo de resposta {mmss(tr)}, {mmss(excesso)} acima da meta "
+                f"de {mmss(META_TEMPO_RESPOSTA)}, mas os dados disponíveis não "
+                "permitem apontar o que contribuiu.")
+    rotulos = {"distancia": "distância do trajeto",
+               "percurso": "condição do percurso",
+               "transito": "horário/trânsito", "recurso": "origem da viatura",
+               "processo": "atraso de processo", "dado": "falta de histórico"}
+    principais = [rotulos.get(f["tipo"], f["tipo"]) for f in fatores
+                  if f["impacto"] > 0][:3]
+    texto = (f"Tempo de resposta {mmss(tr)} — {mmss(excesso)} acima da meta de "
+             f"{mmss(META_TEMPO_RESPOSTA)}.")
+    if principais:
+        texto += " Principais fatores: " + ", ".join(dict.fromkeys(principais)) + "."
     return texto

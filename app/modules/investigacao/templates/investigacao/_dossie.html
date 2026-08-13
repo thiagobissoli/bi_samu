@@ -38,6 +38,72 @@
     </div>
 </div>
 
+{# ------------------------------- fatores do tempo de resposta (meta 10min) #}
+{% if dossie.fatores_tr and dossie.fatores_tr.aplicavel %}
+{% set f = dossie.fatores_tr %}
+<div class="card mb-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-solid fa-road-circle-exclamation me-2"></i>
+            Por que o tempo de resposta ficou {% if f.dentro_da_meta %}dentro{% else %}acima{% endif %}
+            da meta de {{ f.meta }}
+        </h3>
+        <span class="badge {% if f.dentro_da_meta %}text-bg-success{% else %}text-bg-danger{% endif %}">
+            {{ f.tempo_resposta }}{% if f.excesso %} · +{{ f.excesso }}{% endif %}
+        </span>
+    </div>
+    <div class="card-body">
+        <div class="alert {% if f.dentro_da_meta %}alert-success{% else %}alert-warning{% endif %}">
+            {{ f.resumo }}
+        </div>
+        {% if f.fatores %}
+        <div class="row g-2">
+            {% for x in f.fatores %}
+            <div class="col-12">
+                <div class="border rounded-3 p-2 d-flex gap-3 align-items-start
+                    {% if x.tipo in ('percurso', 'processo') %}border-danger
+                    {% elif x.tipo in ('distancia', 'recurso') %}border-warning
+                    {% elif x.tipo == 'transito' %}border-info{% endif %}">
+                    <span class="badge flex-shrink-0
+                        {% if x.tipo == 'distancia' %}text-bg-warning
+                        {% elif x.tipo == 'percurso' %}text-bg-danger
+                        {% elif x.tipo == 'transito' %}text-bg-info
+                        {% elif x.tipo == 'recurso' %}text-bg-warning
+                        {% elif x.tipo == 'processo' %}text-bg-danger
+                        {% else %}text-bg-secondary{% endif %}">
+                        {% if x.tipo == 'distancia' %}Distância
+                        {% elif x.tipo == 'percurso' %}Percurso
+                        {% elif x.tipo == 'transito' %}Horário
+                        {% elif x.tipo == 'recurso' %}Origem da viatura
+                        {% elif x.tipo == 'processo' %}Processo
+                        {% else %}Dados{% endif %}
+                    </span>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold">{{ x.titulo }}</div>
+                        <div class="small text-muted">{{ x.evidencia }}</div>
+                    </div>
+                    {% if x.impacto %}
+                    <span class="text-nowrap font-monospace fw-bold">
+                        {{ x.impacto // 60 }}:{{ "%02d"|format(x.impacto % 60) }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="form-text mt-2">
+            <i class="fa-solid fa-circle-info me-1"></i>
+            O valor à direita é o tempo atribuível ao fator. O vSky não
+            registra rota nem condição de tráfego: o que se pode afirmar é
+            se o trajeto foi mais lento que o <em>usual daquele mesmo
+            trajeto</em> e se o horário costuma ser pior naquela cidade —
+            a causa concreta precisa ser apurada com a equipe.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 {# ------------------------------------------------ decomposição do atraso #}
 {% if dossie.atraso and dossie.atraso.etapas %}
 <div class="card mb-3">
@@ -248,6 +314,58 @@
 
         {% if a.sintese %}
         <p class="fs-6">{{ a.sintese }}</p>
+        {% endif %}
+
+        {% if a.tempo_resposta %}
+        {% set t = a.tempo_resposta %}
+        <div class="border rounded-3 p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h6 class="mb-0">
+                    <i class="fa-solid fa-stopwatch-20 me-2"></i>
+                    Leitura do tempo de resposta
+                </h6>
+                {% if t.causa_predominante %}
+                <span class="badge text-bg-dark">
+                    causa predominante: {{ t.causa_predominante | replace("_", " ") }}
+                </span>
+                {% endif %}
+            </div>
+            {% if t.explicacao %}<p class="mt-2 mb-2">{{ t.explicacao }}</p>{% endif %}
+            {% if t.fatores %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr><th>Fator</th><th>Evidência</th><th>Evitável</th>
+                            <th>O que fazer</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for x in t.fatores %}
+                        <tr>
+                            <td>
+                                <span class="fw-semibold">{{ x.fator }}</span>
+                                {% if x.tipo %}
+                                <span class="badge text-bg-secondary">
+                                    {{ x.tipo | replace("_", " ") }}
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="small text-muted">{{ x.evidencia }}</td>
+                            <td>
+                                <span class="badge
+                                    {% if x.evitavel == 'sim' %}text-bg-danger
+                                    {% elif x.evitavel == 'parcialmente' %}text-bg-warning
+                                    {% else %}text-bg-secondary{% endif %}">
+                                    {{ x.evitavel }}
+                                </span>
+                            </td>
+                            <td class="small">{{ x.o_que_fazer }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
         {% endif %}
 
         {# ---- Protocolo de Londres ---- #}
