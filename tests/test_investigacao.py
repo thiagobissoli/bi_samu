@@ -354,3 +354,80 @@ def test_prompt_pede_foco_no_tempo_resposta():
     for termo in ("distância", "trânsito", "rota", "origem da viatura",
                   "indisponibilidade"):
         assert termo in prompt, termo
+
+
+def test_investigar_chamado_sem_viatura_despachada():
+    """Chamado resolvido sem despacho (orientação médica, cancelado…).
+
+    Ainda há o que analisar: a cadeia do chamado, até onde o fluxo
+    avançou e se havia viatura disponível no momento da decisão.
+    """
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    sem_viatura = df[df["unidade"].isna() & df["dt_data_regulador"].notna()
+                     & df["cidade"].notna()]
+    if sem_viatura.empty:
+        return
+    numero = sem_viatura.iloc[0]["ocorrencia"]
+
+    dados = InvestigacaoService(1).investigar(numero)
+    assert not dados.get("erro"), dados.get("erro")
+    assert dados["com_empenho"] is False
+    assert dados["momento"]
+    assert "sem despacho de viatura" in dados["veredito"]
+
+    # cadeia mostra o que existe e o que falta
+    marcados = [m for m in dados["cadeia"] if m["hora"]]
+    ausentes = [m for m in dados["cadeia"] if not m["hora"]]
+    assert marcados and ausentes
+    assert any(m["rotulo"] == "Abertura do chamado" for m in marcados)
+    assert any(m["rotulo"] == "Chegada no local" for m in ausentes)
+    # intervalos entre marcações presentes
+    assert any(m["desde_anterior"] for m in marcados[1:])
+
+
+def test_pagina_de_chamado_sem_viatura():
+    _login()
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    sem_viatura = df[df["unidade"].isna() & df["dt_data_regulador"].notna()
+                     & df["cidade"].notna()]
+    if sem_viatura.empty:
+        return
+    numero = sem_viatura.iloc[0]["ocorrencia"]
+
+    pagina = client.get(f"/investigacao/?ocorrencia={numero}",
+                        headers={"accept": "text/html"})
+    assert pagina.status_code == 200
+    assert "sem viatura despachada" in pagina.text
+    assert "Cadeia do chamado" in pagina.text
+    assert "O fluxo parou antes do despacho" in pagina.text
+    # não inventa tempo de resposta para quem não teve viatura
+    assert "Tempo de resposta</dt>" not in pagina.text
+
+
+def test_prompt_de_chamado_sem_viatura_muda_o_foco():
+    from app.core.database import SessionLocal
+    from app.modules.indicadores import nucleo
+    from app.modules.investigacao.ia_analise import montar_prompt
+
+    df = nucleo.carregar(1)
+    sem_viatura = df[df["unidade"].isna() & df["dt_data_regulador"].notna()
+                     & df["cidade"].notna()]
+    if sem_viatura.empty:
+        return
+    db = SessionLocal()
+    try:
+        dossie = InvestigacaoService(1).dossie(
+            db, sem_viatura.iloc[0]["ocorrencia"])
+        prompt = montar_prompt(dossie, "")
+    finally:
+        db.close()
+    assert "SEM despacho de viatura" in prompt
+    assert "Cadeia de marcações do chamado" in prompt
+    assert "SEM REGISTRO" in prompt
+    # não pede análise de tempo de resposta para quem não teve viatura
+    assert "meta de 10 minutos" not in prompt
+    assert "Não avalie tempo de resposta" in prompt

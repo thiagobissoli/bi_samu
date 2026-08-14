@@ -222,8 +222,12 @@ def _derivar(df: pd.DataFrame,
         return df
 
     # --- limpeza: vazios disfarçados viram NA -----------------------------
+    # A checagem cobre `object` (pandas 2) e o dtype `str` nativo (pandas 3):
+    # testar só por object fazia esta limpeza ser pulada inteira no pandas 3,
+    # e "" / "---" passavam a contar como valor real (ex.: 350 mil registros
+    # sem óbito eram contados como óbito constatado).
     for col in df.columns:
-        if df[col].dtype == object:
+        if df[col].dtype == object or pd.api.types.is_string_dtype(df[col]):
             s = df[col].astype(str).str.strip()
             df[col] = s.mask(s.str.casefold().isin(_AUSENTES))
 

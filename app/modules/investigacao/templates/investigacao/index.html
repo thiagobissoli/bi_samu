@@ -78,22 +78,31 @@
                 <div class="border rounded-3 p-3 h-100">
                     <div class="fw-bold fs-5">
                         Ocorrência {{ investigacao.ocorrencia }}
-                        {% if investigacao.fora_do_municipio %}
+                        {% if not investigacao.com_empenho %}
+                        <span class="badge text-bg-secondary">sem viatura despachada</span>
+                        {% elif investigacao.fora_do_municipio %}
                         <span class="badge text-bg-warning">viatura de outro município</span>
                         {% else %}
                         <span class="badge text-bg-success">viatura do próprio município</span>
                         {% endif %}
                     </div>
                     <div class="text-muted small mb-2">
-                        Acionamento em {{ investigacao.momento }}
+                        {% if investigacao.com_empenho %}Acionamento em
+                        {% else %}Chamado em {% endif %}{{ investigacao.momento }}
                     </div>
                     <dl class="row mb-0 small">
                         <dt class="col-5">Município da ocorrência</dt>
                         <dd class="col-7">{{ investigacao.cidade or "—" }}</dd>
+                        {% if investigacao.situacao %}
+                        <dt class="col-5">Situação</dt>
+                        <dd class="col-7">{{ investigacao.situacao }}</dd>
+                        {% endif %}
+                        {% if investigacao.com_empenho %}
                         <dt class="col-5">Viatura que atendeu</dt>
                         <dd class="col-7">{{ investigacao.unidade }}</dd>
                         <dt class="col-5">Sede da viatura</dt>
                         <dd class="col-7">{{ investigacao.municipio_unidade or "—" }}</dd>
+                        {% endif %}
                         <dt class="col-5">Código / risco</dt>
                         <dd class="col-7">
                             {{ investigacao.codigo or "—" }} ·
@@ -101,16 +110,19 @@
                         </dd>
                         <dt class="col-5">Motivo</dt>
                         <dd class="col-7">{{ investigacao.motivo or "—" }}</dd>
+                        {% if investigacao.com_empenho %}
                         <dt class="col-5">Tempo de resposta</dt>
                         <dd class="col-7">{{ investigacao.tempo_resposta or "—" }}</dd>
                         <dt class="col-5">Viaturas empenhadas</dt>
                         <dd class="col-7">{{ investigacao.empenhos_na_ocorrencia }}</dd>
+                        {% endif %}
                     </dl>
                 </div>
             </div>
             <div class="col-lg-7">
                 <div class="alert
-                    {% if investigacao.n_livres and investigacao.fora_do_municipio %}alert-warning
+                    {% if not investigacao.com_empenho and not investigacao.n_livres %}alert-warning
+                    {% elif investigacao.n_livres and investigacao.fora_do_municipio %}alert-warning
                     {% elif investigacao.fora_do_municipio %}alert-success
                     {% else %}alert-secondary{% endif %} mb-2">
                     <strong>Conclusão:</strong> {{ investigacao.veredito }}

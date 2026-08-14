@@ -146,19 +146,27 @@ class InvestigacaoService:
 
         base = self._empenhos()
         alvos = base[base["ocorrencia"] == numero]
-        if alvos.empty:
-            df = nucleo.carregar(self.empresa_id)
-            existe = (df["ocorrencia"] == numero).any()
-            return {"erro": (
-                f"A ocorrência {numero} existe, mas não tem empenho com "
-                "horários suficientes para a análise."
-                if existe else f"Ocorrência {numero} não encontrada.")}
+        df = nucleo.carregar(self.empresa_id)
+        linhas_oc = df[df["ocorrencia"] == numero]
+        if linhas_oc.empty:
+            return {"erro": f"Ocorrência {numero} não encontrada."}
 
-        # Empenho de referência: o primeiro a se deslocar
-        alvo = alvos.sort_values("inicio").iloc[0]
-        momento = alvo["inicio"]
+        com_empenho = not alvos.empty
+        if com_empenho:
+            # Empenho de referência: o primeiro a se deslocar
+            alvo = alvos.sort_values("inicio").iloc[0]
+            momento = alvo["inicio"]
+        else:
+            # Chamado sem viatura despachada (orientação médica, cancelado,
+            # sem recurso...) — ainda assim há o que analisar: a cadeia do
+            # atendimento e a disponibilidade de viaturas no momento.
+            alvo = linhas_oc.sort_values("dt_ocorr").iloc[0]
+            momento = _primeiro_horario(alvo)
+            if momento is None:
+                return {"erro": (f"A ocorrência {numero} não tem nenhum "
+                                 "horário registrado — não há o que analisar.")}
         cidade = _txt(alvo["cidade"])
-        base_alvo = _txt(alvo["municipio_base"])
+        base_alvo = _txt(alvo.get("municipio_base")) if com_empenho else ""
 
         # Viaturas sediadas no município da ocorrência (histórico completo)
         norm_cidade = nucleo.norm_txt(cidade) if cidade else ""
@@ -204,9 +212,31 @@ class InvestigacaoService:
 
         ocupadas = [s for s in situacoes if s["status"] == "ocupada"]
         livres = [s for s in situacoes if s["status"] == "sem_empenho"]
-        fora = bool(_fora_do_municipio(alvo))
+        fora = bool(_fora_do_municipio(alvo)) if com_empenho else False
 
-        if not fora:
+        if not com_empenho:
+            # Sem viatura despachada: a pergunta deixa de ser "por que veio
+            # de fora" e passa a ser "havia viatura disponível?".
+            situacao = _txt(alvo.get("situacao_atendimento")) or "não informada"
+            if not situacoes:
+                veredito = (f"Chamado encerrado sem despacho de viatura "
+                            f"(situação: {situacao}). Não há viatura sediada "
+                            f"em {cidade or '—'} na base para comparar.")
+            elif not livres:
+                veredito = (
+                    f"Chamado encerrado sem despacho de viatura (situação: "
+                    f"{situacao}). No momento do chamado, TODAS as "
+                    f"{len(situacoes)} viaturas de {cidade} estavam ocupadas "
+                    "— vale verificar se a decisão foi clínica ou "
+                    "condicionada pela falta de recurso.")
+            else:
+                veredito = (
+                    f"Chamado encerrado sem despacho de viatura (situação: "
+                    f"{situacao}). No momento do chamado, {len(livres)} de "
+                    f"{len(situacoes)} viaturas de {cidade} estavam sem "
+                    "empenho registrado — a decisão não parece ter sido "
+                    "por falta de recurso.")
+        elif not fora:
             veredito = ("A ocorrência foi atendida por viatura do próprio "
                         "município.")
         elif not situacoes:
@@ -225,6 +255,7 @@ class InvestigacaoService:
         return {
             "ocorrencia": numero,
             "registro_id": int(alvo["id"]),
+            "com_empenho": com_empenho,
             "momento": momento.strftime("%d/%m/%Y %H:%M"),
             "dia": momento.strftime("%Y-%m-%d"),
             "cidade": cidade,
@@ -233,9 +264,15 @@ class InvestigacaoService:
             "fora_do_municipio": fora,
             "codigo": _txt(alvo["codigo_da_ocorrencia"]),
             "motivo": _txt(alvo["motivo"]),
+            "tipo": _txt(alvo.get("tipo")),
             "risco": _txt(alvo["risco_inicial"]),
+            "situacao": _txt(alvo.get("situacao_atendimento")),
+            "transporte": _txt(alvo.get("transporte")),
             "tempo_resposta": _mmss(alvo.get("tempo_resposta")),
             "empenhos_na_ocorrencia": len(alvos),
+            "linhas_na_ocorrencia": len(linhas_oc),
+            "cadeia": _cadeia_do_chamado(alvo),
+            "equipe": _equipe(alvo),
             "situacoes": situacoes,
             "n_ocupadas": len(ocupadas),
             "n_livres": len(livres),
@@ -370,3 +407,66 @@ def _ordem_unidade(nome: str) -> tuple:
         return (9, 9999, str(nome))
     prefixo = {"USA": 0, "USB": 1, "VIR": 2}.get(m.group(1), 3)
     return (prefixo, int(m.group(2)) if m.group(2) else 9999, str(nome))
+
+
+# Cadeia de marcações do chamado, da abertura ao encerramento. Vale
+# também para chamados sem viatura: mostra até onde o fluxo avançou.
+MARCACOES = [
+    ("dt_ocorr", "Abertura do chamado", "telefone atendido"),
+    ("dt_data_tarm", "TARM", "chamado qualificado"),
+    ("dt_data_regulador", "Regulação médica", "decisão do regulador"),
+    ("dt_data_controlador", "Despacho", "viatura acionada"),
+    ("dt_inicio_deslocamento", "Início do deslocamento", "viatura a caminho"),
+    ("dt_saida_para_atendimento", "Saída p/ atendimento (J9)", ""),
+    ("dt_chegada_no_local", "Chegada no local", ""),
+    ("dt_primeiro_j14", "Primeiro J14", "início do atendimento"),
+    ("dt_saida_para_hospital", "Saída para o hospital", ""),
+    ("dt_chegada_no_hospital", "Chegada no hospital", ""),
+    ("dt_atendimento_encerrado", "Atendimento encerrado", ""),
+]
+
+
+def _primeiro_horario(linha):
+    """Marcação mais próxima do acionamento entre as disponíveis."""
+    for col in ("dt_data_controlador", "dt_data_regulador", "dt_data_tarm",
+                "dt_ocorr"):
+        v = linha.get(col)
+        if v is not None and not pd.isna(v):
+            return v
+    return None
+
+
+def _cadeia_do_chamado(linha) -> list[dict]:
+    """Marcações registradas, com o intervalo desde a anterior.
+
+    O que falta aparece como ausente — num chamado sem despacho é
+    justamente onde o fluxo parou que interessa.
+    """
+    itens, anterior = [], None
+    for col, rotulo, papel in MARCACOES:
+        v = linha.get(col)
+        if v is None or pd.isna(v):
+            itens.append({"rotulo": rotulo, "papel": papel, "hora": None,
+                          "desde_anterior": None})
+            continue
+        intervalo = None
+        if anterior is not None:
+            segundos = (v - anterior).total_seconds()
+            if segundos >= 0:
+                intervalo = _mmss(segundos)
+        itens.append({"rotulo": rotulo, "papel": papel,
+                      "hora": v.strftime("%d/%m/%Y %H:%M:%S"),
+                      "desde_anterior": intervalo})
+        anterior = v
+    return itens
+
+
+def _equipe(linha) -> list[dict]:
+    """Profissionais registrados no chamado (só os preenchidos)."""
+    papeis = [("tarm_nome", "TARM"), ("regulador_nome", "Médico regulador"),
+              ("controlador_nome", "Controlador"), ("medico_nome", "Médico"),
+              ("enfermeiro_nome", "Enfermeiro"),
+              ("tec_enfermagem_nome", "Téc. enfermagem"),
+              ("condutor_nome", "Condutor")]
+    return [{"papel": rotulo, "nome": _txt(linha.get(col))}
+            for col, rotulo in papeis if _txt(linha.get(col))]

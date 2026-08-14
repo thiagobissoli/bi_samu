@@ -2,6 +2,68 @@
    prontuário e análise por IA. Incluído por index.html quando há uma
    ocorrência investigada. #}
 
+{# --------------------------------------------------- cadeia do chamado #}
+<div class="card mb-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-solid fa-timeline me-2"></i>Cadeia do chamado
+        </h3>
+        <div class="d-flex gap-2 align-items-center">
+            {% if investigacao.situacao %}
+            <span class="badge text-bg-secondary">{{ investigacao.situacao }}</span>
+            {% endif %}
+            {% if not investigacao.com_empenho %}
+            <span class="badge text-bg-warning">sem viatura despachada</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <tbody>
+                    {% for m in investigacao.cadeia %}
+                    <tr class="{% if not m.hora %}text-muted{% endif %}">
+                        <td style="width:34px;">
+                            {% if m.hora %}
+                            <i class="fa-solid fa-circle-check text-success"></i>
+                            {% else %}
+                            <i class="fa-regular fa-circle"></i>
+                            {% endif %}
+                        </td>
+                        <td class="fw-semibold">{{ m.rotulo }}</td>
+                        <td class="font-monospace">
+                            {{ m.hora or "sem registro" }}
+                        </td>
+                        <td class="font-monospace">
+                            {% if m.desde_anterior %}+{{ m.desde_anterior }}{% endif %}
+                        </td>
+                        <td class="small text-muted">{{ m.papel }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if investigacao.equipe %}
+        <div class="mt-2 small">
+            <span class="text-muted">Equipe registrada:</span>
+            {% for e in investigacao.equipe %}
+            <span class="badge text-bg-light border">
+                {{ e.papel }}: {{ e.nome }}
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if not investigacao.com_empenho %}
+        <div class="form-text mt-2">
+            <i class="fa-solid fa-circle-info me-1"></i>
+            O fluxo parou antes do despacho — não há tempo de resposta nem
+            etapas de deslocamento para avaliar. A análise se concentra na
+            condução do chamado na central e no desfecho.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
 {# ------------------------------------------------- indicadores medidos #}
 <div class="card mb-3">
     <div class="card-header py-2">

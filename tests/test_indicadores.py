@@ -346,3 +346,35 @@ def test_relacao_news_codigo_risco():
     assert "Cobertura da NEWS" in rotulos
     assert "NEWS Alto → triagem grave" in rotulos
     assert "NEWS Alto no risco leve" in rotulos
+
+
+def test_limpeza_de_vazios_independe_da_versao_do_pandas():
+    """'' e '---' têm de virar nulo, seja qual for o dtype do pandas.
+
+    No pandas 3 as colunas de texto deixam de ser `object`; testar só por
+    object fazia a limpeza ser pulada inteira — e 350 mil registros sem
+    óbito passavam a contar como óbito constatado.
+    """
+    import pandas as pd
+
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    for coluna in ("obito", "risco_inicial", "transporte",
+                   "situacao_atendimento", "codigo_da_ocorrencia"):
+        valores = {str(v).strip() for v in df[coluna].dropna().unique()}
+        assert not (valores & {"", "---", "nan", "none", "null"}), coluna
+
+    # o derivado de óbito só conta quem tem registro de óbito de fato
+    obitos = df[df["obito_constatado"]]
+    assert len(obitos) > 0
+    assert obitos["obito"].notna().all()
+    assert not obitos["obito"].astype(str).str.strip().eq("").any()
+    # e nunca marca "Não houve óbito" como óbito
+    assert not obitos["obito"].map(
+        lambda v: nucleo.norm_txt(v) == "NAO HOUVE OBITO").any()
+
+    # a limpeza precisa pegar o dtype de texto nativo do pandas 3
+    serie = pd.Series(["", "---", "ok"], dtype="str")
+    assert (pd.api.types.is_string_dtype(serie)
+            or serie.dtype == object), "checagem de dtype não cobre este pandas"

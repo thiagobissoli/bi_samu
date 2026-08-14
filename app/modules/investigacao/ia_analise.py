@@ -143,35 +143,72 @@ def _bloco_ocupacao(inv: dict) -> str:
     return "\n".join(linhas)
 
 
+def _bloco_cadeia(inv: dict) -> str:
+    """Marcações do chamado — inclusive as que faltam (onde o fluxo parou)."""
+    linhas = []
+    for m in inv.get("cadeia") or []:
+        if m["hora"]:
+            linhas.append(f"- {m['rotulo']}: {m['hora']}"
+                          + (f" (+{m['desde_anterior']} da etapa anterior)"
+                             if m["desde_anterior"] else "")
+                          + (f" — {m['papel']}" if m["papel"] else ""))
+        else:
+            linhas.append(f"- {m['rotulo']}: SEM REGISTRO")
+    return "\n".join(linhas) or "Sem marcações registradas."
+
+
 def montar_prompt(dossie: dict, texto_prontuario: str = "") -> str:
     """Monta o material da análise a partir do dossiê já calculado."""
     inv = dossie["investigacao"]
+    com_empenho = inv.get("com_empenho", True)
     partes = [
         "# Ocorrência sob análise",
         f"Número: {inv['ocorrencia']}",
-        f"Acionamento: {inv['momento']}",
+        f"Momento de referência: {inv['momento']}",
         f"Município da ocorrência: {inv['cidade'] or '—'}",
-        f"Viatura que atendeu: {inv['unidade']} "
-        f"(sediada em {inv['municipio_unidade'] or '—'})",
+        f"Situação do atendimento: {inv.get('situacao') or '—'}",
+    ]
+    if com_empenho:
+        partes += [
+            f"Viatura que atendeu: {inv['unidade']} "
+            f"(sediada em {inv['municipio_unidade'] or '—'})",
+            f"Viatura de outro município: "
+            f"{'SIM' if inv['fora_do_municipio'] else 'não'}",
+            f"Tempo de resposta: {inv['tempo_resposta'] or 'não calculado'}",
+        ]
+    else:
+        partes += [
+            "ATENÇÃO: este chamado foi encerrado SEM despacho de viatura. "
+            "Não há tempo de resposta nem etapas de deslocamento. A análise "
+            "deve tratar da condução do chamado na central (recepção, "
+            "qualificação e decisão da regulação) e da adequação do "
+            "desfecho, não de atraso de viatura.",
+        ]
+    partes += [
         f"Código/gravidade: {inv['codigo'] or '—'} · "
         f"risco na triagem: {inv['risco'] or '—'}",
-        f"Motivo: {inv['motivo'] or '—'}",
-        f"Tempo de resposta: {inv['tempo_resposta'] or 'não calculado'}",
-        f"Viatura de outro município: "
-        f"{'SIM' if inv['fora_do_municipio'] else 'não'}",
+        f"Motivo: {inv['motivo'] or '—'} · tipo: {inv.get('tipo') or '—'}",
+        "",
+        "# Cadeia de marcações do chamado",
+        _bloco_cadeia(inv),
         "",
         "# Indicadores medidos deste atendimento",
         _bloco_indicadores(dossie.get("indicadores") or []),
         "",
-        "# Tempo de resposta frente à meta de 10 minutos",
-        _bloco_fatores_tr(dossie.get("fatores_tr") or {}),
-        "",
+    ]
+    if com_empenho:
+        partes += [
+            "# Tempo de resposta frente à meta de 10 minutos",
+            _bloco_fatores_tr(dossie.get("fatores_tr") or {}),
+            "",
+        ]
+    partes += [
         "# Decomposição do tempo, etapa por etapa",
         "(a 'referência do serviço' é a mediana do próprio SAMU em casos "
         "comparáveis — mesmo código de gravidade e tipo de viatura)",
         _bloco_atraso(dossie.get("atraso") or {}),
         "",
-        "# Disponibilidade das viaturas do município no instante do acionamento",
+        "# Disponibilidade das viaturas do município no momento de referência",
         _bloco_ocupacao(inv),
         f"Conclusão automática: {inv['veredito']}",
         "OBS: 'sem empenho registrado' não prova que a viatura estava "
@@ -184,13 +221,19 @@ def montar_prompt(dossie: dict, texto_prontuario: str = "") -> str:
     partes += [
         "",
         "# Tarefa",
-        "A meta de tempo de resposta do serviço é 10 minutos. A prioridade "
-        "da análise é explicar o que fez este atendimento passar (ou não) "
-        "dessa meta: distância do trajeto, condição do percurso (trânsito, "
-        "rota, acesso), origem da viatura, indisponibilidade das viaturas "
-        "locais e atrasos nas etapas de processo (P1 a P4.1). Use os "
-        "fatores já apurados acima — eles vêm com o número que os sustenta "
-        "— e diga quais são evitáveis pelo serviço e quais são estruturais.",
+        ("Este chamado NÃO teve viatura despachada: analise a condução na "
+         "central e o desfecho. Se todas as viaturas do município estavam "
+         "ocupadas, considere a hipótese de a decisão ter sido condicionada "
+         "pela falta de recurso — e diga se os dados sustentam ou não essa "
+         "hipótese. Não avalie tempo de resposta nem deslocamento."
+         if not com_empenho else
+         "A meta de tempo de resposta do serviço é 10 minutos. A prioridade "
+         "da análise é explicar o que fez este atendimento passar (ou não) "
+         "dessa meta: distância do trajeto, condição do percurso (trânsito, "
+         "rota, acesso), origem da viatura, indisponibilidade das viaturas "
+         "locais e atrasos nas etapas de processo (P1 a P4.1). Use os "
+         "fatores já apurados acima — eles vêm com o número que os sustenta "
+         "— e diga quais são evitáveis pelo serviço e quais são estruturais."),
         "Analise o evento com três instrumentos: (1) Protocolo de Londres "
         "(análise de causa raiz de incidentes assistenciais), (2) Diagrama "
         "de Ishikawa (6M) e (3) matriz de risco probabilidade × impacto.",
