@@ -306,6 +306,14 @@ class InvestigacaoService:
         registro = db.scalar(select(R).where(R.id == registro_id)) \
             if registro_id else None
         inv["paciente"] = (registro.paciente or "") if registro else ""
+        # Iniciais no lugar do nome, como no formulário impresso (LGPD)
+        inv["paciente_iniciais"] = _iniciais(inv["paciente"])
+        inv["idade"] = (registro.idade or "") if registro else ""
+        inv["sexo"] = (registro.sexo or "") if registro else ""
+        inv["endereco"] = " · ".join(x for x in (
+            (registro.endereco or "") if registro else "",
+            (registro.bairro or "") if registro else "",
+            inv.get("cidade") or "") if x)
         prontuario = db.scalar(select(VskyProntuario).where(
             VskyProntuario.empresa_id == self.empresa_id,
             VskyProntuario.ocorrencia == numero,
@@ -483,3 +491,18 @@ def _equipe(linha) -> list[dict]:
               ("condutor_nome", "Condutor")]
     return [{"papel": rotulo, "nome": _txt(linha.get(col))}
             for col, rotulo in papeis if _txt(linha.get(col))]
+
+
+# Preposições não entram nas iniciais: "WILSON DE VALADARES" -> "W.V."
+_PREPOSICOES = {"DE", "DA", "DO", "DAS", "DOS", "E"}
+
+
+def _iniciais(nome: str) -> str:
+    """Nome do paciente reduzido às iniciais, como no formulário impresso.
+
+    O RAC circula fora do sistema; o formulário oficial usa iniciais
+    (ex.: "W.V.") em vez do nome completo.
+    """
+    partes = [p for p in str(nome or "").upper().split()
+              if p and p not in _PREPOSICOES]
+    return ".".join(p[0] for p in partes) + "." if partes else ""

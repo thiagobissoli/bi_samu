@@ -185,7 +185,7 @@ def _matriz_risco(risco: dict | None) -> list:
     return saida
 
 
-def _dados_gerais(inv: dict, g: dict) -> list:
+def _dados_gerais(inv: dict, g: dict, analise: dict) -> list:
     gravidade = " ".join(
         f"{nivel} {_marcacao(g.get('gravidade') == nivel)}"
         for nivel in GRAVIDADES)
@@ -200,20 +200,31 @@ def _dados_gerais(inv: dict, g: dict) -> list:
     ]
     tabela_larga = _tabela(linhas, [180 * mm])
 
+    def _ou_linha(valor, tamanho=22):
+        """Valor preenchido, ou uma linha para preencher à mão."""
+        return valor if valor else "_" * tamanho
+
+    idade = inv.get("idade")
+    local = " · ".join(x for x in (inv.get("unidade"),
+                                   inv.get("endereco") or inv.get("cidade"),
+                                   inv.get("momento")) if x)
     pares = _tabela([
         [Paragraph(f"<b>Data do Incidente:</b> {inv.get('momento', '—')}", P),
-         Paragraph("<b>Data da Notificação:</b> ______________", P)],
-        [Paragraph("<b>Código da Notificação:</b> ______________", P),
-         Paragraph("<b>Local e Horário da Ocorrência:</b> "
-                   + " · ".join(x for x in (inv.get("unidade"),
-                                            inv.get("cidade"),
-                                            inv.get("momento")) if x), P)],
-        [Paragraph("<b>Nome do Paciente:</b> ______________", P),
-         Paragraph("<b>Idade:</b> __________", P)],
+         Paragraph("<b>Data da Notificação:</b> "
+                   + _ou_linha(analise.get("notificacao_data")), P)],
+        [Paragraph("<b>Código da Notificação:</b> "
+                   + _ou_linha(analise.get("notificacao_codigo")), P),
+         Paragraph(f"<b>Local e Horário da Ocorrência:</b> {local or '—'}", P)],
+        [Paragraph("<b>Nome do Paciente:</b> "
+                   + (inv.get("paciente_iniciais") or _ou_linha(None)), P),
+         Paragraph("<b>Idade:</b> "
+                   + (f"{idade} anos" if idade else _ou_linha(None, 10))
+                   + (f" · Sexo: {inv['sexo']}" if inv.get("sexo") else ""), P)],
         [Paragraph(f"<b>ID da Ocorrência:</b> {inv.get('ocorrencia', '—')}", P),
-         Paragraph("<b>Data do Início da Investigação:</b> ____/____/______", P)],
+         Paragraph("<b>Data do Início da Investigação:</b> "
+                   + _ou_linha(analise.get("investigacao_inicio")), P)],
         [Paragraph("<b>Time de Investigação:</b> "
-                   "________________________________________________", P),
+                   + _ou_linha(analise.get("time_investigacao"), 40), P),
          Paragraph("<b>Nível de investigação:</b> "
                    + (g.get("nivel_investigacao") or "Análise de Causa Raiz"), P)],
     ], [90 * mm, 90 * mm])
@@ -335,7 +346,8 @@ def gerar_rac_pdf(dossie: dict, logo_path: str | None = None,
 
     fluxo: list = []
     fluxo += [_faixa("DADOS GERAIS"), Spacer(1, 4)]
-    fluxo += _dados_gerais(inv, analise.get("dados_gerais") or {})
+    fluxo += _dados_gerais(inv, analise.get("dados_gerais") or {},
+                           analise)
     fluxo += [Spacer(1, 8)]
 
     fluxo += [_faixa("AVALIAÇÃO DO RISCO GERAL ANTES DA INVESTIGAÇÃO"),

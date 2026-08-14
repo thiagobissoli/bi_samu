@@ -61,6 +61,9 @@ def index(
         # escalas do formulário FOR.SAMU.038, para desenhar a matriz
         probabilidades=PROBABILIDADE, consequencias=CONSEQUENCIA,
         gravidades=GRAVIDADES,
+        # time de investigação costuma se repetir entre relatórios
+        time_padrao=get_config(db, "rac_time_investigacao",
+                               empresa_id=usuario.empresa_id) or "",
         opcoes=opcoes, filtros={**p, "dia": dia})
 
 
@@ -235,6 +238,10 @@ def aprovar(
     risco_pos_probabilidade: str = Form(""),
     risco_pos_consequencia: str = Form(""),
     risco_pos_justificativa: str = Form(""),
+    notificacao_data: str = Form(""),
+    notificacao_codigo: str = Form(""),
+    time_investigacao: str = Form(""),
+    investigacao_inicio: str = Form(""),
     usuario: Usuario = Depends(require_permission("investigacao.aprovar")),
     db: Session = Depends(get_session),
 ):
@@ -268,6 +275,14 @@ def aprovar(
     atual.risco_pos_consequencia = _inteiro(risco_pos_consequencia,
                                             {1, 2, 4, 8, 16})
     atual.risco_pos_justificativa = risco_pos_justificativa.strip() or None
+    # Campos do formulário que só a equipe conhece
+    atual.notificacao_data = notificacao_data.strip() or None
+    atual.notificacao_codigo = notificacao_codigo.strip() or None
+    atual.time_investigacao = time_investigacao.strip() or None
+    atual.investigacao_inicio = investigacao_inicio.strip() or None
+    if time_investigacao.strip():   # reaproveitado nos próximos relatórios
+        set_config(db, "rac_time_investigacao", time_investigacao.strip(),
+                   usuario.empresa_id, usuario.id)
     atual.status = STATUS_APROVADO
     atual.aprovado_em = datetime.now(timezone.utc)
     atual.aprovado_por = usuario.id

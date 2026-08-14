@@ -507,6 +507,12 @@ def _formatar(registro: AnaliseOcorrencia) -> dict:
                         if registro.aprovado_em else None),
         "aprovado_nome": registro.aprovado_nome,
         "risco_pos_registrado": registrado,
+        "notificacao_data": registro.notificacao_data,
+        "notificacao_codigo": registro.notificacao_codigo,
+        "time_investigacao": registro.time_investigacao,
+        "investigacao_inicio": (registro.investigacao_inicio
+                                or (registro.gerado_em.strftime("%d/%m/%Y")
+                                    if registro.gerado_em else None)),
         **conteudo,
     }
 

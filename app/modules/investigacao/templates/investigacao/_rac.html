@@ -102,21 +102,41 @@
             </dd>
             <dt class="col-sm-3">Data do incidente</dt>
             <dd class="col-sm-9">{{ investigacao.momento }}</dd>
-            <dt class="col-sm-3">Local e horário</dt>
+            <dt class="col-sm-3">Data da notificação</dt>
             <dd class="col-sm-9">
-                {{ investigacao.unidade or "—" }}
-                {% if investigacao.cidade %} · {{ investigacao.cidade }}{% endif %}
+                {{ a.notificacao_data or "— a preencher na aprovação" }}
+            </dd>
+            <dt class="col-sm-3">Código da notificação</dt>
+            <dd class="col-sm-9">
+                {{ a.notificacao_codigo or "— a preencher na aprovação" }}
+            </dd>
+            <dt class="col-sm-3">Local e horário da ocorrência</dt>
+            <dd class="col-sm-9">
+                {% if investigacao.unidade %}{{ investigacao.unidade }} · {% endif %}
+                {{ investigacao.endereco or investigacao.cidade or "—" }}
+                · {{ investigacao.momento }}
+            </dd>
+            <dt class="col-sm-3">Nome do paciente</dt>
+            <dd class="col-sm-9">
+                {{ investigacao.paciente_iniciais or "—" }}
+                <span class="text-muted small">(iniciais, conforme o formulário)</span>
+            </dd>
+            <dt class="col-sm-3">Idade</dt>
+            <dd class="col-sm-9">
+                {% if investigacao.idade %}{{ investigacao.idade }} anos{% else %}—{% endif %}
+                {% if investigacao.sexo %} · sexo {{ investigacao.sexo }}{% endif %}
             </dd>
             <dt class="col-sm-3">ID da ocorrência</dt>
             <dd class="col-sm-9">{{ investigacao.ocorrencia }}</dd>
+            <dt class="col-sm-3">Data do início da investigação</dt>
+            <dd class="col-sm-9">{{ a.investigacao_inicio or "—" }}</dd>
+            <dt class="col-sm-3">Time de investigação</dt>
+            <dd class="col-sm-9">
+                {{ a.time_investigacao or "— a preencher na aprovação" }}
+            </dd>
             <dt class="col-sm-3">Nível de investigação</dt>
             <dd class="col-sm-9">{{ g.nivel_investigacao or "Análise de Causa Raiz" }}</dd>
         </dl>
-        <div class="form-text mt-2">
-            Data e código da notificação, nome do paciente e time de
-            investigação são preenchidos pela equipe — não constam do
-            registro operacional.
-        </div>
     </div>
 </div>
 {% endif %}
@@ -359,7 +379,51 @@
             <input type="hidden" name="ocorrencia"
                    value="{{ investigacao.ocorrencia }}">
             <div class="fw-semibold mb-2">
-                Aprovar o relatório — registre o risco pós investigação
+                Complete os dados do formulário
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label small mb-1" for="notificacao_data">
+                        Data da notificação
+                    </label>
+                    <input type="text" class="form-control form-control-sm"
+                           id="notificacao_data" name="notificacao_data"
+                           value="{{ a.notificacao_data or '' }}"
+                           placeholder="dd/mm/aaaa">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1"
+                           for="notificacao_codigo">
+                        Código da notificação
+                    </label>
+                    <input type="text" class="form-control form-control-sm"
+                           id="notificacao_codigo" name="notificacao_codigo"
+                           value="{{ a.notificacao_codigo or '' }}"
+                           placeholder="ex.: 2124">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1"
+                           for="investigacao_inicio">
+                        Início da investigação
+                    </label>
+                    <input type="text" class="form-control form-control-sm"
+                           id="investigacao_inicio" name="investigacao_inicio"
+                           value="{{ a.investigacao_inicio or '' }}"
+                           placeholder="dd/mm/aaaa">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1"
+                           for="time_investigacao">
+                        Time de investigação
+                    </label>
+                    <input type="text" class="form-control form-control-sm"
+                           id="time_investigacao" name="time_investigacao"
+                           value="{{ a.time_investigacao or time_padrao or '' }}"
+                           placeholder="nomes separados por vírgula">
+                </div>
+            </div>
+            <div class="fw-semibold mb-2">
+                Risco pós investigação
             </div>
             <div class="row g-2 align-items-end">
                 <div class="col-md-3">

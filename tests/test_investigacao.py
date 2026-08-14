@@ -862,3 +862,108 @@ def test_pagina_de_relatorios(monkeypatch):
     # o menu leva à página
     home = client.get("/", headers={"accept": "text/html"})
     assert "Relatórios RAC" in home.text
+
+
+def test_dados_gerais_completos(monkeypatch):
+    """Tudo que o registro permite é preenchido; o resto vem da equipe."""
+    import io
+
+    from pypdf import PdfReader
+
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import analisar
+    from app.modules.investigacao.rac_pdf import gerar_rac_pdf
+    from app.modules.investigacao.service import _iniciais
+
+    assert _iniciais("WILSON VALADARES") == "W.V."
+    assert _iniciais("MARIA DAS DORES SILVA") == "M.D.S."   # ignora preposições
+    assert _iniciais("") == ""
+
+    _login()
+    _mock_ia(monkeypatch)
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+
+    db = SessionLocal()
+    try:
+        dossie = InvestigacaoService(1).dossie(db, numero)
+        analisar(db, 1, dossie, "")
+    finally:
+        db.close()
+
+    inv = dossie["investigacao"]
+    # o que sai do registro operacional
+    assert inv["paciente_iniciais"], "iniciais do paciente ausentes"
+    assert "." in inv["paciente_iniciais"]
+    assert inv["paciente"] not in (inv["paciente_iniciais"] or "")  # nome não vaza
+    assert inv["endereco"]
+
+    # a equipe completa o que só ela sabe
+    client.post("/investigacao/aprovar", data={
+        "ocorrencia": numero, "risco_pos_probabilidade": "2",
+        "risco_pos_consequencia": "4", "risco_pos_justificativa": "ok",
+        "notificacao_data": "12/08/2026", "notificacao_codigo": "2124",
+        "investigacao_inicio": "13/08/2026",
+        "time_investigacao": "Equipe NSP"})
+
+    db = SessionLocal()
+    try:
+        dossie = InvestigacaoService(1).dossie(db, numero)
+    finally:
+        db.close()
+    a = dossie["analise_ia"]
+    assert a["notificacao_data"] == "12/08/2026"
+    assert a["notificacao_codigo"] == "2124"
+    assert a["time_investigacao"] == "Equipe NSP"
+    assert a["investigacao_inicio"] == "13/08/2026"
+
+    texto = " ".join(
+        " ".join((p.extract_text() or "").split())
+        for p in PdfReader(io.BytesIO(gerar_rac_pdf(dossie))).pages)
+    for esperado in ("Data da Notificação: 12/08/2026",
+                     "Código da Notificação: 2124",
+                     "Time de Investigação: Equipe NSP",
+                     "Data do Início da Investigação: 13/08/2026",
+                     f"Nome do Paciente: {inv['paciente_iniciais']}",
+                     "ID da Ocorrência: " + numero):
+        assert esperado in texto, esperado
+    # a gravidade é marcada no formulário
+    assert "Moderada ( X )" in texto
+    # nome completo do paciente nunca vai para o documento
+    if inv["paciente"]:
+        assert inv["paciente"] not in texto
+
+
+def test_time_de_investigacao_e_reaproveitado(monkeypatch):
+    """O time informado vira padrão para os próximos relatórios."""
+    from app.core.config_service import get_config
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import analisar
+
+    _login()
+    _mock_ia(monkeypatch)
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+    db = SessionLocal()
+    try:
+        analisar(db, 1, InvestigacaoService(1).dossie(db, numero), "")
+    finally:
+        db.close()
+
+    client.post("/investigacao/aprovar", data={
+        "ocorrencia": numero, "risco_pos_probabilidade": "1",
+        "risco_pos_consequencia": "1", "risco_pos_justificativa": "",
+        "time_investigacao": "Ana, Bruno e Carla"})
+
+    db = SessionLocal()
+    try:
+        assert get_config(db, "rac_time_investigacao",
+                          empresa_id=1) == "Ana, Bruno e Carla"
+    finally:
+        db.close()
+    # e aparece pré-preenchido na próxima investigação
+    pagina = client.get(f"/investigacao/?ocorrencia={numero}",
+                        headers={"accept": "text/html"}).text
+    assert "Ana, Bruno e Carla" in pagina
