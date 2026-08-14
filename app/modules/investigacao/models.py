@@ -1,25 +1,33 @@
 """Modelos do módulo Investigação de Eventos (§35.19).
 
 A análise das ocorrências é somente leitura sobre o núcleo do módulo
-indicadores. O que se persiste aqui é o resultado da análise por IA —
-para não repetir a chamada (e o custo) a cada abertura da página e para
-manter o histórico do que foi apresentado numa investigação.
+indicadores. O que se persiste aqui são os relatórios RAC gerados: cada
+pedido de ajuste cria uma **nova versão** (a anterior é preservada, para
+o modelo aprender com o que foi corrigido), e a versão aprovada guarda o
+PDF assinado institucionalmente.
 """
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import BaseModel
 
+STATUS_PENDENTE = "pendente"
+STATUS_APROVADO = "aprovado"
+STATUS_SUBSTITUIDO = "substituido"   # gerou-se uma versão nova a partir dela
+
 
 class AnaliseOcorrencia(BaseModel):
-    """Resultado de uma análise por IA (Londres, Ishikawa, matriz de risco)."""
+    """Uma versão do relatório RAC de uma ocorrência."""
 
     __tablename__ = "investigacao_analises"
 
     ocorrencia: Mapped[str] = mapped_column(String(30), index=True)
+    versao: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(20), default=STATUS_PENDENTE,
+                                        index=True)
     provedor: Mapped[str] = mapped_column(String(30))
     modelo: Mapped[str] = mapped_column(String(120))
     anonimizado: Mapped[bool] = mapped_column(default=True)
@@ -27,3 +35,22 @@ class AnaliseOcorrencia(BaseModel):
     resultado: Mapped[str] = mapped_column(Text(1_000_000))   # JSON
     bruto: Mapped[str | None] = mapped_column(Text(1_000_000), nullable=True)
     gerado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    # Ajuste pedido pela equipe que deu origem a ESTA versão
+    feedback: Mapped[str | None] = mapped_column(Text(20_000), nullable=True)
+
+    # Risco pós-investigação registrado pela equipe (prevalece sobre a
+    # estimativa da IA — é a avaliação institucional)
+    risco_pos_probabilidade: Mapped[int | None] = mapped_column(nullable=True)
+    risco_pos_consequencia: Mapped[int | None] = mapped_column(nullable=True)
+    risco_pos_justificativa: Mapped[str | None] = mapped_column(
+        Text(5_000), nullable=True)
+
+    # Aprovação
+    aprovado_em: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    aprovado_por: Mapped[int | None] = mapped_column(nullable=True)
+    aprovado_nome: Mapped[str | None] = mapped_column(String(255),
+                                                      nullable=True)
+    # PDF do relatório aprovado, guardado no banco para ficar imutável
+    pdf: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)

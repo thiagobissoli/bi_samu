@@ -290,7 +290,9 @@ class InvestigacaoService:
         from app.modules.indicadores.ocorrencia import indicadores_da_ocorrencia
         from app.modules.investigacao.analise import (decompor_atraso,
                                                       fatores_tempo_resposta)
-        from app.modules.investigacao.ia_analise import ultima_analise
+        from app.modules.investigacao.ia_analise import (cronologia_do_sistema,
+                                                         historico,
+                                                         ultima_analise)
 
         inv = self.investigar(numero)
         if inv.get("erro"):
@@ -325,7 +327,18 @@ class InvestigacaoService:
                 "tamanho_kb": round(prontuario.tamanho / 1024) if prontuario else 0,
                 "texto": prontuario.texto if prontuario else None,
             } if prontuario else None,
+            # Cronologia é dado factual: sai das marcações, não da IA
+            "cronologia": cronologia_do_sistema(inv),
             "analise_ia": ultima_analise(db, self.empresa_id, numero),
+            "versoes": [{
+                "id": v.id, "versao": v.versao, "status": v.status,
+                "gerado_em": v.gerado_em.strftime("%d/%m/%Y %H:%M")
+                             if v.gerado_em else "",
+                "feedback": v.feedback,
+                "aprovado_em": v.aprovado_em.strftime("%d/%m/%Y %H:%M")
+                               if v.aprovado_em else None,
+                "aprovado_nome": v.aprovado_nome,
+            } for v in historico(db, self.empresa_id, numero)],
         }
 
     def cruzamentos(self, dia: str) -> dict:

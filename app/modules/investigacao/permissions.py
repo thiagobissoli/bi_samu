@@ -2,5 +2,6 @@
 
 PERMISSIONS = [
     "investigacao.visualizar",
+    "investigacao.aprovar",
     "investigacao.configurar",
 ]

@@ -224,3 +224,211 @@ def api_investigar(
         return {"success": False, "message": dados["erro"], "data": None,
                 "errors": [dados["erro"]]}
     return {"success": True, "message": "", "data": dados, "errors": []}
+
+
+# ------------------------------------------------ aprovação do relatório
+
+@router.post("/aprovar", include_in_schema=False)
+def aprovar(
+    request: Request,
+    ocorrencia: str = Form(...),
+    risco_pos_probabilidade: str = Form(""),
+    risco_pos_consequencia: str = Form(""),
+    risco_pos_justificativa: str = Form(""),
+    usuario: Usuario = Depends(require_permission("investigacao.aprovar")),
+    db: Session = Depends(get_session),
+):
+    """Aprova a versão corrente do RAC e guarda o PDF no banco."""
+    from datetime import datetime, timezone
+    from urllib.parse import urlencode
+
+    from app.modules.investigacao.ia_analise import historico
+    from app.modules.investigacao.models import STATUS_APROVADO
+    from app.modules.investigacao.rac_pdf import gerar_rac_pdf
+
+    numero = ocorrencia.strip()
+    versoes = historico(db, usuario.empresa_id, numero)
+    destino = {"ocorrencia": numero}
+    if not versoes:
+        destino["erro_ia"] = "Não há relatório gerado para aprovar."
+        return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
+                                status_code=303)
+
+    atual = versoes[0]
+    # Risco pós-investigação é decisão da equipe, não estimativa da IA
+    def _inteiro(valor, validos):
+        try:
+            n = int(valor)
+        except (TypeError, ValueError):
+            return None
+        return n if n in validos else None
+
+    atual.risco_pos_probabilidade = _inteiro(risco_pos_probabilidade,
+                                             {1, 2, 3, 4, 5})
+    atual.risco_pos_consequencia = _inteiro(risco_pos_consequencia,
+                                            {1, 2, 4, 8, 16})
+    atual.risco_pos_justificativa = risco_pos_justificativa.strip() or None
+    atual.status = STATUS_APROVADO
+    atual.aprovado_em = datetime.now(timezone.utc)
+    atual.aprovado_por = usuario.id
+    atual.aprovado_nome = usuario.nome
+    db.commit()
+
+    # PDF do documento aprovado — imutável, guardado no próprio banco
+    service = InvestigacaoService(usuario.empresa_id)
+    dossie = service.dossie(db, numero)
+    atual.pdf = gerar_rac_pdf(dossie, logo_path=_logo(db, usuario.empresa_id))
+    db.commit()
+
+    record_audit(db, tabela="investigacao_analises", acao="UPDATE",
+                 registro_id=atual.id,
+                 valor_novo={"ocorrencia": numero, "versao": atual.versao,
+                             "status": STATUS_APROVADO}, usuario=usuario,
+                 request=request)
+    destino["aprovado"] = "1"
+    return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
+                            status_code=303)
+
+
+@router.post("/ajustar", include_in_schema=False)
+def ajustar(
+    request: Request,
+    ocorrencia: str = Form(...),
+    feedback: str = Form(...),
+    usuario: Usuario = Depends(require_permission("investigacao.visualizar")),
+    db: Session = Depends(get_session),
+):
+    """Pede ajuste: gera nova versão considerando as anteriores."""
+    from urllib.parse import urlencode
+
+    from app.modules.investigacao.ia_analise import analisar as rodar_analise
+
+    numero = ocorrencia.strip()
+    destino = {"ocorrencia": numero}
+    if not feedback.strip():
+        destino["erro_ia"] = "Descreva o que precisa ser ajustado."
+        return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
+                                status_code=303)
+
+    service = InvestigacaoService(usuario.empresa_id)
+    dossie = service.dossie(db, numero)
+    if dossie["investigacao"].get("erro"):
+        destino["erro_ia"] = dossie["investigacao"]["erro"]
+        return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
+                                status_code=303)
+
+    texto = ""
+    anterior = dossie.get("analise_ia") or {}
+    if anterior.get("com_prontuario"):
+        texto = (dossie.get("prontuario") or {}).get("texto") or ""
+    try:
+        rodar_analise(db, usuario.empresa_id, dossie, texto,
+                      anonimizar=bool(anterior.get("anonimizado", True)),
+                      nomes=[dossie["investigacao"].get("paciente", "")],
+                      feedback=feedback.strip())
+    except ia.IAError as exc:
+        destino["erro_ia"] = str(exc)
+    return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
+                            status_code=303)
+
+
+def _logo(db: Session, empresa_id: int) -> str | None:
+    """Caminho da logo da empresa, para o cabeçalho do formulário."""
+    from app.core.storage import absolute_path
+    from app.models import Arquivo
+
+    arquivo_id = get_config(db, "logo_arquivo_id", empresa_id=empresa_id)
+    if not arquivo_id:
+        return None
+    arquivo = db.get(Arquivo, int(arquivo_id))
+    if arquivo is None or arquivo.deleted_at is not None:
+        return None
+    caminho = absolute_path(arquivo)
+    return str(caminho) if caminho.is_file() else None
+
+
+@router.get("/rac.pdf", include_in_schema=False)
+def rac_pdf(
+    ocorrencia: str,
+    versao: int | None = None,
+    usuario: Usuario = Depends(require_permission("investigacao.visualizar")),
+    db: Session = Depends(get_session),
+):
+    """PDF do RAC. Versão aprovada vem do banco; as demais são geradas."""
+    from fastapi.responses import JSONResponse, Response
+
+    from app.modules.investigacao.ia_analise import historico
+    from app.modules.investigacao.rac_pdf import gerar_rac_pdf
+
+    numero = (ocorrencia or "").strip()
+    versoes = historico(db, usuario.empresa_id, numero)
+    if not versoes:
+        return JSONResponse(status_code=404, content={
+            "success": False, "message": "Nenhum relatório gerado para esta "
+            "ocorrência.", "data": None, "errors": ["sem análise"]})
+
+    alvo = next((v for v in versoes if v.versao == versao), versoes[0])
+    if alvo.pdf:                      # aprovado: documento imutável
+        conteudo = alvo.pdf
+    else:
+        service = InvestigacaoService(usuario.empresa_id)
+        conteudo = gerar_rac_pdf(service.dossie(db, numero),
+                                 logo_path=_logo(db, usuario.empresa_id))
+    nome = f"RAC_{numero}_v{alvo.versao}.pdf"
+    return Response(content=conteudo, media_type="application/pdf",
+                    headers={"Content-Disposition":
+                             f'inline; filename="{nome}"'})
+
+
+@router.get("/relatorios", include_in_schema=False)
+def relatorios(
+    request: Request,
+    usuario: Usuario = Depends(require_permission("investigacao.visualizar")),
+    db: Session = Depends(get_session),
+):
+    """Relatórios RAC gerados no sistema, com status e versões."""
+    from sqlalchemy import select
+
+    from app.modules.investigacao.models import AnaliseOcorrencia
+
+    status = request.query_params.get("status", "")
+    consulta = select(AnaliseOcorrencia).where(
+        AnaliseOcorrencia.empresa_id == usuario.empresa_id,
+        AnaliseOcorrencia.deleted_at.is_(None))
+    if status:
+        consulta = consulta.where(AnaliseOcorrencia.status == status)
+    registros = list(db.scalars(
+        consulta.order_by(AnaliseOcorrencia.ocorrencia.desc(),
+                          AnaliseOcorrencia.versao.desc())))
+
+    import json as _json
+    linhas = []
+    for r in registros:
+        try:
+            conteudo = _json.loads(r.resultado)
+        except (TypeError, ValueError):
+            conteudo = {}
+        linhas.append({
+            "id": r.id, "ocorrencia": r.ocorrencia, "versao": r.versao,
+            "status": r.status,
+            "titulo": (conteudo.get("dados_gerais") or {}).get(
+                "titulo_investigacao") or "—",
+            "gravidade": (conteudo.get("dados_gerais") or {}).get("gravidade"),
+            "provedor": r.provedor, "modelo": r.modelo,
+            "gerado_em": r.gerado_em.strftime("%d/%m/%Y %H:%M")
+                         if r.gerado_em else "",
+            "feedback": r.feedback,
+            "aprovado_em": r.aprovado_em.strftime("%d/%m/%Y %H:%M")
+                           if r.aprovado_em else None,
+            "aprovado_nome": r.aprovado_nome,
+            "tem_pdf": bool(r.pdf),
+        })
+    resumo = {
+        "total": len(registros),
+        "aprovados": sum(1 for x in linhas if x["status"] == "aprovado"),
+        "pendentes": sum(1 for x in linhas if x["status"] == "pendente"),
+        "ocorrencias": len({x["ocorrencia"] for x in linhas}),
+    }
+    return render(request, "investigacao/relatorios.html", usuario,
+                  page_title="Relatórios RAC", linhas=linhas, resumo=resumo,
+                  status=status)

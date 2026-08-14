@@ -515,10 +515,13 @@ def test_prompt_no_formato_rac():
     # escala da matriz e as duas avaliações de risco
     assert "1 (Raro) a 5 (Quase certo)" in prompt
     assert "risco residual" in prompt
-    for campo in ("dados_gerais", "cronologia", "fatores_contribuintes",
-                  "plano_acao", "risco_antes", "risco_depois",
-                  "informacoes_a_coletar"):
+    for campo in ("dados_gerais", "fatores_contribuintes", "plano_acao",
+                  "risco_antes", "risco_depois", "informacoes_a_coletar"):
         assert campo in prompt, campo
+    # a cronologia é montada pelo sistema; a IA só acrescenta o que o
+    # prontuário narrar
+    assert "eventos_do_prontuario" in prompt
+    assert '"cronologia"' not in prompt
 
 
 def test_pagina_renderiza_o_rac(monkeypatch):
@@ -589,3 +592,273 @@ def test_pagina_renderiza_o_rac(monkeypatch):
     # as sete categorias saem no formulário, marcadas ou não
     assert pagina.count("Não foi identificado.") >= 6
     assert "Manutenção, design e disponibilidade de equipamentos" in pagina
+
+
+def _mock_ia(monkeypatch, resposta=None):
+    """Configura a IA com um provedor falso que devolve `resposta`."""
+    import json
+
+    from app.core import ia
+    from app.core.config_service import set_config
+    from app.core.database import SessionLocal
+
+    padrao = {
+        "dados_gerais": {"titulo_investigacao": "Título RAC",
+                         "descricao_incidente": "Descrição",
+                         "gravidade": "Moderada",
+                         "nivel_investigacao": "Análise de Causa Raiz"},
+        "risco_antes": {"probabilidade": 3, "consequencia": 4,
+                        "probabilidade_rotulo": "Possível",
+                        "consequencia_rotulo": "Moderada",
+                        "justificativa": "j"},
+        "risco_depois": {"probabilidade": 2, "consequencia": 4,
+                         "probabilidade_rotulo": "Improvável",
+                         "consequencia_rotulo": "Moderada",
+                         "justificativa": "residual"},
+        "fatores_contribuintes": [], "conclusao": "Conclusão",
+        "plano_acao": [{"numero": 1, "acao": "Ação", "prazo": "curto",
+                        "tipo": "processo", "responsavel_sugerido": "NEP"}],
+        "informacoes_a_coletar": ["Relatos"], "lacunas_de_dados": [],
+    }
+    capturado = {}
+
+    def fake(db, prompt, sistema="", empresa_id=1, json_esperado=False):
+        capturado["prompt"] = prompt
+        return json.dumps(resposta or padrao)
+
+    monkeypatch.setattr(ia, "gerar", fake)
+    db = SessionLocal()
+    try:
+        set_config(db, ia.CONFIG_PROVEDOR, "ollama", empresa_id=1)
+        set_config(db, ia.CONFIG_MODELO, "teste", empresa_id=1)
+    finally:
+        db.close()
+    return capturado
+
+
+def _ocorrencia_para_rac() -> str:
+    service = InvestigacaoService(1)
+    casos = service.cruzamentos(service.opcoes()["dia_max"])["casos"]
+    return casos[0]["ocorrencia"] if casos else ""
+
+
+def test_cronologia_vem_das_marcacoes_nao_da_ia():
+    """Datas do relatório saem do vSky — a IA já errou o ano ao gerá-las."""
+    from app.core.database import SessionLocal
+
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+    db = SessionLocal()
+    try:
+        dossie = InvestigacaoService(1).dossie(db, numero)
+    finally:
+        db.close()
+
+    cronologia = dossie["cronologia"]
+    assert cronologia, "cronologia vazia"
+    marcados = {m["hora"] for m in dossie["investigacao"]["cadeia"]
+                if m["hora"]}
+    for evento in cronologia:
+        assert evento["quando"] in marcados      # horário real, não gerado
+        assert evento["origem"] == "marcação do sistema"
+    # o esquema da IA não pede mais cronologia
+    from app.modules.investigacao.ia_analise import ESQUEMA
+    assert '"cronologia"' not in ESQUEMA
+    assert "eventos_do_prontuario" in ESQUEMA
+
+
+def test_rac_em_pdf():
+    """PDF no layout do formulário, com cabeçalho e seções."""
+    import io
+
+    from pypdf import PdfReader
+
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.rac_pdf import gerar_rac_pdf
+
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+    db = SessionLocal()
+    try:
+        dossie = InvestigacaoService(1).dossie(db, numero)
+    finally:
+        db.close()
+
+    pdf = gerar_rac_pdf(dossie)
+    assert pdf.startswith(b"%PDF")
+    leitor = PdfReader(io.BytesIO(pdf))
+    assert len(leitor.pages) >= 2
+    texto = " ".join(" ".join((p.extract_text() or "").split())
+                     for p in leitor.pages)
+    for marca in ("FOR.SAMU.038", "DADOS GERAIS",
+                  "AVALIAÇÃO DO RISCO GERAL ANTES DA INVESTIGAÇÃO",
+                  "FATORES CONTRIBUINTES", "PLANO DE AÇÃO",
+                  "ANEXO — DADOS OPERACIONAIS APURADOS PELO SISTEMA"):
+        assert marca in texto, marca
+    # campos de apuração humana ficam em branco, não inventados
+    assert "Nome do Paciente:" in texto
+    assert "Time de Investigação:" in texto
+
+
+def test_aprovacao_registra_risco_da_equipe_e_guarda_pdf(monkeypatch):
+    """Aprovar grava status, risco da equipe e o PDF imutável no banco."""
+    from sqlalchemy import select
+
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import analisar, historico
+    from app.modules.investigacao.models import (STATUS_APROVADO,
+                                                 AnaliseOcorrencia)
+
+    _login()
+    _mock_ia(monkeypatch)
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+
+    db = SessionLocal()
+    try:
+        analisar(db, 1, InvestigacaoService(1).dossie(db, numero), "")
+    finally:
+        db.close()
+
+    resp = client.post("/investigacao/aprovar", data={
+        "ocorrencia": numero, "risco_pos_probabilidade": "2",
+        "risco_pos_consequencia": "4",
+        "risco_pos_justificativa": "Risco residual aceitável"})
+    assert resp.status_code == 200
+
+    db = SessionLocal()
+    try:
+        atual = historico(db, 1, numero)[0]
+        assert atual.status == STATUS_APROVADO
+        assert atual.aprovado_em is not None
+        assert atual.aprovado_nome
+        # risco registrado pela equipe, não o da IA
+        assert atual.risco_pos_probabilidade == 2
+        assert atual.risco_pos_consequencia == 4
+        assert atual.risco_pos_justificativa == "Risco residual aceitável"
+        # PDF do aprovado guardado no banco
+        assert atual.pdf and atual.pdf.startswith(b"%PDF")
+    finally:
+        db.close()
+
+    # a página passa a mostrar o risco da equipe e o PDF aprovado
+    pagina = client.get(f"/investigacao/?ocorrencia={numero}",
+                        headers={"accept": "text/html"}).text
+    assert "Risco registrado pela equipe" in pagina
+    assert "Abrir PDF aprovado" in pagina
+    # 2 × 4 = 8, moderado
+    assert "8 — risco moderado" in pagina
+
+
+def test_risco_pos_fora_da_escala_e_recusado(monkeypatch):
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import analisar, historico
+
+    _login()
+    _mock_ia(monkeypatch)
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+    db = SessionLocal()
+    try:
+        analisar(db, 1, InvestigacaoService(1).dossie(db, numero), "")
+    finally:
+        db.close()
+
+    client.post("/investigacao/aprovar", data={
+        "ocorrencia": numero, "risco_pos_probabilidade": "9",
+        "risco_pos_consequencia": "5", "risco_pos_justificativa": ""})
+    db = SessionLocal()
+    try:
+        atual = historico(db, 1, numero)[0]
+        # valores inválidos não entram; a aprovação em si vale
+        assert atual.risco_pos_probabilidade is None
+        assert atual.risco_pos_consequencia is None
+    finally:
+        db.close()
+
+
+def test_ajuste_gera_nova_versao_com_historico(monkeypatch):
+    """Reprovar com feedback cria versão nova que conhece as anteriores."""
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import analisar, historico
+    from app.modules.investigacao.models import STATUS_SUBSTITUIDO
+
+    _login()
+    capturado = _mock_ia(monkeypatch)
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+
+    db = SessionLocal()
+    try:
+        analisar(db, 1, InvestigacaoService(1).dossie(db, numero), "")
+        antes = historico(db, 1, numero)[0].versao
+    finally:
+        db.close()
+
+    client.post("/investigacao/ajustar", data={
+        "ocorrencia": numero, "feedback": "Faltou citar a indisponibilidade"})
+    client.post("/investigacao/ajustar", data={
+        "ocorrencia": numero, "feedback": "Plano de ação sem prazo"})
+
+    db = SessionLocal()
+    try:
+        versoes = historico(db, 1, numero)
+    finally:
+        db.close()
+
+    assert versoes[0].versao == antes + 2
+    assert versoes[0].feedback == "Plano de ação sem prazo"
+    assert versoes[1].status == STATUS_SUBSTITUIDO   # anterior preservada
+    # o prompt da última revisão levou o relatório anterior e o histórico
+    prompt = capturado["prompt"]
+    assert "# REVISÃO SOLICITADA" in prompt
+    assert "## Relatório anterior" in prompt
+    assert "Plano de ação sem prazo" in prompt
+    assert "Faltou citar a indisponibilidade" in prompt
+
+    # feedback vazio não gera versão
+    client.post("/investigacao/ajustar",
+                data={"ocorrencia": numero, "feedback": "   "})
+    db = SessionLocal()
+    try:
+        assert historico(db, 1, numero)[0].versao == antes + 2
+    finally:
+        db.close()
+
+
+def test_pagina_de_relatorios(monkeypatch):
+    _login()
+    _mock_ia(monkeypatch)
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import analisar
+
+    db = SessionLocal()
+    try:
+        analisar(db, 1, InvestigacaoService(1).dossie(db, numero), "")
+    finally:
+        db.close()
+
+    pagina = client.get("/investigacao/relatorios",
+                        headers={"accept": "text/html"})
+    assert pagina.status_code == 200
+    assert "Relatórios de Evento Adverso" in pagina.text
+    assert numero in pagina.text
+    assert "Título RAC" in pagina.text
+
+    # filtro por status
+    filtrado = client.get("/investigacao/relatorios?status=pendente",
+                          headers={"accept": "text/html"})
+    assert filtrado.status_code == 200
+    assert numero in filtrado.text
+
+    # o menu leva à página
+    home = client.get("/", headers={"accept": "text/html"})
+    assert "Relatórios RAC" in home.text

@@ -130,7 +130,7 @@
 </div>
 
 {# ---------------------------------------------------------- cronologia #}
-{% if a.cronologia %}
+{% if dossie.cronologia or a.eventos_do_prontuario %}
 <div class="border rounded-3 mb-3">
     <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase">
         Cronologia detalhada dos eventos
@@ -138,15 +138,30 @@
     <div class="table-responsive">
         <table class="table table-sm mb-0">
             <tbody>
-                {% for c in a.cronologia %}
+                {% for c in dossie.cronologia %}
                 <tr>
                     <td class="fw-semibold text-nowrap align-top"
                         style="width:190px;">{{ c.quando }}</td>
                     <td>{{ c.evento }}</td>
                 </tr>
                 {% endfor %}
+                {% for c in a.eventos_do_prontuario or [] %}
+                <tr>
+                    <td class="fw-semibold text-nowrap align-top">
+                        {{ c.quando or "—" }}
+                    </td>
+                    <td>
+                        {{ c.evento }}
+                        <span class="badge text-bg-light border">do prontuário</span>
+                    </td>
+                </tr>
+                {% endfor %}
             </tbody>
         </table>
+    </div>
+    <div class="px-3 py-1 form-text">
+        Horários vêm das marcações registradas no vSky — não são gerados
+        pela IA.
     </div>
 </div>
 {% endif %}
@@ -257,9 +272,30 @@
 <div class="border rounded-3 mb-3">
     <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase">
         Avaliação do risco geral pós investigação
-        <span class="text-muted">(risco residual esperado com o plano executado)</span>
+        <span class="text-muted">(risco residual com o plano executado)</span>
     </div>
-    <div class="p-3">{{ matriz(a.risco_depois, "Risco depois") }}</div>
+    <div class="p-3">
+        {% if a.risco_pos_registrado %}
+        <div class="alert alert-success py-2 small">
+            <i class="fa-solid fa-user-check me-1"></i>
+            Risco registrado pela equipe de investigação
+            {% if a.aprovado_nome %} — {{ a.aprovado_nome }}{% endif %}
+            {% if a.aprovado_em %} em {{ a.aprovado_em }}{% endif %}.
+        </div>
+        {{ matriz(a.risco_pos_registrado, "Risco pós investigação (equipe)") }}
+        <details class="mt-2">
+            <summary class="small text-muted">Ver a estimativa da IA</summary>
+            <div class="mt-2">{{ matriz(a.risco_depois, "Estimativa da IA") }}</div>
+        </details>
+        {% else %}
+        <div class="alert alert-secondary py-2 small">
+            <i class="fa-solid fa-circle-info me-1"></i>
+            Abaixo, a <strong>estimativa da IA</strong>. O risco oficial é
+            registrado pela equipe no momento da aprovação.
+        </div>
+        {{ matriz(a.risco_depois, "Estimativa da IA") }}
+        {% endif %}
+    </div>
 </div>
 
 {# -------------------------------------------- pendências da investigação #}
@@ -287,3 +323,172 @@
     {% endif %}
 </div>
 {% endif %}
+
+{# -------------------------------------------------- aprovação / ajuste #}
+<div class="border rounded-3 mt-3
+     {% if a.status == 'aprovado' %}border-success{% else %}border-warning{% endif %}">
+    <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase
+         d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span>Validação do relatório</span>
+        <span>
+            {% if a.status == 'aprovado' %}
+            <span class="badge text-bg-success">aprovado</span>
+            {% else %}
+            <span class="badge text-bg-warning">aguardando aprovação</span>
+            {% endif %}
+            <span class="badge text-bg-secondary">versão {{ a.versao }}</span>
+        </span>
+    </div>
+    <div class="p-3">
+        {% if a.status == 'aprovado' %}
+        <p class="mb-2">
+            <i class="fa-solid fa-circle-check text-success me-1"></i>
+            Aprovado por <strong>{{ a.aprovado_nome or "—" }}</strong>
+            em {{ a.aprovado_em or "—" }}. O PDF desta versão está guardado
+            no sistema e não muda mais.
+        </p>
+        <a class="btn btn-danger btn-sm"
+           href="/investigacao/rac.pdf?ocorrencia={{ investigacao.ocorrencia }}&versao={{ a.versao }}"
+           target="_blank">
+            <i class="fa-solid fa-file-pdf me-1"></i>Abrir PDF aprovado
+        </a>
+        {% else %}
+
+        {% if "investigacao.aprovar" in usuario_logado.permissoes %}
+        <form method="post" action="/investigacao/aprovar" class="mb-3">
+            <input type="hidden" name="ocorrencia"
+                   value="{{ investigacao.ocorrencia }}">
+            <div class="fw-semibold mb-2">
+                Aprovar o relatório — registre o risco pós investigação
+            </div>
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small mb-1"
+                           for="risco_pos_probabilidade">
+                        A — Probabilidade
+                    </label>
+                    <select class="form-select form-select-sm"
+                            id="risco_pos_probabilidade"
+                            name="risco_pos_probabilidade" required>
+                        <option value="">selecione…</option>
+                        {% for valor, nome, desc in probabilidades %}
+                        <option value="{{ valor }}" title="{{ desc }}"
+                            {% if a.risco_depois and a.risco_depois.probabilidade == valor %}selected{% endif %}>
+                            {{ valor }} — {{ nome }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1"
+                           for="risco_pos_consequencia">
+                        B — Consequência
+                    </label>
+                    <select class="form-select form-select-sm"
+                            id="risco_pos_consequencia"
+                            name="risco_pos_consequencia" required>
+                        <option value="">selecione…</option>
+                        {% for valor, nome, desc in consequencias %}
+                        <option value="{{ valor }}" title="{{ desc }}"
+                            {% if a.risco_depois and a.risco_depois.consequencia == valor %}selected{% endif %}>
+                            {{ valor }} — {{ nome }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small mb-1"
+                           for="risco_pos_justificativa">Justificativa</label>
+                    <input type="text" class="form-control form-control-sm"
+                           id="risco_pos_justificativa"
+                           name="risco_pos_justificativa"
+                           value="{{ (a.risco_depois and a.risco_depois.justificativa) or '' }}"
+                           placeholder="por que este risco residual">
+                </div>
+            </div>
+            <button class="btn btn-success btn-sm mt-2">
+                <i class="fa-solid fa-check me-1"></i>Aprovar relatório
+            </button>
+            <span class="form-text ms-2">
+                C = A × B é calculado pelo sistema. Ao aprovar, o PDF é
+                gerado e guardado.
+            </span>
+        </form>
+        <hr>
+        {% endif %}
+
+        <form method="post" action="/investigacao/ajustar">
+            <input type="hidden" name="ocorrencia"
+                   value="{{ investigacao.ocorrencia }}">
+            <label class="form-label fw-semibold" for="feedback">
+                Não aprovado? Descreva o que precisa ser ajustado
+            </label>
+            <textarea class="form-control" id="feedback" name="feedback"
+                      rows="3" required
+                      placeholder="Ex.: a conclusão não menciona a indisponibilidade das viaturas locais; o plano de ação precisa de prazo imediato para o item 2; a gravidade deveria ser Alto Potencial."></textarea>
+            <div class="form-text">
+                A nova versão considera este ajuste e todos os anteriores —
+                o relatório atual é preservado no histórico.
+            </div>
+            <button class="btn btn-warning btn-sm mt-2">
+                <i class="fa-solid fa-rotate me-1"></i>Gerar nova versão com os ajustes
+            </button>
+        </form>
+        {% endif %}
+
+        <div class="mt-3 d-flex gap-2 flex-wrap">
+            <a class="btn btn-outline-danger btn-sm"
+               href="/investigacao/rac.pdf?ocorrencia={{ investigacao.ocorrencia }}"
+               target="_blank">
+                <i class="fa-solid fa-file-pdf me-1"></i>Baixar PDF (versão atual)
+            </a>
+            <a class="btn btn-outline-secondary btn-sm"
+               href="/investigacao/relatorios">
+                <i class="fa-solid fa-list me-1"></i>Todos os relatórios
+            </a>
+        </div>
+
+        {% if dossie.versoes and dossie.versoes | length > 1 %}
+        <div class="mt-3">
+            <div class="fw-semibold small text-uppercase text-muted mb-1">
+                Histórico de versões
+            </div>
+            <table class="table table-sm align-middle mb-0">
+                <tbody>
+                    {% for v in dossie.versoes %}
+                    <tr>
+                        <td style="width:90px;">
+                            <span class="badge text-bg-secondary">v{{ v.versao }}</span>
+                        </td>
+                        <td style="width:150px;">{{ v.gerado_em }}</td>
+                        <td style="width:130px;">
+                            {% if v.status == 'aprovado' %}
+                            <span class="badge text-bg-success">aprovado</span>
+                            {% elif v.status == 'substituido' %}
+                            <span class="badge text-bg-light border">substituída</span>
+                            {% else %}
+                            <span class="badge text-bg-warning">pendente</span>
+                            {% endif %}
+                        </td>
+                        <td class="small text-muted">
+                            {% if v.feedback %}
+                            ajuste pedido: {{ v.feedback }}
+                            {% elif v.aprovado_nome %}
+                            aprovado por {{ v.aprovado_nome }}
+                            {% else %}versão inicial{% endif %}
+                        </td>
+                        <td style="width:60px;">
+                            <a class="btn btn-outline-secondary btn-sm py-0"
+                               target="_blank"
+                               href="/investigacao/rac.pdf?ocorrencia={{ investigacao.ocorrencia }}&versao={{ v.versao }}">
+                                PDF
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>

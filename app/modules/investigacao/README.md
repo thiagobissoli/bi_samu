@@ -118,6 +118,36 @@ inventar dados, exige declarar o que falta e orienta a analisar
 processo, não pessoas. O resultado é persistido
 (`investigacao_analises`) para não repetir a chamada a cada abertura.
 
+## PDF, aprovação e versões
+
+O RAC gera um **PDF no layout do formulário oficial**: cabeçalho
+repetido (logo da empresa, código, versão, elaboração), seções em faixa
+cinza, matriz 5×5 colorida com a célula destacada e as caixas de
+marcação dos fatores. Ao final, um **anexo com os dados operacionais
+apurados** — cadeia de marcações, decomposição do tempo, fatores do
+tempo de resposta e disponibilidade das viaturas —, que é a evidência
+sustentando a análise.
+
+A **cronologia sai das marcações do vSky**, não da IA: deixá-la a cargo
+do modelo já produziu datas erradas num documento que será assinado.
+
+### Fluxo de validação
+
+| Ação | O que acontece |
+|---|---|
+| **Aprovar** (permissão `investigacao.aprovar`) | A equipe registra o **risco pós-investigação** (A e B; C é calculado pelo sistema) e a versão passa a `aprovado`, com autor e data. O PDF é gerado e **guardado no banco**, ficando imutável |
+| **Solicitar ajuste** | O texto do que precisa mudar gera uma **nova versão**. O prompt leva o relatório anterior e **todos os ajustes já pedidos**, para o modelo corrigir sem reintroduzir problemas antigos. A versão anterior é preservada como `substituida` |
+
+O risco pós-investigação registrado pela equipe **prevalece** sobre a
+estimativa da IA, que fica recolhida como referência.
+
+## Página de relatórios
+
+Em **/investigacao/relatorios**: todos os RACs gerados, com contadores
+(aprovados, pendentes, ocorrências investigadas), filtro por status,
+histórico de versões com o ajuste pedido em cada uma, e link para o PDF
+de qualquer versão.
+
 ### Provedores
 
 Configuráveis em `/investigacao/config` (permissão

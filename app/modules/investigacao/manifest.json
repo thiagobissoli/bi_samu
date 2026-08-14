@@ -7,6 +7,7 @@
     ],
     "permissions": [
         "investigacao.visualizar",
+        "investigacao.aprovar",
         "investigacao.configurar"
     ],
     "menu": [
@@ -16,6 +17,13 @@
             "icon": "fa-magnifying-glass-chart",
             "permission": "investigacao.visualizar",
             "order": 24
+        },
+        {
+            "label": "Relatórios RAC",
+            "url": "/investigacao/relatorios",
+            "icon": "fa-file-shield",
+            "permission": "investigacao.visualizar",
+            "order": 25
         }
     ],
     "routes": [

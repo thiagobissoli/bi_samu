@@ -19,7 +19,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import ia
-from app.modules.investigacao.models import AnaliseOcorrencia
+from app.modules.investigacao.models import (STATUS_APROVADO,
+                                             STATUS_PENDENTE,
+                                             STATUS_SUBSTITUIDO,
+                                             AnaliseOcorrencia)
 
 SISTEMA = (
     "Você é analista do Núcleo de Segurança do Paciente de um SAMU 192 "
@@ -41,8 +44,12 @@ SISTEMA = (
     "4. Marque apenas os itens de fatores contribuintes que a lista "
     "fornecida contém, e apenas quando houver evidência no material. "
     "Categoria sem evidência recebe 'Não foi identificado.'.\n"
-    "5. Distinga o que é fato registrado do que é hipótese sua.\n"
-    "6. Responda SOMENTE com um objeto JSON válido, sem texto fora dele."
+    "5. NUNCA escreva datas ou horários que não estejam no material: a "
+    "cronologia oficial é montada pelo sistema a partir das marcações. Em "
+    "'eventos_do_prontuario' entram apenas fatos narrados no prontuário, "
+    "com o horário só quando ele estiver escrito lá.\n"
+    "6. Distinga o que é fato registrado do que é hipótese sua.\n"
+    "7. Responda SOMENTE com um objeto JSON válido, sem texto fora dele."
 )
 
 ESQUEMA = """{
@@ -60,8 +67,8 @@ ESQUEMA = """{
     "consequencia_rotulo": "Desprezível|Menor|Moderada|Maior|Catastrófica",
     "justificativa": "por que essa frequência e essa consequência"
   },
-  "cronologia": [
-    {"quando": "dd/mm/aaaa, às HHhMM", "evento": "o que aconteceu neste momento, com os dados registrados"}
+  "eventos_do_prontuario": [
+    {"quando": "horário APENAS se estiver escrito no prontuário", "evento": "fato relatado no prontuário que não aparece nas marcações do sistema"}
   ],
   "tempo_resposta": {
     "acima_da_meta": true,
@@ -293,14 +300,24 @@ def _lista_fatores() -> str:
 
 def analisar(db: Session, empresa_id: int, dossie: dict,
              texto_prontuario: str = "", anonimizar: bool = True,
-             nomes: list[str] | None = None) -> dict:
-    """Chama a IA e persiste o resultado. Levanta ia.IAError em falha."""
+             nomes: list[str] | None = None, feedback: str = "") -> dict:
+    """Gera uma versão do RAC e persiste. Levanta ia.IAError em falha.
+
+    Com `feedback`, produz uma NOVA versão a partir da anterior: o
+    histórico completo (relatório e ajustes já pedidos) vai no prompt,
+    para o modelo corrigir o que foi apontado sem desfazer o que já
+    estava aprovado pela equipe.
+    """
     cfg = ia.configuracao(db, empresa_id)
     texto = texto_prontuario or ""
     if texto and anonimizar:
         texto = ia.anonimizar_texto(texto, nomes)
 
+    numero = dossie["investigacao"]["ocorrencia"]
+    anteriores = historico(db, empresa_id, numero)
     prompt = montar_prompt(dossie, texto)
+    if feedback and anteriores:
+        prompt += "\n\n" + _bloco_revisao(anteriores, feedback)
     bruto = ia.gerar(db, prompt, SISTEMA, empresa_id, json_esperado=True)
     dados = ia.extrair_json(bruto)
     if dados is None:
@@ -312,28 +329,67 @@ def analisar(db: Session, empresa_id: int, dossie: dict,
             + "Modelos pequenos costumam falhar nisso — tente um modelo "
               "maior ou outro provedor.")
 
+    # Versões anteriores passam a "substituído" — o histórico permanece,
+    # mas a versão corrente é sempre a última.
+    for antiga in anteriores:
+        if antiga.status == STATUS_PENDENTE:
+            antiga.status = STATUS_SUBSTITUIDO
+
     registro = AnaliseOcorrencia(
-        empresa_id=empresa_id,
-        ocorrencia=dossie["investigacao"]["ocorrencia"],
+        empresa_id=empresa_id, ocorrencia=numero,
+        versao=(anteriores[0].versao + 1) if anteriores else 1,
+        status=STATUS_PENDENTE,
         provedor=cfg["provedor"], modelo=cfg["modelo"],
         anonimizado=bool(anonimizar), com_prontuario=bool(texto),
         resultado=json.dumps(dados, ensure_ascii=False)[:1_000_000],
-        bruto=bruto[:1_000_000],
+        bruto=bruto[:1_000_000], feedback=(feedback or None),
         gerado_em=datetime.now(timezone.utc))
     db.add(registro)
     db.commit()
     return _formatar(registro)
 
 
-def ultima_analise(db: Session, empresa_id: int, ocorrencia: str) -> dict | None:
-    """Análise mais recente já feita para a ocorrência (se houver)."""
-    registro = db.scalar(
+def historico(db: Session, empresa_id: int, ocorrencia: str
+              ) -> list[AnaliseOcorrencia]:
+    """Versões do relatório da ocorrência, da mais recente para a mais antiga."""
+    return list(db.scalars(
         select(AnaliseOcorrencia)
         .where(AnaliseOcorrencia.empresa_id == empresa_id,
                AnaliseOcorrencia.ocorrencia == ocorrencia,
                AnaliseOcorrencia.deleted_at.is_(None))
-        .order_by(AnaliseOcorrencia.id.desc()))
-    return _formatar(registro) if registro else None
+        .order_by(AnaliseOcorrencia.versao.desc())))
+
+
+def _bloco_revisao(anteriores: list[AnaliseOcorrencia], feedback: str) -> str:
+    """Relatório anterior + todos os ajustes já pedidos."""
+    ultimo = anteriores[0]
+    partes = [
+        "# REVISÃO SOLICITADA",
+        "A equipe de investigação analisou o relatório anterior e pediu "
+        "ajustes. Produza uma NOVA versão completa do relatório, no mesmo "
+        "formato JSON, corrigindo o que foi apontado e PRESERVANDO o que "
+        "não foi questionado. Não repita erros já corrigidos em revisões "
+        "anteriores.",
+        "",
+        f"## Relatório anterior (versão {ultimo.versao})",
+        ultimo.resultado[:20000],
+        "",
+        "## Ajuste pedido agora pela equipe",
+        feedback.strip(),
+    ]
+    passados = [a for a in anteriores if a.feedback]
+    if passados:
+        partes += ["", "## Ajustes já pedidos em revisões anteriores "
+                       "(não reintroduza esses problemas)"]
+        partes += [f"- versão {a.versao}: {a.feedback}" for a in
+                   reversed(passados)]
+    return "\n".join(partes)
+
+
+def ultima_analise(db: Session, empresa_id: int, ocorrencia: str) -> dict | None:
+    """Análise mais recente já feita para a ocorrência (se houver)."""
+    versoes = historico(db, empresa_id, ocorrencia)
+    return _formatar(versoes[0]) if versoes else None
 
 
 def _preparar_risco(risco: dict | None) -> dict | None:
@@ -377,14 +433,40 @@ def _preparar_fatores(fatores) -> list[dict]:
         marcados = [validos[str(m).strip().casefold()] for m in marcados
                     if str(m).strip().casefold() in validos]
         descricao = str(f.get("descricao") or "").strip()
+        if not descricao:
+            # "Não foi identificado." só cabe quando nada foi marcado —
+            # com item marcado seria contraditório no formulário.
+            descricao = ("Fator marcado, sem detalhamento na análise."
+                         if marcados else "Não foi identificado.")
         resultado.append({
             "categoria": categoria,
             "itens": [{"texto": i, "marcado": i in marcados}
                       for i in itens_validos],
             "tem_marcado": bool(marcados),
-            "descricao": descricao or "Não foi identificado.",
+            "descricao": descricao,
         })
     return resultado
+
+
+def cronologia_do_sistema(inv: dict) -> list[dict]:
+    """Cronologia factual, montada das marcações — não da IA.
+
+    Datas e horários são o núcleo probatório do relatório; deixá-los a
+    cargo do modelo já produziu datas erradas. Aqui saem exatamente as
+    marcações registradas no vSky.
+    """
+    eventos = []
+    for m in inv.get("cadeia") or []:
+        if not m.get("hora"):
+            continue
+        texto = m["rotulo"]
+        if m.get("papel"):
+            texto += f" — {m['papel']}"
+        if m.get("desde_anterior"):
+            texto += f" (+{m['desde_anterior']} da etapa anterior)"
+        eventos.append({"quando": m["hora"], "evento": texto,
+                        "origem": "marcação do sistema"})
+    return eventos
 
 
 def _formatar(registro: AnaliseOcorrencia) -> dict:
@@ -397,13 +479,43 @@ def _formatar(registro: AnaliseOcorrencia) -> dict:
             conteudo.get("fatores_contribuintes"))
         conteudo["risco_antes"] = _preparar_risco(conteudo.get("risco_antes"))
         conteudo["risco_depois"] = _preparar_risco(conteudo.get("risco_depois"))
+    # Risco pós-investigação registrado pela equipe prevalece sobre a
+    # estimativa da IA — é a avaliação institucional do documento.
+    registrado = None
+    if registro.risco_pos_probabilidade and registro.risco_pos_consequencia:
+        registrado = _preparar_risco({
+            "probabilidade": registro.risco_pos_probabilidade,
+            "consequencia": registro.risco_pos_consequencia,
+            "probabilidade_rotulo": _rotulo_probabilidade(
+                registro.risco_pos_probabilidade),
+            "consequencia_rotulo": _rotulo_consequencia(
+                registro.risco_pos_consequencia),
+            "justificativa": registro.risco_pos_justificativa or "",
+        })
     return {
         "id": registro.id,
+        "versao": registro.versao,
+        "status": registro.status,
+        "feedback": registro.feedback,
         "provedor": ia.PROVEDORES.get(registro.provedor, registro.provedor),
         "modelo": registro.modelo,
         "anonimizado": registro.anonimizado,
         "com_prontuario": registro.com_prontuario,
         "gerado_em": (registro.gerado_em.strftime("%d/%m/%Y %H:%M")
                       if registro.gerado_em else ""),
+        "aprovado_em": (registro.aprovado_em.strftime("%d/%m/%Y %H:%M")
+                        if registro.aprovado_em else None),
+        "aprovado_nome": registro.aprovado_nome,
+        "risco_pos_registrado": registrado,
         **conteudo,
     }
+
+
+def _rotulo_probabilidade(valor: int) -> str:
+    from app.modules.investigacao.constants import PROBABILIDADE
+    return next((n for v, n, _ in PROBABILIDADE if v == valor), "")
+
+
+def _rotulo_consequencia(valor: int) -> str:
+    from app.modules.investigacao.constants import CONSEQUENCIA
+    return next((n for v, n, _ in CONSEQUENCIA if v == valor), "")

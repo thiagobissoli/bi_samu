@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/investigacao/">Investigação de Eventos</a></li>
+<li class="breadcrumb-item active">Relatórios RAC</li>
+{% endblock %}
+
+{% block content %}
+<div class="row g-2 mb-3">
+    {% for rotulo, valor, cor in [
+        ("Relatórios gerados", resumo.total, "secondary"),
+        ("Aprovados", resumo.aprovados, "success"),
+        ("Aguardando aprovação", resumo.pendentes, "warning"),
+        ("Ocorrências investigadas", resumo.ocorrencias, "primary")] %}
+    <div class="col-6 col-lg-3">
+        <div class="card h-100">
+            <div class="card-body py-2 text-center">
+                <div class="fs-4 fw-bold text-{{ cor }}">{{ valor }}</div>
+                <div class="small text-muted">{{ rotulo }}</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="card">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-solid fa-file-shield me-2"></i>
+            Relatórios de Evento Adverso (RAC · FOR.SAMU.038)
+        </h3>
+        <form method="get" class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" name="status"
+                    onchange="this.form.submit()">
+                <option value="">Todos os status</option>
+                <option value="aprovado" {% if status == "aprovado" %}selected{% endif %}>
+                    Aprovados
+                </option>
+                <option value="pendente" {% if status == "pendente" %}selected{% endif %}>
+                    Aguardando aprovação
+                </option>
+                <option value="substituido" {% if status == "substituido" %}selected{% endif %}>
+                    Substituídas
+                </option>
+            </select>
+        </form>
+    </div>
+    <div class="card-body p-0">
+        {% if linhas %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Ocorrência</th><th>Versão</th><th>Status</th>
+                        <th>Título da investigação</th><th>Gravidade</th>
+                        <th>Gerado em</th><th>Aprovação</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in linhas %}
+                    <tr>
+                        <td class="fw-semibold">{{ r.ocorrencia }}</td>
+                        <td><span class="badge text-bg-secondary">v{{ r.versao }}</span></td>
+                        <td>
+                            {% if r.status == "aprovado" %}
+                            <span class="badge text-bg-success">aprovado</span>
+                            {% elif r.status == "substituido" %}
+                            <span class="badge text-bg-light border">substituída</span>
+                            {% else %}
+                            <span class="badge text-bg-warning">pendente</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ r.titulo }}
+                            {% if r.feedback %}
+                            <div class="small text-muted">
+                                <i class="fa-solid fa-rotate me-1"></i>
+                                ajuste pedido: {{ r.feedback | truncate(110) }}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td class="small">{{ r.gravidade or "—" }}</td>
+                        <td class="small">
+                            {{ r.gerado_em }}
+                            <div class="text-muted">{{ r.provedor }} · {{ r.modelo }}</div>
+                        </td>
+                        <td class="small">
+                            {% if r.aprovado_em %}
+                            {{ r.aprovado_nome }}<div class="text-muted">{{ r.aprovado_em }}</div>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="text-nowrap">
+                            <a class="btn btn-outline-danger btn-sm py-0"
+                               target="_blank"
+                               href="/investigacao/rac.pdf?ocorrencia={{ r.ocorrencia }}&versao={{ r.versao }}">
+                                PDF
+                            </a>
+                            <a class="btn btn-outline-primary btn-sm py-0"
+                               href="/investigacao/?ocorrencia={{ r.ocorrencia }}">
+                                Abrir
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-3 text-muted">
+            Nenhum relatório {% if status %}com esse status{% endif %} ainda.
+            Investigue uma ocorrência em
+            <a href="/investigacao/">Investigação de Eventos</a> e gere a
+            análise.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
