@@ -378,3 +378,46 @@ def test_limpeza_de_vazios_independe_da_versao_do_pandas():
     serie = pd.Series(["", "---", "ok"], dtype="str")
     assert (pd.api.types.is_string_dtype(serie)
             or serie.dtype == object), "checagem de dtype não cobre este pandas"
+
+
+def test_p4_1_mostra_a_memoria_de_calculo():
+    """O P4.1 exibido tem de fechar com os horários mostrados na tela.
+
+    O valor já vem com o desconto do atraso de transmissão; sem declarar
+    o bruto e o desconto, quem confere pela cadeia do chamado encontra
+    uma diferença inexplicada.
+    """
+    import pandas as pd
+
+    from app.modules.indicadores import nucleo
+    from app.modules.indicadores.ocorrencia import (indicadores_da_ocorrencia,
+                                                    mmss)
+
+    df = nucleo.carregar(1)
+    desconto = nucleo.desconto_p41()
+    validos = df[df["dt_inicio_deslocamento"].notna()
+                 & df["dt_data_controlador"].notna()]
+    bruto = (validos["dt_inicio_deslocamento"]
+             - validos["dt_data_controlador"]).dt.total_seconds()
+
+    # caso comum: bruto acima do desconto
+    normal = validos[bruto > desconto + 60]
+    if not normal.empty:
+        r = normal.iloc[0]
+        item = next(i for i in indicadores_da_ocorrencia(1, int(r["id"]))
+                    if i["rotulo"].startswith("P4.1"))
+        b = (r["dt_inicio_deslocamento"]
+             - r["dt_data_controlador"]).total_seconds()
+        assert mmss(b) in item["sub"], item["sub"]
+        assert mmss(desconto) in item["sub"]
+        # o valor exibido é exatamente bruto − desconto
+        assert item["valor"] == mmss(b - desconto)
+
+    # caso do piso: bruto menor que o desconto
+    curto = validos[(bruto > 0) & (bruto < desconto)]
+    if not curto.empty:
+        r = curto.iloc[0]
+        item = next(i for i in indicadores_da_ocorrencia(1, int(r["id"]))
+                    if i["rotulo"].startswith("P4.1"))
+        assert "piso" in item["sub"], item["sub"]
+        assert item["valor"] == "00:01"

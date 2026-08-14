@@ -75,8 +75,10 @@ def indicadores_da_linha(r) -> list[dict]:
           SLA_P2_POR_COR.get(cor))
     tempo("t_p3", "P3 · Despacho", "controlador − regulador")
     tempo("t_p4", "P4 · Tempo de chegada", "chegada − controlador")
-    tempo("t_p4_1", "P4.1 · Saída de base", "início desloc. − controlador",
-          META_P4_1)
+    # O P4.1 exibido já vem com o desconto do atraso de transmissão
+    # (GPS/rede). Sem dizer isso, o valor não fecha com os horários que a
+    # própria tela mostra na cadeia do chamado.
+    tempo("t_p4_1", "P4.1 · Saída de base", _sub_p4_1(r), META_P4_1)
     tempo("t_p4_2", "P4.2 · Deslocamento", "chegada − início desloc.")
     tempo("t_p5_6_7", "P5-7 · Tempo de cena", "saída p/ hospital − chegada")
     tempo("t_p8", "P8 · Transporte", "chegada hospital − saída p/ hospital")
@@ -114,3 +116,25 @@ def indicadores_da_linha(r) -> list[dict]:
     if bool(r.get("obito_constatado")):
         add("Óbito", "Constatado", "", "ruim")
     return itens
+
+
+def _sub_p4_1(r) -> str:
+    """Explica o P4.1: bruto, desconto aplicado e piso, quando houver.
+
+    O valor mostrado é o ajustado; sem esta memória de cálculo ele não
+    bate com a diferença entre os horários exibidos na cadeia do chamado.
+    """
+    from app.modules.indicadores import nucleo
+
+    base = "início desloc. − controlador"
+    inicio, controlador = r.get("dt_inicio_deslocamento"), r.get("dt_data_controlador")
+    if pd.isna(inicio) or pd.isna(controlador):
+        return base
+    bruto = (inicio - controlador).total_seconds()
+    desconto = nucleo.desconto_p41()
+    if bruto <= 0 or not desconto:
+        return base
+    texto = f"{base} = {mmss(bruto)} − {mmss(desconto)} de transmissão"
+    if bruto - desconto < 1:
+        texto += " (piso de 00:01)"
+    return texto
