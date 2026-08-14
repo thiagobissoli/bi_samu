@@ -43,7 +43,10 @@ MODELOS_SUGERIDOS = {
     "ollama": "llama3.1",
 }
 OLLAMA_PADRAO = "http://localhost:11434"
-TIMEOUT = 180.0
+CONFIG_TIMEOUT = "ia_timeout"
+# Um relatório RAC completo é uma geração longa; modelos locais costumam
+# levar vários minutos. Ajustável em Configuração da IA.
+TIMEOUT = 600.0
 
 
 class IAError(RuntimeError):
@@ -57,10 +60,16 @@ def configuracao(db: Session, empresa_id: int = 1) -> dict:
     chave = get_config(db, CONFIG_API_KEY, empresa_id=empresa_id)
     base_url = (get_config(db, CONFIG_BASE_URL, empresa_id=empresa_id)
                 or OLLAMA_PADRAO).strip()
+    try:
+        timeout = float(get_config(db, CONFIG_TIMEOUT, empresa_id=empresa_id)
+                        or TIMEOUT)
+    except ValueError:
+        timeout = TIMEOUT
     return {
         "provedor": provedor,
         "modelo": modelo or MODELOS_SUGERIDOS.get(provedor, ""),
         "base_url": base_url,
+        "timeout": max(timeout, 30.0),
         "chave_definida": bool(chave),
         "local": provedor == "ollama",
         # ollama não exige chave; os demais sim
@@ -88,8 +97,9 @@ def gerar(db: Session, prompt: str, sistema: str = "",
         if cfg["provedor"] == "ollama":
             return _ollama(cfg, prompt, sistema, json_esperado)
     except httpx.TimeoutException as exc:
-        raise IAError(f"O provedor não respondeu em {int(TIMEOUT)}s. "
-                      "Tente um modelo menor ou aumente o tempo.") from exc
+        raise IAError(f"O provedor não respondeu em {int(cfg['timeout'])}s. "
+                      "Tente um modelo menor ou aumente o tempo limite em "
+                      "Configuração da IA.") from exc
     except httpx.HTTPStatusError as exc:
         raise IAError(_erro_http(exc)) from exc
     except httpx.HTTPError as exc:
@@ -125,7 +135,7 @@ def _openai(cfg: dict, chave: str, prompt: str, sistema: str,
     }
     if json_esperado:
         corpo["response_format"] = {"type": "json_object"}
-    with httpx.Client(timeout=TIMEOUT) as http:
+    with httpx.Client(timeout=cfg["timeout"]) as http:
         resp = http.post("https://api.openai.com/v1/chat/completions",
                          json=corpo,
                          headers={"Authorization": f"Bearer {chave}"})
@@ -141,7 +151,7 @@ def _anthropic(cfg: dict, chave: str, prompt: str, sistema: str) -> str:
     }
     if sistema:
         corpo["system"] = sistema
-    with httpx.Client(timeout=TIMEOUT) as http:
+    with httpx.Client(timeout=cfg["timeout"]) as http:
         resp = http.post("https://api.anthropic.com/v1/messages", json=corpo,
                          headers={"x-api-key": chave,
                                   "anthropic-version": "2023-06-01"})
@@ -162,7 +172,7 @@ def _ollama(cfg: dict, prompt: str, sistema: str, json_esperado: bool) -> str:
     if json_esperado:
         corpo["format"] = "json"
     base = cfg["base_url"].rstrip("/")
-    with httpx.Client(timeout=TIMEOUT) as http:
+    with httpx.Client(timeout=cfg["timeout"]) as http:
         resp = http.post(f"{base}/api/generate", json=corpo)
         resp.raise_for_status()
         dados = resp.json()

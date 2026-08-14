@@ -47,6 +47,9 @@ def index(
     if investigacao and not investigacao.get("erro") and not p["dia"]:
         dia = investigacao["dia"]
 
+    from app.modules.investigacao.constants import (CONSEQUENCIA, GRAVIDADES,
+                                                    PROBABILIDADE)
+
     return render(
         request, "investigacao/index.html", usuario,
         page_title="Investigação de Eventos",
@@ -55,6 +58,9 @@ def index(
         investigacao=investigacao, dossie=dossie,
         ia_config=ia.configuracao(db, usuario.empresa_id),
         erro_ia=request.query_params.get("erro_ia"),
+        # escalas do formulário FOR.SAMU.038, para desenhar a matriz
+        probabilidades=PROBABILIDADE, consequencias=CONSEQUENCIA,
+        gravidades=GRAVIDADES,
         opcoes=opcoes, filtros={**p, "dia": dia})
 
 

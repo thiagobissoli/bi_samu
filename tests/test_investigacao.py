@@ -431,3 +431,161 @@ def test_prompt_de_chamado_sem_viatura_muda_o_foco():
     # não pede análise de tempo de resposta para quem não teve viatura
     assert "meta de 10 minutos" not in prompt
     assert "Não avalie tempo de resposta" in prompt
+
+
+def test_matriz_de_risco_do_formulario():
+    """C = A × B e as faixas de cor do FOR.SAMU.038."""
+    from app.modules.investigacao.constants import (CONSEQUENCIA,
+                                                    PROBABILIDADE,
+                                                    nivel_de_risco)
+    from app.modules.investigacao.ia_analise import _preparar_risco
+
+    assert [p for p, _, _ in PROBABILIDADE] == [5, 4, 3, 2, 1]
+    assert [c for c, _, _ in CONSEQUENCIA] == [16, 8, 4, 2, 1]
+    # faixas conferidas contra os valores impressos no formulário
+    assert nivel_de_risco(64)[0] == "Extremo"
+    assert nivel_de_risco(20)[0] == "Extremo"
+    assert nivel_de_risco(16)[0] == "Elevado"
+    assert nivel_de_risco(10)[0] == "Elevado"
+    assert nivel_de_risco(8)[0] == "Moderado"
+    assert nivel_de_risco(4)[0] == "Moderado"
+    assert nivel_de_risco(3)[0] == "Baixo"
+
+    # o produto é recalculado no servidor, não aceito da IA
+    risco = _preparar_risco({"probabilidade": 4, "consequencia": 16,
+                             "classificacao": 999})
+    assert risco["classificacao"] == 64
+    assert risco["nivel"] == "Extremo"
+    # combinações fora da escala do formulário são recusadas
+    assert _preparar_risco({"probabilidade": 9, "consequencia": 16}) is None
+    assert _preparar_risco({"probabilidade": 3, "consequencia": 5}) is None
+    assert _preparar_risco(None) is None
+
+
+def test_fatores_contribuintes_seguem_a_lista_do_formulario():
+    """As 7 categorias sempre aparecem; item inventado é descartado."""
+    from app.modules.investigacao.constants import FATORES_CONTRIBUINTES
+    from app.modules.investigacao.ia_analise import _preparar_fatores
+
+    resposta_da_ia = [
+        {"categoria": "Fatores do Paciente",
+         "itens": ["Condição (complexidade e gravidade)",
+                   "Item que não existe no formulário"],
+         "descricao": "paciente grave"},
+        {"categoria": "Categoria inventada", "itens": ["x"], "descricao": "y"},
+    ]
+    fatores = _preparar_fatores(resposta_da_ia)
+
+    assert len(fatores) == len(FATORES_CONTRIBUINTES) == 7
+    assert [f["categoria"] for f in fatores] == [c for c, _ in FATORES_CONTRIBUINTES]
+
+    paciente = fatores[0]
+    marcados = [i["texto"] for i in paciente["itens"] if i["marcado"]]
+    assert marcados == ["Condição (complexidade e gravidade)"]
+    assert paciente["tem_marcado"] is True
+    assert paciente["descricao"] == "paciente grave"
+
+    # categoria sem evidência recebe o texto padrão do formulário
+    vazia = fatores[1]
+    assert vazia["tem_marcado"] is False
+    assert vazia["descricao"] == "Não foi identificado."
+    assert all(not i["marcado"] for i in vazia["itens"])
+
+
+def test_prompt_no_formato_rac():
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import montar_prompt
+
+    service = InvestigacaoService(1)
+    casos = service.cruzamentos(service.opcoes()["dia_max"])["casos"]
+    if not casos:
+        return
+    db = SessionLocal()
+    try:
+        prompt = montar_prompt(service.dossie(db, casos[0]["ocorrencia"]), "")
+    finally:
+        db.close()
+
+    assert "FOR.SAMU.038" in prompt
+    assert "Protocolo de Londres" in prompt
+    # a lista fechada de fatores vai no prompt
+    for categoria in ("Fatores do Paciente", "Fatores da Tarefa e Tecnologia",
+                      "Fatores do Contexto Institucional"):
+        assert categoria in prompt, categoria
+    # escala da matriz e as duas avaliações de risco
+    assert "1 (Raro) a 5 (Quase certo)" in prompt
+    assert "risco residual" in prompt
+    for campo in ("dados_gerais", "cronologia", "fatores_contribuintes",
+                  "plano_acao", "risco_antes", "risco_depois",
+                  "informacoes_a_coletar"):
+        assert campo in prompt, campo
+
+
+def test_pagina_renderiza_o_rac(monkeypatch):
+    """Com análise gravada, a página mostra o formulário completo."""
+    import json
+
+    from app.core import ia
+    from app.core.config_service import set_config
+    from app.core.database import SessionLocal
+
+    from app.modules.investigacao.ia_analise import analisar
+
+    _login()
+    service = InvestigacaoService(1)
+    casos = service.cruzamentos(service.opcoes()["dia_max"])["casos"]
+    if not casos:
+        return
+    numero = casos[0]["ocorrencia"]
+
+    resposta = {
+        "dados_gerais": {"titulo_investigacao": "Título de teste",
+                         "descricao_incidente": "Descrição de teste",
+                         "gravidade": "Moderada",
+                         "gravidade_justificativa": "just",
+                         "nivel_investigacao": "Análise de Causa Raiz"},
+        "risco_antes": {"probabilidade": 4, "probabilidade_rotulo": "Provável",
+                        "consequencia": 16,
+                        "consequencia_rotulo": "Catastrófica",
+                        "justificativa": "j"},
+        "risco_depois": {"probabilidade": 2,
+                         "probabilidade_rotulo": "Improvável",
+                         "consequencia": 16,
+                         "consequencia_rotulo": "Catastrófica",
+                         "justificativa": "j2"},
+        "cronologia": [{"quando": "11/08/2026, às 07h22", "evento": "abertura"}],
+        "fatores_contribuintes": [
+            {"categoria": "Fatores do Ambiente de Trabalho",
+             "itens": ["Manutenção, design e disponibilidade de equipamentos"],
+             "descricao": "descrição do fator"}],
+        "conclusao": "Conclusão de teste",
+        "plano_acao": [{"numero": 1, "acao": "Ação de teste",
+                        "tipo": "processo", "prazo": "curto",
+                        "responsavel_sugerido": "NEP"}],
+        "informacoes_a_coletar": ["Relato dos envolvidos"],
+        "lacunas_de_dados": ["marcação ausente"],
+    }
+    monkeypatch.setattr(ia, "gerar",
+                        lambda *a, **k: json.dumps(resposta))
+
+    db = SessionLocal()
+    try:
+        set_config(db, ia.CONFIG_PROVEDOR, "ollama", empresa_id=1)
+        set_config(db, ia.CONFIG_MODELO, "teste", empresa_id=1)
+        analisar(db, 1, service.dossie(db, numero), "", anonimizar=True)
+    finally:
+        db.close()
+
+    pagina = client.get(f"/investigacao/?ocorrencia={numero}",
+                        headers={"accept": "text/html"}).text
+    assert "FOR.SAMU.038" in pagina
+    assert "Título de teste" in pagina
+    assert "Conclusão de teste" in pagina
+    assert "Ação de teste" in pagina
+    assert "Relato dos envolvidos" in pagina
+    # matriz: 64 antes (extremo) e 32 depois, ambos na escala do formulário
+    assert "64 — risco extremo" in pagina
+    assert "32 — risco extremo" in pagina
+    # as sete categorias saem no formulário, marcadas ou não
+    assert pagina.count("Não foi identificado.") >= 6
+    assert "Manutenção, design e disponibilidade de equipamentos" in pagina

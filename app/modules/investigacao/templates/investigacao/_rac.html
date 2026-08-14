@@ -1,0 +1,289 @@
+{# Relatório de Evento Adverso com Investigação de Causa Raiz (RAC),
+   no formato do formulário FOR.SAMU.038. Recebe `a` (análise da IA). #}
+
+{% macro matriz(risco, titulo) %}
+<div class="mb-3">
+    <div class="fw-semibold small text-uppercase text-muted mb-1">{{ titulo }}</div>
+    {% if risco %}
+    <div class="table-responsive">
+        <table class="table table-bordered table-sm text-center mb-2"
+               style="font-size:.72rem;">
+            <thead>
+                <tr>
+                    <th rowspan="2" class="align-middle" style="width:110px;">
+                        PROBABILIDADE
+                    </th>
+                    <th colspan="5">CONSEQUÊNCIA</th>
+                </tr>
+                <tr>
+                    {% for valor, nome, _ in consequencias %}
+                    <th>{{ nome }}<br><span class="text-muted">({{ valor }})</span></th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for p, pnome, _ in probabilidades %}
+                <tr>
+                    <th class="text-start align-middle">
+                        {{ pnome }} <span class="text-muted">({{ p }})</span>
+                    </th>
+                    {% for c, cnome, _ in consequencias %}
+                    {% set pontos = p * c %}
+                    {% set aqui = risco.probabilidade == p and risco.consequencia == c %}
+                    <td style="background: {% if pontos >= 20 %}#e74c3c
+                               {% elif pontos >= 10 %}#e67e22
+                               {% elif pontos >= 4 %}#f4d03f
+                               {% else %}#a9d18e{% endif %};
+                               {% if aqui %}outline:3px solid #111; font-weight:700;{% endif %}
+                               color:#111;">
+                        {{ pontos }}{% if aqui %} ◀{% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <table class="table table-bordered table-sm text-center mb-1"
+           style="font-size:.74rem;">
+        <thead>
+            <tr>
+                <th>A — Probabilidade (1 a 5)</th>
+                <th>B — Consequência (1 a 16)</th>
+                <th>C — Classificação (A × B)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ risco.probabilidade }} · {{ risco.probabilidade_rotulo }}</td>
+                <td>{{ risco.consequencia }} · {{ risco.consequencia_rotulo }}</td>
+                <td class="fw-bold text-white"
+                    style="background: {% if risco.classificacao >= 20 %}#e74c3c
+                           {% elif risco.classificacao >= 10 %}#e67e22
+                           {% elif risco.classificacao >= 4 %}#f4d03f
+                           {% else %}#a9d18e{% endif %}; color:#111 !important;">
+                    {{ risco.classificacao }} — risco {{ risco.nivel | lower }}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    {% if risco.justificativa %}
+    <div class="small text-muted">{{ risco.justificativa }}</div>
+    {% endif %}
+    {% else %}
+    <div class="text-muted small">Não avaliado.</div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# ------------------------------------------------------- dados gerais #}
+{% if a.dados_gerais %}
+{% set g = a.dados_gerais %}
+<div class="border rounded-3 mb-3">
+    <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase">
+        Dados gerais
+    </div>
+    <div class="p-3">
+        <dl class="row mb-0 small">
+            <dt class="col-sm-3">Título da investigação</dt>
+            <dd class="col-sm-9">{{ g.titulo_investigacao or "—" }}</dd>
+            <dt class="col-sm-3">Descrição do incidente</dt>
+            <dd class="col-sm-9">{{ g.descricao_incidente or "—" }}</dd>
+            <dt class="col-sm-3">Gravidade</dt>
+            <dd class="col-sm-9">
+                {% for nivel in gravidades %}
+                <span class="me-2">
+                    {{ nivel }} ({% if g.gravidade == nivel %}X{% else %}&nbsp;&nbsp;{% endif %})
+                </span>
+                {% endfor %}
+                {% if g.gravidade_justificativa %}
+                <div class="text-muted">{{ g.gravidade_justificativa }}</div>
+                {% endif %}
+            </dd>
+            <dt class="col-sm-3">Data do incidente</dt>
+            <dd class="col-sm-9">{{ investigacao.momento }}</dd>
+            <dt class="col-sm-3">Local e horário</dt>
+            <dd class="col-sm-9">
+                {{ investigacao.unidade or "—" }}
+                {% if investigacao.cidade %} · {{ investigacao.cidade }}{% endif %}
+            </dd>
+            <dt class="col-sm-3">ID da ocorrência</dt>
+            <dd class="col-sm-9">{{ investigacao.ocorrencia }}</dd>
+            <dt class="col-sm-3">Nível de investigação</dt>
+            <dd class="col-sm-9">{{ g.nivel_investigacao or "Análise de Causa Raiz" }}</dd>
+        </dl>
+        <div class="form-text mt-2">
+            Data e código da notificação, nome do paciente e time de
+            investigação são preenchidos pela equipe — não constam do
+            registro operacional.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ------------------------------------------------------- risco (antes) #}
+<div class="border rounded-3 mb-3">
+    <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase">
+        Avaliação do risco geral antes da investigação
+    </div>
+    <div class="p-3">{{ matriz(a.risco_antes, "Risco antes") }}</div>
+</div>
+
+{# ---------------------------------------------------------- cronologia #}
+{% if a.cronologia %}
+<div class="border rounded-3 mb-3">
+    <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase">
+        Cronologia detalhada dos eventos
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <tbody>
+                {% for c in a.cronologia %}
+                <tr>
+                    <td class="fw-semibold text-nowrap align-top"
+                        style="width:190px;">{{ c.quando }}</td>
+                    <td>{{ c.evento }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{# ------------------------------------------------ fatores contribuintes #}
+{% if a.fatores_contribuintes %}
+<div class="border rounded-3 mb-3">
+    <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase">
+        Fatores contribuintes <span class="text-muted">(Protocolo de Londres)</span>
+    </div>
+    <div class="p-0">
+        {% for f in a.fatores_contribuintes %}
+        <div class="border-top p-3 {% if f.tem_marcado %}bg-body-tertiary{% endif %}">
+            <div class="row g-2">
+                <div class="col-md-4 fw-semibold">{{ f.categoria }}</div>
+                <div class="col-md-8">
+                    {% for i in f.itens %}
+                    <div class="small">
+                        ({% if i.marcado %}<strong>X</strong>{% else %}&nbsp;&nbsp;{% endif %})
+                        {{ i.texto }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="small mt-2 {% if not f.tem_marcado %}text-muted{% endif %}">
+                {{ f.descricao }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{# ------------------------------------------------------------ Ishikawa #}
+{% if a.ishikawa and a.ishikawa.espinhas %}
+<div class="border rounded-3 mb-3">
+    <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase">
+        Diagrama de Ishikawa (6M)
+    </div>
+    <div class="p-3">
+        {% if a.ishikawa.efeito %}
+        <p class="mb-2"><strong>Efeito:</strong> {{ a.ishikawa.efeito }}</p>
+        {% endif %}
+        <div class="row g-2">
+            {% for esp in a.ishikawa.espinhas %}
+            <div class="col-md-4">
+                <div class="border rounded-3 p-2 h-100">
+                    <div class="fw-semibold small">{{ esp.categoria }}</div>
+                    <ul class="mb-0 small">
+                        {% for c in esp.causas %}<li>{{ c }}</li>{% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ----------------------------------------------------------- conclusão #}
+{% if a.conclusao %}
+<div class="border rounded-3 mb-3">
+    <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase">
+        Conclusão
+    </div>
+    <div class="p-3">{{ a.conclusao }}</div>
+</div>
+{% endif %}
+
+{# ------------------------------------------------------- plano de ação #}
+{% if a.plano_acao %}
+<div class="border rounded-3 mb-3">
+    <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase">
+        Plano de ação
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th style="width:40px;">#</th><th>Ação</th>
+                    <th>Prazo</th><th>Tipo</th><th>Responsável sugerido</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for x in a.plano_acao %}
+                <tr>
+                    <td>{{ x.numero or loop.index }}</td>
+                    <td>{{ x.acao }}</td>
+                    <td>
+                        <span class="badge
+                            {% if x.prazo == 'imediato' %}text-bg-danger
+                            {% elif x.prazo == 'curto' %}text-bg-warning
+                            {% else %}text-bg-secondary{% endif %}">
+                            {{ x.prazo }}
+                        </span>
+                    </td>
+                    <td class="small">{{ x.tipo }}</td>
+                    <td class="small">{{ x.responsavel_sugerido }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{# ------------------------------------------------------- risco (depois) #}
+<div class="border rounded-3 mb-3">
+    <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase">
+        Avaliação do risco geral pós investigação
+        <span class="text-muted">(risco residual esperado com o plano executado)</span>
+    </div>
+    <div class="p-3">{{ matriz(a.risco_depois, "Risco depois") }}</div>
+</div>
+
+{# -------------------------------------------- pendências da investigação #}
+{% if a.informacoes_a_coletar or a.lacunas_de_dados %}
+<div class="row g-3">
+    {% if a.informacoes_a_coletar %}
+    <div class="col-md-6">
+        <div class="alert alert-primary mb-0 h-100">
+            <strong>A coletar pela equipe de investigação</strong>
+            <ul class="mb-0 small">
+                {% for x in a.informacoes_a_coletar %}<li>{{ x }}</li>{% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+    {% if a.lacunas_de_dados %}
+    <div class="col-md-6">
+        <div class="alert alert-secondary mb-0 h-100">
+            <strong>Lacunas no registro que limitam a análise</strong>
+            <ul class="mb-0 small">
+                {% for x in a.lacunas_de_dados %}<li>{{ x }}</li>{% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}

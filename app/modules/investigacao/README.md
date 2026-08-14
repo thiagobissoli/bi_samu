@@ -88,21 +88,35 @@ O vSky não registra rota nem condição de tráfego. O que o sistema pode
 afirmar é a comparação com o histórico do próprio serviço — e é isso que
 ele afirma, nada além.
 
-## Análise por IA
+## Análise por IA — formulário RAC
 
-Três instrumentos numa única chamada, com saída em JSON:
+A saída segue o **FOR.SAMU.038 — Relatório de Evento Adverso com
+Investigação de Causa Raiz**, na mesma ordem do formulário oficial:
 
-- **Protocolo de Londres** — incidente, falhas ativas, fatores
-  contribuintes por categoria (com a evidência que os sustenta),
-  barreiras que falharam e recomendações com prazo e tipo;
-- **Diagrama de Ishikawa** — efeito e causas prováveis pelos 6M;
-- **Matriz de risco** — probabilidade × impacto, nível e mitigações.
+1. **Dados gerais** — título, descrição do incidente, gravidade
+   (Leve/Moderada/Grave/Óbito/Alto Potencial), local, ID e nível de
+   investigação;
+2. **Avaliação do risco antes** — matriz 5×5 do formulário, com a célula
+   escolhida destacada. C = A × B é **recalculado no servidor**: o valor
+   que a IA declara não é aceito, e combinação fora da escala é recusada;
+3. **Cronologia detalhada dos eventos**;
+4. **Fatores contribuintes (Protocolo de Londres)** — as sete categorias
+   sempre aparecem, com os itens exatos do formulário em caixas de
+   marcação. Item que não exista na categoria é descartado no
+   pós-processamento; categoria sem evidência recebe
+   "Não foi identificado.";
+5. **Diagrama de Ishikawa (6M)** — complementar ao formulário;
+6. **Conclusão**;
+7. **Plano de ação** — ações numeradas com prazo, tipo e responsável;
+8. **Avaliação do risco pós investigação** — risco residual esperado;
+9. **A coletar / lacunas** — relatos dos envolvidos, notificação do NCPS
+   e laudos **não** são inventados: entram como pendência da equipe.
 
-O modelo **não calcula** indicadores nem decide se houve atraso: recebe
-esse material já pronto e verificado, e o interpreta. O prompt proíbe
-inventar dados, exige apontar lacunas e orienta a analisar processo, não
-pessoas. O resultado é persistido (`investigacao_analises`) para não
-repetir a chamada a cada abertura.
+O modelo não calcula indicadores nem decide se houve atraso — recebe
+esse material pronto e verificado, e o interpreta. O prompt proíbe
+inventar dados, exige declarar o que falta e orienta a analisar
+processo, não pessoas. O resultado é persistido
+(`investigacao_analises`) para não repetir a chamada a cada abertura.
 
 ### Provedores
 
