@@ -239,7 +239,6 @@ def aprovar(
     risco_pos_consequencia: str = Form(""),
     risco_pos_justificativa: str = Form(""),
     notificacao_data: str = Form(""),
-    notificacao_codigo: str = Form(""),
     time_investigacao: str = Form(""),
     investigacao_inicio: str = Form(""),
     usuario: Usuario = Depends(require_permission("investigacao.aprovar")),
@@ -277,7 +276,6 @@ def aprovar(
     atual.risco_pos_justificativa = risco_pos_justificativa.strip() or None
     # Campos do formulário que só a equipe conhece
     atual.notificacao_data = notificacao_data.strip() or None
-    atual.notificacao_codigo = notificacao_codigo.strip() or None
     atual.time_investigacao = time_investigacao.strip() or None
     atual.investigacao_inicio = investigacao_inicio.strip() or None
     if time_investigacao.strip():   # reaproveitado nos próximos relatórios
@@ -301,6 +299,64 @@ def aprovar(
                              "status": STATUS_APROVADO}, usuario=usuario,
                  request=request)
     destino["aprovado"] = "1"
+    return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
+                            status_code=303)
+
+
+@router.post("/dados-gerais", include_in_schema=False)
+def salvar_dados_gerais(
+    request: Request,
+    ocorrencia: str = Form(...),
+    notificacao_data: str = Form(""),
+    time_investigacao: str = Form(""),
+    investigacao_inicio: str = Form(""),
+    usuario: Usuario = Depends(require_permission("investigacao.visualizar")),
+    db: Session = Depends(get_session),
+):
+    """Edita os campos de DADOS GERAIS que a equipe preenche.
+
+    Vale a qualquer momento, inclusive depois de aprovado: são dados
+    administrativos do formulário, não a análise em si. Quando o
+    relatório já está aprovado, o PDF guardado é regerado para não ficar
+    divergente do que a tela mostra.
+    """
+    from urllib.parse import urlencode
+
+    from app.modules.investigacao.ia_analise import historico
+    from app.modules.investigacao.models import STATUS_APROVADO
+    from app.modules.investigacao.rac_pdf import gerar_rac_pdf
+
+    numero = ocorrencia.strip()
+    versoes = historico(db, usuario.empresa_id, numero)
+    destino = {"ocorrencia": numero}
+    if not versoes:
+        destino["erro_ia"] = "Não há relatório gerado para editar."
+        return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
+                                status_code=303)
+
+    atual = versoes[0]
+    atual.notificacao_data = notificacao_data.strip() or None
+    atual.time_investigacao = time_investigacao.strip() or None
+    atual.investigacao_inicio = investigacao_inicio.strip() or None
+    if time_investigacao.strip():   # vira padrão dos próximos relatórios
+        set_config(db, "rac_time_investigacao", time_investigacao.strip(),
+                   usuario.empresa_id, usuario.id)
+    db.commit()
+
+    if atual.status == STATUS_APROVADO and atual.pdf:
+        dossie = InvestigacaoService(usuario.empresa_id).dossie(db, numero)
+        atual.pdf = gerar_rac_pdf(dossie,
+                                  logo_path=_logo(db, usuario.empresa_id))
+        db.commit()
+
+    record_audit(db, tabela="investigacao_analises", acao="UPDATE",
+                 registro_id=atual.id,
+                 valor_novo={"ocorrencia": numero,
+                             "notificacao_data": atual.notificacao_data,
+                             "time_investigacao": atual.time_investigacao,
+                             "investigacao_inicio": atual.investigacao_inicio},
+                 usuario=usuario, request=request)
+    destino["dados_salvos"] = "1"
     return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
                             status_code=303)
 

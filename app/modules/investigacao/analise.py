@@ -322,17 +322,53 @@ def fatores_tempo_resposta(empresa_id: int, registro_id: int,
                     == nucleo.norm_txt(cidade)))]
         med_locais = _mediana(locais["t_p4_2"])
         if med_locais and len(locais) >= MINIMO_AMOSTRA_ROTA:
-            fatores.append({
-                "tipo": "recurso",
-                "titulo": "Viatura de outro município (percurso maior)",
-                "evidencia": (
-                    f"{unidade} levou {mmss(desloc)} até {cidade}; as viaturas "
-                    f"sediadas em {cidade} levam em mediana {mmss(med_locais)} "
-                    f"(n={len(locais)}) — diferença de "
-                    f"{mmss(float(desloc) - med_locais)}. "
-                    + (inv.get("veredito") or "")),
-                "impacto": round(float(desloc) - med_locais),
-            })
+            diferenca = float(desloc) - med_locais
+            if diferenca > 0:
+                fatores.append({
+                    "tipo": "recurso",
+                    "titulo": "Viatura de outro município (percurso maior)",
+                    "evidencia": (
+                        f"{unidade} levou {mmss(desloc)} até {cidade}; as "
+                        f"viaturas sediadas em {cidade} levam em mediana "
+                        f"{mmss(med_locais)} (n={len(locais)}) — diferença de "
+                        f"{mmss(diferenca)}. " + (inv.get("veredito") or "")),
+                    "impacto": round(diferenca),
+                })
+            else:
+                # Veio de fora, mas chegou tão rápido quanto (ou mais que) as
+                # locais — atribuir atraso à origem seria falso.
+                fatores.append({
+                    "tipo": "recurso",
+                    "titulo": "Origem da viatura não explica o atraso",
+                    "evidencia": (
+                        f"Embora sediada fora de {cidade}, {unidade} levou "
+                        f"{mmss(desloc)} — abaixo da mediana das viaturas "
+                        f"locais ({mmss(med_locais)}, n={len(locais)}). O "
+                        "percurso a partir de outro município não foi o que "
+                        "alongou este atendimento."),
+                    "impacto": 0,
+                })
+
+    # 3b. Sem marcação de deslocamento não há como avaliar o trajeto —
+    # dizer isso é mais útil que devolver a lista vazia.
+    if not desloc_valido:
+        origem = ""
+        if inv.get("fora_do_municipio"):
+            sede = inv.get("municipio_unidade") or "outro município"
+            origem = (f" A viatura {unidade} é sediada em {sede}, "
+                      f"fora de {cidade}, "
+                      "o que costuma alongar o percurso — mas sem a marcação "
+                      "não é possível medir quanto.")
+        fatores.append({
+            "tipo": "dado",
+            "titulo": "Deslocamento sem marcação",
+            "evidencia": (
+                "Não há início de deslocamento e/ou chegada registrados neste "
+                "empenho, então o trajeto não pode ser comparado com o "
+                "histórico — distância, percurso e horário ficam sem "
+                "avaliação." + origem),
+            "impacto": 0,
+        })
 
     # 4. Atrasos de processo (etapas antes de sair para o local)
     atraso = decompor_atraso(empresa_id, registro_id)

@@ -300,10 +300,15 @@ def test_fatores_do_tempo_resposta():
         else:
             encontrou_acima = True
             assert "acima da meta" in f["resumo"]
-            # empenho de outro município sempre rende o fator de origem
-            # quando há histórico das viaturas locais
+            # acima da meta o sistema sempre diz algo: ou os fatores
+            # apurados, ou por que não foi possível apurá-los
             tipos = {x["tipo"] for x in f["fatores"]}
-            assert tipos, "nenhum fator apontado"
+            assert tipos, "nenhum fator nem explicação da ausência"
+            if tipos == {"dado"}:
+                # sem marcação de deslocamento, o texto explica a lacuna
+                assert any("sem marcação" in x["titulo"].lower()
+                           or "histórico" in x["evidencia"]
+                           for x in f["fatores"])
     assert encontrou_acima or encontrou_dentro, "nenhum caso avaliado"
 
 
@@ -903,7 +908,7 @@ def test_dados_gerais_completos(monkeypatch):
     client.post("/investigacao/aprovar", data={
         "ocorrencia": numero, "risco_pos_probabilidade": "2",
         "risco_pos_consequencia": "4", "risco_pos_justificativa": "ok",
-        "notificacao_data": "12/08/2026", "notificacao_codigo": "2124",
+        "notificacao_data": "12/08/2026",
         "investigacao_inicio": "13/08/2026",
         "time_investigacao": "Equipe NSP"})
 
@@ -914,7 +919,6 @@ def test_dados_gerais_completos(monkeypatch):
         db.close()
     a = dossie["analise_ia"]
     assert a["notificacao_data"] == "12/08/2026"
-    assert a["notificacao_codigo"] == "2124"
     assert a["time_investigacao"] == "Equipe NSP"
     assert a["investigacao_inicio"] == "13/08/2026"
 
@@ -922,7 +926,6 @@ def test_dados_gerais_completos(monkeypatch):
         " ".join((p.extract_text() or "").split())
         for p in PdfReader(io.BytesIO(gerar_rac_pdf(dossie))).pages)
     for esperado in ("Data da Notificação: 12/08/2026",
-                     "Código da Notificação: 2124",
                      "Time de Investigação: Equipe NSP",
                      "Data do Início da Investigação: 13/08/2026",
                      f"Nome do Paciente: {inv['paciente_iniciais']}",
@@ -967,3 +970,109 @@ def test_time_de_investigacao_e_reaproveitado(monkeypatch):
     pagina = client.get(f"/investigacao/?ocorrencia={numero}",
                         headers={"accept": "text/html"}).text
     assert "Ana, Bruno e Carla" in pagina
+
+
+def test_dados_gerais_editaveis(monkeypatch):
+    """Data da notificação e time são editáveis, inclusive após aprovar."""
+    import io
+
+    from pypdf import PdfReader
+
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import analisar
+    from app.modules.investigacao.rac_pdf import gerar_rac_pdf
+
+    _login()
+    _mock_ia(monkeypatch)
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+
+    db = SessionLocal()
+    try:
+        analisar(db, 1, InvestigacaoService(1).dossie(db, numero), "")
+    finally:
+        db.close()
+
+    # edição direta, sem passar pela aprovação
+    client.post("/investigacao/dados-gerais", data={
+        "ocorrencia": numero, "notificacao_data": "01/08/2026",
+        "investigacao_inicio": "02/08/2026",
+        "time_investigacao": "Equipe A"})
+
+    db = SessionLocal()
+    try:
+        a = InvestigacaoService(1).dossie(db, numero)["analise_ia"]
+    finally:
+        db.close()
+    assert a["notificacao_data"] == "01/08/2026"
+    assert a["time_investigacao"] == "Equipe A"
+    assert a["investigacao_inicio"] == "02/08/2026"
+
+    # aprovar não apaga o que já foi editado
+    client.post("/investigacao/aprovar", data={
+        "ocorrencia": numero, "risco_pos_probabilidade": "2",
+        "risco_pos_consequencia": "4", "risco_pos_justificativa": "ok",
+        "notificacao_data": "01/08/2026",
+        "investigacao_inicio": "02/08/2026",
+        "time_investigacao": "Equipe A"})
+
+    # e continua editável depois de aprovado, regerando o PDF guardado
+    client.post("/investigacao/dados-gerais", data={
+        "ocorrencia": numero, "notificacao_data": "05/08/2026",
+        "investigacao_inicio": "02/08/2026",
+        "time_investigacao": "Equipe B"})
+
+    db = SessionLocal()
+    try:
+        dossie = InvestigacaoService(1).dossie(db, numero)
+        a = dossie["analise_ia"]
+        assert a["status"] == "aprovado"          # segue aprovado
+        assert a["notificacao_data"] == "05/08/2026"
+        assert a["time_investigacao"] == "Equipe B"
+        pdf_guardado = _pdf_da_versao(db, numero)
+    finally:
+        db.close()
+
+    texto = " ".join(" ".join((p.extract_text() or "").split())
+                     for p in PdfReader(io.BytesIO(pdf_guardado)).pages)
+    assert "Data da Notificação: 05/08/2026" in texto
+    assert "Time de Investigação: Equipe B" in texto
+    # o campo removido não volta em lugar nenhum
+    assert "Código da Notificação" not in texto
+    assert "Código da Notificação" not in gerar_rac_pdf(dossie).decode(
+        "latin-1", "ignore")
+
+
+def _pdf_da_versao(db, numero: str) -> bytes:
+    from app.modules.investigacao.ia_analise import historico
+    return historico(db, 1, numero)[0].pdf
+
+
+def test_codigo_da_notificacao_removido(monkeypatch):
+    """O campo saiu da tela, do modelo e do formulário de aprovação."""
+    from app.modules.investigacao.models import AnaliseOcorrencia
+
+    assert not hasattr(AnaliseOcorrencia, "notificacao_codigo")
+
+    _login()
+    _mock_ia(monkeypatch)
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import analisar
+    db = SessionLocal()
+    try:
+        analisar(db, 1, InvestigacaoService(1).dossie(db, numero), "")
+    finally:
+        db.close()
+
+    pagina = client.get(f"/investigacao/?ocorrencia={numero}",
+                        headers={"accept": "text/html"}).text
+    assert "Código da notificação" not in pagina
+    assert "notificacao_codigo" not in pagina
+    # os dois campos pedidos estão editáveis na própria seção
+    assert 'name="notificacao_data"' in pagina
+    assert 'name="time_investigacao"' in pagina
+    assert 'action="/investigacao/dados-gerais"' in pagina

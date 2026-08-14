@@ -508,7 +508,6 @@ def _formatar(registro: AnaliseOcorrencia) -> dict:
         "aprovado_nome": registro.aprovado_nome,
         "risco_pos_registrado": registrado,
         "notificacao_data": registro.notificacao_data,
-        "notificacao_codigo": registro.notificacao_codigo,
         "time_investigacao": registro.time_investigacao,
         "investigacao_inicio": (registro.investigacao_inicio
                                 or (registro.gerado_em.strftime("%d/%m/%Y")

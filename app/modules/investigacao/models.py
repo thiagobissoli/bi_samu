@@ -49,8 +49,6 @@ class AnaliseOcorrencia(BaseModel):
     # Campos do formulário que só a equipe conhece (não estão no vSky)
     notificacao_data: Mapped[str | None] = mapped_column(String(20),
                                                          nullable=True)
-    notificacao_codigo: Mapped[str | None] = mapped_column(String(60),
-                                                           nullable=True)
     time_investigacao: Mapped[str | None] = mapped_column(String(500),
                                                           nullable=True)
     investigacao_inicio: Mapped[str | None] = mapped_column(String(20),

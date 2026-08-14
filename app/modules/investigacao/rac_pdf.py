@@ -212,21 +212,20 @@ def _dados_gerais(inv: dict, g: dict, analise: dict) -> list:
         [Paragraph(f"<b>Data do Incidente:</b> {inv.get('momento', '—')}", P),
          Paragraph("<b>Data da Notificação:</b> "
                    + _ou_linha(analise.get("notificacao_data")), P)],
-        [Paragraph("<b>Código da Notificação:</b> "
-                   + _ou_linha(analise.get("notificacao_codigo")), P),
-         Paragraph(f"<b>Local e Horário da Ocorrência:</b> {local or '—'}", P)],
+        [Paragraph(f"<b>Local e Horário da Ocorrência:</b> {local or '—'}", P),
+         Paragraph("<b>Data do Início da Investigação:</b> "
+                   + _ou_linha(analise.get("investigacao_inicio")), P)],
         [Paragraph("<b>Nome do Paciente:</b> "
                    + (inv.get("paciente_iniciais") or _ou_linha(None)), P),
          Paragraph("<b>Idade:</b> "
                    + (f"{idade} anos" if idade else _ou_linha(None, 10))
                    + (f" · Sexo: {inv['sexo']}" if inv.get("sexo") else ""), P)],
         [Paragraph(f"<b>ID da Ocorrência:</b> {inv.get('ocorrencia', '—')}", P),
-         Paragraph("<b>Data do Início da Investigação:</b> "
-                   + _ou_linha(analise.get("investigacao_inicio")), P)],
-        [Paragraph("<b>Time de Investigação:</b> "
-                   + _ou_linha(analise.get("time_investigacao"), 40), P),
          Paragraph("<b>Nível de investigação:</b> "
                    + (g.get("nivel_investigacao") or "Análise de Causa Raiz"), P)],
+        [Paragraph("<b>Time de Investigação:</b> "
+                   + _ou_linha(analise.get("time_investigacao"), 40), P),
+         Paragraph("", P)],
     ], [90 * mm, 90 * mm])
     return [tabela_larga, pares]
 
