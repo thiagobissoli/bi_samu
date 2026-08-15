@@ -1454,3 +1454,49 @@ def test_config_tem_gemini_e_dropdown():
     assert "/investigacao/modelos" in pagina
     # o aviso de privacidade passa a citar o Gemini
     assert "Gemini processam o conteúdo" in pagina
+
+
+def test_historico_so_da_ocorrencia_em_analise(monkeypatch):
+    """O histórico não pode misturar versões de outras ocorrências."""
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import analisar, historico
+    from app.modules.investigacao.models import AnaliseOcorrencia
+
+    _login()
+    _mock_ia(monkeypatch)
+    service = InvestigacaoService(1)
+    casos = service.cruzamentos(service.opcoes()["dia_max"])["casos"]
+    if len(casos) < 2:
+        return
+    a, b = casos[0]["ocorrencia"], casos[1]["ocorrencia"]
+
+    db = SessionLocal()
+    try:
+        analisar(db, 1, service.dossie(db, a), "")
+        analisar(db, 1, service.dossie(db, b), "")
+        analisar(db, 1, service.dossie(db, b), "", feedback="ajuste")
+
+        for numero in (a, b):
+            versoes = historico(db, 1, numero)
+            assert versoes, numero
+            assert all(v.ocorrencia == numero for v in versoes), numero
+            # numeração sequencial e sem repetição
+            numeros = sorted(v.versao for v in versoes)
+            assert numeros == list(range(numeros[0], numeros[0] + len(numeros)))
+            assert len(set(numeros)) == len(numeros)
+
+        dossie_b = service.dossie(db, b)
+        ids_b = {v["id"] for v in dossie_b["versoes"]}
+        de_outra = db.scalars(
+            __import__("sqlalchemy").select(AnaliseOcorrencia).where(
+                AnaliseOcorrencia.id.in_(ids_b),
+                AnaliseOcorrencia.ocorrencia != b)).all()
+        assert not de_outra
+    finally:
+        db.close()
+
+    pagina = client.get(f"/investigacao/?ocorrencia={b}",
+                        headers={"accept": "text/html"}).text
+    assert "Histórico de versões" in pagina
+    assert f"ocorrencia={b}&amp;versao=" in pagina or \
+           f"ocorrencia={b}&versao=" in pagina

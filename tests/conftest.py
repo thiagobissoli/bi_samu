@@ -47,3 +47,40 @@ def preservar_configuracoes():
     finally:
         db.close()
     invalidate_config()                  # cache em memória volta ao real
+
+
+@pytest.fixture(scope="session", autouse=True)
+def limpar_registros_criados():
+    """Remove o que a suíte gravou nas tabelas de trabalho.
+
+    Os testes geram relatórios RAC e prontuários de verdade. Sem isso,
+    cada execução deixa dezenas de versões de análise na base real —
+    foi o que encheu o histórico de uma ocorrência com 54 versões de
+    modelo "teste". Guarda-se o maior id antes da suíte e apaga-se o que
+    vier depois; nada anterior é tocado.
+    """
+    from sqlalchemy import func, select
+
+    from app.core.database import SessionLocal
+    from app.modules.download_vsky.models import VskyProntuario
+    from app.modules.investigacao.models import AnaliseOcorrencia
+
+    tabelas = [AnaliseOcorrencia, VskyProntuario]
+    db = SessionLocal()
+    try:
+        marcos = {m: (db.scalar(select(func.max(m.id))) or 0) for m in tabelas}
+    finally:
+        db.close()
+
+    yield
+
+    db = SessionLocal()
+    try:
+        for modelo, ultimo in marcos.items():
+            criados = db.scalars(
+                select(modelo).where(modelo.id > ultimo)).all()
+            for item in criados:
+                db.delete(item)
+        db.commit()
+    finally:
+        db.close()
