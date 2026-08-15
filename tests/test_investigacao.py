@@ -1216,3 +1216,100 @@ def test_prontuario_sem_texto_nao_diz_que_falta_baixar():
         db.commit()
     finally:
         db.close()
+
+
+def test_ishikawa_em_espinha_de_peixe():
+    """O diagrama sai desenhado, com os 6M na ordem clássica."""
+    from app.modules.investigacao.ishikawa import layout, svg
+
+    espinhas = [
+        {"categoria": "Meio ambiente", "causas": ["Chuva forte no trajeto"]},
+        {"categoria": "Método", "causas": ["Falta procedimento documentado",
+                                           "Sem critério de acionamento"]},
+        {"categoria": "Máquina", "causas": ["Rastreador desatualizado"]},
+        {"categoria": "Mão de obra", "causas": ["Equipe sem treinamento"]},
+        {"categoria": "Material", "causas": ["Insumo em falta"]},
+        {"categoria": "Medida", "causas": ["Marcação manual imprecisa"]},
+    ]
+    d = layout("Tempo de resposta acima da meta", espinhas)
+    assert d is not None
+
+    # três categorias acima da espinha e três abaixo
+    rotulos = [t for t in d["textos"] if t["negrito"]]
+    assert len(rotulos) == 6
+    acima = [t for t in rotulos if t["y"] < d["y_espinha"]]
+    assert len(acima) == 3
+
+    # Método é o braço mais à esquerda entre os de cima (ordem clássica)
+    de_cima = sorted(acima, key=lambda t: t["x"])
+    assert de_cima[0]["texto"] == "MÉTODO"
+    assert [t["texto"] for t in de_cima] == ["MÉTODO", "MÁQUINA", "MATERIAL"]
+
+    # a espinha aponta para a caixa do efeito
+    assert d["caixas"][0]["texto"] == "Tempo de resposta acima da meta"
+    assert d["caixas"][0]["x"] > d["x_fim"]
+
+    # nenhuma causa colide com a espinha central
+    causas = [t for t in d["textos"] if not t["negrito"]]
+    assert causas
+    for c in causas:
+        assert abs(c["y"] - d["y_espinha"]) > 8, c["texto"]
+
+    marcacao = svg("Tempo de resposta acima da meta", espinhas)
+    assert marcacao.startswith("<svg")
+    assert "EFEITO / PROBLEMA" in marcacao
+    assert marcacao.count("<line") == len(d["linhas"])
+    # sem causa nenhuma não há diagrama
+    assert svg("x", []) is None
+    assert layout("x", [{"categoria": "Método", "causas": []}]) is None
+
+
+def test_relatos_dos_envolvidos(monkeypatch):
+    """Campo de relatos: salva, aparece no RAC, no PDF e no prompt."""
+    import io
+
+    from pypdf import PdfReader
+
+    from app.core.database import SessionLocal
+    from app.modules.investigacao.ia_analise import (analisar, historico,
+                                                     montar_prompt)
+    from app.modules.investigacao.rac_pdf import gerar_rac_pdf
+
+    _login()
+    _mock_ia(monkeypatch)
+    numero = _ocorrencia_para_rac()
+    if not numero:
+        return
+    db = SessionLocal()
+    try:
+        analisar(db, 1, InvestigacaoService(1).dossie(db, numero), "")
+    finally:
+        db.close()
+
+    texto = ("Condutor socorrista — relatou acesso irregular ao local.\n"
+             "Enfermeiro — informou que o paciente estava consciente.")
+    client.post("/investigacao/relatos",
+                data={"ocorrencia": numero, "relatos": texto})
+
+    db = SessionLocal()
+    try:
+        assert historico(db, 1, numero)[0].relatos == texto
+        dossie = InvestigacaoService(1).dossie(db, numero)
+        assert dossie["relatos"] == texto
+        # os relatos alimentam a próxima análise
+        prompt = montar_prompt(dossie, "")
+        assert "Relato dos envolvidos" in prompt
+        assert "Condutor socorrista" in prompt
+        pdf = gerar_rac_pdf(dossie)
+    finally:
+        db.close()
+
+    conteudo = " ".join(" ".join((p.extract_text() or "").split())
+                        for p in PdfReader(io.BytesIO(pdf)).pages)
+    assert "RELATO DOS ENVOLVIDOS" in conteudo
+    assert "Condutor socorrista" in conteudo
+
+    pagina = client.get(f"/investigacao/?ocorrencia={numero}",
+                        headers={"accept": "text/html"}).text
+    assert 'name="relatos"' in pagina
+    assert "Condutor socorrista" in pagina

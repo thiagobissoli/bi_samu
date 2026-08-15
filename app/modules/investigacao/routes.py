@@ -303,6 +303,54 @@ def aprovar(
                             status_code=303)
 
 
+@router.post("/relatos", include_in_schema=False)
+def salvar_relatos(
+    request: Request,
+    ocorrencia: str = Form(...),
+    relatos: str = Form(""),
+    usuario: Usuario = Depends(require_permission("investigacao.visualizar")),
+    db: Session = Depends(get_session),
+):
+    """Registra os relatos dos envolvidos, colhidos pela equipe.
+
+    Ficam na versão corrente do RAC e passam a alimentar a análise: sem
+    eles o Protocolo de Londres fica restrito ao que o registro
+    operacional mostra.
+    """
+    from urllib.parse import urlencode
+
+    from app.modules.investigacao.ia_analise import historico
+    from app.modules.investigacao.models import STATUS_APROVADO
+    from app.modules.investigacao.rac_pdf import gerar_rac_pdf
+
+    numero = ocorrencia.strip()
+    versoes = historico(db, usuario.empresa_id, numero)
+    destino = {"ocorrencia": numero}
+    if not versoes:
+        destino["erro_ia"] = "Gere o relatório antes de registrar os relatos."
+        return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
+                                status_code=303)
+
+    atual = versoes[0]
+    atual.relatos = relatos.strip() or None
+    db.commit()
+
+    if atual.status == STATUS_APROVADO and atual.pdf:
+        dossie = InvestigacaoService(usuario.empresa_id).dossie(db, numero)
+        atual.pdf = gerar_rac_pdf(dossie,
+                                  logo_path=_logo(db, usuario.empresa_id))
+        db.commit()
+
+    record_audit(db, tabela="investigacao_analises", acao="UPDATE",
+                 registro_id=atual.id,
+                 valor_novo={"ocorrencia": numero,
+                             "relatos_caracteres": len(atual.relatos or "")},
+                 usuario=usuario, request=request)
+    destino["relatos_salvos"] = "1"
+    return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
+                            status_code=303)
+
+
 @router.post("/dados-gerais", include_in_schema=False)
 def salvar_dados_gerais(
     request: Request,

@@ -338,6 +338,7 @@ class InvestigacaoService:
             # Cronologia é dado factual: sai das marcações, não da IA
             "cronologia": cronologia_do_sistema(inv),
             "analise_ia": ultima_analise(db, self.empresa_id, numero),
+            "relatos": _relatos_da_ocorrencia(db, self.empresa_id, numero),
             "versoes": [{
                 "id": v.id, "versao": v.versao, "status": v.status,
                 "gerado_em": v.gerado_em.strftime("%d/%m/%Y %H:%M")
@@ -506,3 +507,11 @@ def _iniciais(nome: str) -> str:
     partes = [p for p in str(nome or "").upper().split()
               if p and p not in _PREPOSICOES]
     return ".".join(p[0] for p in partes) + "." if partes else ""
+
+
+def _relatos_da_ocorrencia(db, empresa_id: int, numero: str) -> str:
+    """Relatos dos envolvidos registrados na versão corrente do RAC."""
+    from app.modules.investigacao.ia_analise import historico
+
+    versoes = historico(db, empresa_id, numero)
+    return (versoes[0].relatos or "") if versoes else ""

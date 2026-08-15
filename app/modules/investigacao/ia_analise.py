@@ -244,6 +244,14 @@ def montar_prompt(dossie: dict, texto_prontuario: str = "") -> str:
         "operacional — pode estar fora de escala ou em manutenção, o que o "
         "relatório não informa.",
     ]
+    relatos = (dossie.get("relatos") or "").strip()
+    if relatos:
+        partes += [
+            "", "# Relato dos envolvidos (colhido pela equipe de investigação)",
+            "Estes relatos são FATOS declarados pelos profissionais. Use-os "
+            "como evidência dos fatores contribuintes, sem atribuir culpa "
+            "individual e sem citar nomes na análise de causa.",
+            relatos[:12000]]
     if texto_prontuario:
         partes += ["", "# Prontuário do atendimento (texto extraído do PDF)",
                    texto_prontuario[:12000]]
@@ -475,6 +483,12 @@ def _formatar(registro: AnaliseOcorrencia) -> dict:
     except (TypeError, json.JSONDecodeError):
         conteudo = {}
     if conteudo:
+        # Espinha de peixe pronta para a tela (o PDF usa a mesma geometria)
+        ish = conteudo.get("ishikawa") or {}
+        if ish.get("espinhas"):
+            from app.modules.investigacao.ishikawa import svg as _svg_peixe
+            conteudo["ishikawa_svg"] = _svg_peixe(ish.get("efeito") or "",
+                                                  ish.get("espinhas") or [])
         conteudo["fatores_contribuintes"] = _preparar_fatores(
             conteudo.get("fatores_contribuintes"))
         conteudo["risco_antes"] = _preparar_risco(conteudo.get("risco_antes"))
@@ -508,6 +522,7 @@ def _formatar(registro: AnaliseOcorrencia) -> dict:
         "aprovado_nome": registro.aprovado_nome,
         "risco_pos_registrado": registrado,
         "notificacao_data": registro.notificacao_data,
+        "relatos": registro.relatos,
         "time_investigacao": registro.time_investigacao,
         "investigacao_inicio": (registro.investigacao_inicio
                                 or (registro.gerado_em.strftime("%d/%m/%Y")

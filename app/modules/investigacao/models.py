@@ -53,6 +53,10 @@ class AnaliseOcorrencia(BaseModel):
                                                           nullable=True)
     investigacao_inicio: Mapped[str | None] = mapped_column(String(20),
                                                             nullable=True)
+    # Relatos dos envolvidos, colhidos em entrevista pela equipe. Entram
+    # no RAC e alimentam a análise — sem eles o Protocolo de Londres fica
+    # restrito ao que o registro operacional mostra.
+    relatos: Mapped[str | None] = mapped_column(Text(50_000), nullable=True)
 
     # Aprovação
     aprovado_em: Mapped[datetime | None] = mapped_column(

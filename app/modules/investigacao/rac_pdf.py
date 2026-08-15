@@ -21,9 +21,9 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import (BaseDocTemplate, Frame, KeepTogether,
-                                PageTemplate, Paragraph, Spacer, Table,
-                                TableStyle)
+from reportlab.platypus import (BaseDocTemplate, Flowable, Frame,
+                                KeepTogether, PageTemplate, Paragraph, Spacer,
+                                Table, TableStyle)
 
 from app.modules.investigacao.constants import (CONSEQUENCIA, GRAVIDADES,
                                                 PROBABILIDADE, nivel_de_risco)
@@ -104,6 +104,76 @@ def _cabecalho(canvas, doc, logo=None):
     canvas.setFillColor(colors.HexColor("#7f7f7f"))
     canvas.drawRightString(direita, MARGEM - 6 * mm, f"Pág. {doc.page}")
     canvas.restoreState()
+
+
+class EspinhaDePeixe(Flowable):
+    """Diagrama de Ishikawa desenhado no PDF.
+
+    Usa a mesma geometria do SVG da tela (módulo `ishikawa`), apenas
+    convertendo o eixo Y — no ReportLab a origem fica embaixo.
+    """
+
+    def __init__(self, efeito: str, espinhas: list, largura: float):
+        super().__init__()
+        from app.modules.investigacao.ishikawa import layout
+
+        self._d = layout(efeito, espinhas)
+        self.largura_alvo = largura
+        if self._d:
+            self.escala = largura / self._d["largura"]
+            self.width, self.height = largura, self._d["altura"] * self.escala
+        else:
+            self.escala = 1.0
+            self.width, self.height = largura, 0
+
+    def wrap(self, disponivel_x, disponivel_y):
+        return self.width, self.height
+
+    def draw(self):
+        from app.modules.investigacao.ishikawa import _quebrar
+
+        d = self._d
+        if not d:
+            return
+        c, e = self.canv, self.escala
+
+        def y(valor):        # topo-esquerda (SVG) -> base-esquerda (PDF)
+            return (d["altura"] - valor) * e
+
+        for l in d["linhas"]:
+            c.setStrokeColor(colors.HexColor(l["cor"]))
+            c.setLineWidth(max(l["largura"] * e, 0.4))
+            c.setLineCap(1)
+            c.line(l["x1"] * e, y(l["y1"]), l["x2"] * e, y(l["y2"]))
+
+        for t in d["textos"]:
+            tam = max(t["tamanho"] * e, 4.2)
+            c.setFillColor(colors.HexColor(t["cor"]))
+            c.setFont("Helvetica-Bold" if t["negrito"] else "Helvetica", tam)
+            linhas_txt = (_quebrar(t["texto"], t["largura_max"], t["tamanho"])
+                          if t.get("largura_max") else [t["texto"]])
+            for n, linha in enumerate(linhas_txt):
+                py = y(t["y"] + n * (t["tamanho"] + 2))
+                if t["ancora"] == "middle":
+                    c.drawCentredString(t["x"] * e, py, linha)
+                else:
+                    c.drawString(t["x"] * e, py, linha)
+
+        for caixa in d["caixas"]:
+            c.setStrokeColor(colors.HexColor("#1a4b8c"))
+            c.setLineWidth(1)
+            c.rect(caixa["x"] * e, y(caixa["y"] + caixa["altura"]),
+                   caixa["largura"] * e, caixa["altura"] * e, stroke=1, fill=0)
+            c.setFillColor(colors.HexColor("#2f6fd0"))
+            c.setFont("Helvetica-Bold", max(9 * e, 4.5))
+            c.drawString((caixa["x"] + 8) * e, y(caixa["y"] + 16),
+                         caixa["titulo"])
+            c.setFillColor(colors.HexColor("#212529"))
+            c.setFont("Helvetica", max(9 * e, 4.5))
+            for n, linha in enumerate(_quebrar(caixa["texto"],
+                                               caixa["largura"] - 16, 9)):
+                c.drawString((caixa["x"] + 8) * e,
+                             y(caixa["y"] + 32 + n * 12), linha)
 
 
 def _faixa(titulo: str) -> Table:
@@ -365,6 +435,12 @@ def gerar_rac_pdf(dossie: dict, logo_path: str | None = None,
         fluxo += [_faixa("CRONOLOGIA DETALHADA DOS EVENTOS"), Spacer(1, 4),
                   _tabela(linhas, [40 * mm, 140 * mm]), Spacer(1, 8)]
 
+    relatos = (analise.get("relatos") or "").strip()
+    if relatos:
+        fluxo += [_faixa("RELATO DOS ENVOLVIDOS"), Spacer(1, 4),
+                  _tabela([[Paragraph(relatos.replace("\n", "<br/>"), P)]],
+                          [180 * mm]), Spacer(1, 8)]
+
     if analise.get("fatores_contribuintes"):
         fluxo += [_faixa("FATORES CONTRIBUINTES"), Spacer(1, 4)]
         fluxo += _fatores(analise["fatores_contribuintes"])
@@ -372,14 +448,10 @@ def gerar_rac_pdf(dossie: dict, logo_path: str | None = None,
 
     ishikawa = analise.get("ishikawa") or {}
     if ishikawa.get("espinhas"):
-        linhas = [[Paragraph(f"<b>{e.get('categoria', '')}</b>", P),
-                   Paragraph("<br/>".join(f"• {c}" for c in e.get("causas") or []),
-                             P)] for e in ishikawa["espinhas"]]
-        fluxo += [_faixa("DIAGRAMA DE ISHIKAWA (6M)"), Spacer(1, 4)]
-        if ishikawa.get("efeito"):
-            fluxo += [Paragraph(f"<b>Efeito:</b> {ishikawa['efeito']}", P),
-                      Spacer(1, 3)]
-        fluxo += [_tabela(linhas, [45 * mm, 135 * mm]), Spacer(1, 8)]
+        fluxo += [_faixa("DIAGRAMA DE ISHIKAWA (6M)"), Spacer(1, 4),
+                  EspinhaDePeixe(ishikawa.get("efeito") or "",
+                                 ishikawa["espinhas"], 180 * mm),
+                  Spacer(1, 8)]
 
     fluxo += [_faixa("CONCLUSÃO"), Spacer(1, 4),
               _tabela([[Paragraph(analise.get("conclusao") or "", P)]],

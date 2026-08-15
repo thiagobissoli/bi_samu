@@ -105,12 +105,24 @@ Investigação de Causa Raiz**, na mesma ordem do formulário oficial:
    marcação. Item que não exista na categoria é descartado no
    pós-processamento; categoria sem evidência recebe
    "Não foi identificado.";
-5. **Diagrama de Ishikawa (6M)** — complementar ao formulário;
+5. **Diagrama de Ishikawa (6M)** — desenhado como **espinha de peixe**
+   (Método/Máquina/Material acima, Mão de obra/Medida/Meio ambiente
+   abaixo), com a mesma geometria na tela (SVG) e no PDF;
 6. **Conclusão**;
 7. **Plano de ação** — ações numeradas com prazo, tipo e responsável;
 8. **Avaliação do risco pós investigação** — risco residual esperado;
-9. **A coletar / lacunas** — relatos dos envolvidos, notificação do NCPS
-   e laudos **não** são inventados: entram como pendência da equipe.
+9. **A coletar / lacunas** — notificação do NCPS e laudos **não** são
+   inventados: entram como pendência da equipe.
+
+### Relato dos envolvidos
+
+Campo de texto no próprio RAC (`POST /investigacao/relatos`), editável a
+qualquer momento, onde a equipe transcreve o que cada profissional
+relatou em entrevista. Os relatos entram no documento — seção
+**RELATO DOS ENVOLVIDOS**, como no formulário oficial — e **alimentam a
+análise**: sem eles o Protocolo de Londres fica restrito ao que o
+registro operacional mostra. Depois de registrá-los, vale refazer a
+análise para que os fatores contribuintes considerem o apurado.
 
 O modelo não calcula indicadores nem decide se houve atraso — recebe
 esse material pronto e verificado, e o interpreta. O prompt proíbe

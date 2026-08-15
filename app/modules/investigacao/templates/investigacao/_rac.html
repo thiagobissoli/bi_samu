@@ -236,6 +236,45 @@
 </div>
 {% endif %}
 
+{# --------------------------------------------- relato dos envolvidos #}
+<div class="border rounded-3 mb-3">
+    <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase
+                d-flex justify-content-between align-items-center">
+        <span>Relato dos envolvidos</span>
+        {% if a.relatos %}
+        <span class="badge text-bg-success">registrado</span>
+        {% else %}
+        <span class="badge text-bg-secondary">a colher</span>
+        {% endif %}
+    </div>
+    <div class="p-3">
+        <form method="post" action="/investigacao/relatos">
+            <input type="hidden" name="ocorrencia"
+                   value="{{ investigacao.ocorrencia }}">
+            <label class="form-label small mb-1" for="relatos">
+                Transcreva aqui o que cada profissional relatou na entrevista
+                (condutor, técnico de enfermagem, enfermeiro, médico,
+                supervisão), e o relato do NCPS se houver.
+            </label>
+            <textarea class="form-control" id="relatos" name="relatos"
+                      rows="{{ 10 if a.relatos else 5 }}"
+                      placeholder="Ex.: Condutor socorrista — relatou que a equipe foi acionada para…">{{ a.relatos or "" }}</textarea>
+            <div class="d-flex justify-content-between align-items-center mt-2">
+                <div class="form-text mb-0">
+                    <i class="fa-solid fa-circle-info me-1"></i>
+                    Estes relatos entram no relatório e passam a alimentar a
+                    análise — refaça a análise depois de registrá-los para que
+                    os fatores contribuintes considerem o que foi apurado em
+                    entrevista.
+                </div>
+                <button class="btn btn-sm btn-outline-primary flex-shrink-0">
+                    <i class="fa-solid fa-floppy-disk me-1"></i>Salvar relatos
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {# ------------------------------------------------ fatores contribuintes #}
 {% if a.fatores_contribuintes %}
 <div class="border rounded-3 mb-3">
@@ -272,6 +311,13 @@
         Diagrama de Ishikawa (6M)
     </div>
     <div class="p-3">
+        {% if a.ishikawa_svg %}
+        {# Espinha de peixe no formato clássico; o SVG é gerado no
+           servidor e o mesmo traçado vai para o PDF. #}
+        <div class="bg-white rounded-3 p-2" style="overflow-x:auto;">
+            {{ a.ishikawa_svg | safe }}
+        </div>
+        {% else %}
         {% if a.ishikawa.efeito %}
         <p class="mb-2"><strong>Efeito:</strong> {{ a.ishikawa.efeito }}</p>
         {% endif %}
@@ -287,6 +333,7 @@
             </div>
             {% endfor %}
         </div>
+        {% endif %}
     </div>
 </div>
 {% endif %}
