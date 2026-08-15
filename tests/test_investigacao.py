@@ -1078,51 +1078,96 @@ def test_codigo_da_notificacao_removido(monkeypatch):
     assert 'action="/investigacao/dados-gerais"' in pagina
 
 
-def test_texto_do_prontuario_liberado_apos_o_download():
+def test_texto_do_prontuario_liberado_apos_o_download(monkeypatch, tmp_path):
     """Baixar o PDF tem de habilitar 'Ver o texto extraído' na mesma tela.
 
     Antes, o download registrava o texto mas a página não recarregava —
-    a seção só aparecia se o usuário atualizasse na mão.
+    a seção só aparecia se o usuário atualizasse na mão. O teste não
+    toca o portal do vSky: o download é simulado.
     """
     import re
 
+    from sqlalchemy import select
+
     from app.core.database import SessionLocal
+    from app.modules.download_vsky.models import VskyProntuario
 
     _login()
     service = InvestigacaoService(1)
     casos = service.cruzamentos(service.opcoes()["dia_max"])["casos"]
+    if not casos:
+        return
+    numero = casos[0]["ocorrencia"]
 
-    numero = None
-    for caso in casos[:8]:
+    # Estado inicial controlado: sem prontuário para esta ocorrência
+    db = SessionLocal()
+    try:
+        anterior = db.scalar(select(VskyProntuario).where(
+            VskyProntuario.empresa_id == 1,
+            VskyProntuario.ocorrencia == numero))
+        guardado = None
+        if anterior is not None:
+            guardado = {c.name: getattr(anterior, c.name)
+                        for c in anterior.__table__.columns}
+            db.delete(anterior)
+            db.commit()
+    finally:
+        db.close()
+
+    try:
+        antes = client.get(f"/investigacao/?ocorrencia={numero}",
+                           headers={"accept": "text/html"}).text
+        assert 'data-tem-texto="0"' in antes
+        assert "Baixar do vSky" in antes
+        assert 'id="prontuario-texto"' not in antes
+
+        # Simula o vSky: grava um PDF e registra como o serviço faria
+        pdf = tmp_path / f"{numero}.pdf"
+        pdf.write_bytes(b"%PDF-1.4\nconteudo de teste\n%%EOF")
+
+        import app.modules.download_vsky.service as dv
+
+        def falso_obter(db_, empresa_id, oc):
+            from datetime import datetime, timezone
+            registro = VskyProntuario(
+                empresa_id=empresa_id, ocorrencia=str(oc),
+                caminho=str(pdf), tamanho=pdf.stat().st_size, paginas=2,
+                texto="texto extraído de teste",
+                baixado_em=datetime.now(timezone.utc))
+            db_.add(registro)
+            db_.commit()
+            return pdf
+
+        monkeypatch.setattr(dv, "obter_prontuario", falso_obter)
+
+        resp = client.get(f"/investigacao/prontuario?ocorrencia={numero}")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/pdf"
+
+        depois = client.get(f"/investigacao/?ocorrencia={numero}",
+                            headers={"accept": "text/html"}).text
+        assert 'data-tem-texto="1"' in depois
+        assert "Abrir PDF" in depois
+        assert 'id="prontuario-texto"' in depois
+        assert re.search(r"Ver o texto extraído do PDF \(\d+ caracteres\)",
+                         depois)
+        # o botão avisa a página para recarregar e abrir a seção
+        assert "prontuario-baixado" in depois
+    finally:
+        # devolve o banco ao estado anterior ao teste
         db = SessionLocal()
         try:
-            if not service.dossie(db, caso["ocorrencia"]).get("prontuario"):
-                numero = caso["ocorrencia"]
-                break
+            atual = db.scalar(select(VskyProntuario).where(
+                VskyProntuario.empresa_id == 1,
+                VskyProntuario.ocorrencia == numero))
+            if atual is not None:
+                db.delete(atual)
+                db.commit()
+            if guardado:
+                db.add(VskyProntuario(**guardado))
+                db.commit()
         finally:
             db.close()
-    if not numero:                     # todos já baixados neste ambiente
-        return
-
-    antes = client.get(f"/investigacao/?ocorrencia={numero}",
-                       headers={"accept": "text/html"}).text
-    assert 'data-tem-texto="0"' in antes
-    assert "Baixar do vSky" in antes
-    assert 'id="prontuario-texto"' not in antes
-
-    resp = client.get(f"/investigacao/prontuario?ocorrencia={numero}")
-    if resp.status_code != 200:        # portal indisponível no ambiente
-        return
-    assert resp.headers["content-type"] == "application/pdf"
-
-    depois = client.get(f"/investigacao/?ocorrencia={numero}",
-                        headers={"accept": "text/html"}).text
-    assert 'data-tem-texto="1"' in depois
-    assert "Abrir PDF" in depois
-    assert 'id="prontuario-texto"' in depois
-    assert re.search(r"Ver o texto extraído do PDF \(\d+ caracteres\)", depois)
-    # o botão avisa a página para recarregar e abrir a seção
-    assert "prontuario-baixado" in depois
 
 
 def test_prontuario_sem_texto_nao_diz_que_falta_baixar():
