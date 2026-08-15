@@ -300,14 +300,21 @@ def test_desconto_p41():
                                                 _com_desconto, desconto_p41)
 
     assert DESCONTO_P41_PADRAO == 45
-    bruto = pd.Series([100.0, 45.0, 30.0, 0.0, -5.0, None])
+    bruto = pd.Series([100.0, 46.0, 45.0, 30.0, 0.0, -5.0, None])
     ajustado = _com_desconto(bruto, 45)
-    assert ajustado[0] == 55.0        # subtrai 45 s
-    assert ajustado[1] == 1.0         # piso de 1 s (não descarta o registro)
-    assert ajustado[2] == 1.0
-    assert ajustado[3] == 0.0         # inválidos permanecem como estavam
-    assert ajustado[4] == -5.0
-    assert pd.isna(ajustado[5])
+    assert ajustado[0] == 55.0        # acima do atraso: subtrai
+    assert ajustado[1] == 1.0
+    # Abaixo (ou igual) ao próprio atraso o desconto NÃO se aplica: a
+    # marcação não passou por ele. Achatar num piso fabricaria valor e
+    # inverteria a ordem entre registros.
+    assert ajustado[2] == 45.0
+    assert ajustado[3] == 30.0
+    assert ajustado[4] == 0.0         # inválidos permanecem como estavam
+    assert ajustado[5] == -5.0
+    assert pd.isna(ajustado[6])
+    # nenhum valor é fabricado: o que não recebe desconto sai como medido
+    curtos = pd.Series([1.0, 9.0, 44.0])
+    assert _com_desconto(curtos, 45).tolist() == curtos.tolist()
     # desconto 0 = passthrough
     assert _com_desconto(bruto, 0) is bruto
     # leitura da configuração devolve inteiro >= 0
@@ -413,11 +420,14 @@ def test_p4_1_mostra_a_memoria_de_calculo():
         # o valor exibido é exatamente bruto − desconto
         assert item["valor"] == mmss(b - desconto)
 
-    # caso do piso: bruto menor que o desconto
+    # bruto abaixo do desconto: o valor medido vale como está, e o
+    # subtítulo explica por que não houve subtração
     curto = validos[(bruto > 0) & (bruto < desconto)]
     if not curto.empty:
         r = curto.iloc[0]
+        b = (r["dt_inicio_deslocamento"]
+             - r["dt_data_controlador"]).total_seconds()
         item = next(i for i in indicadores_da_ocorrencia(1, int(r["id"]))
                     if i["rotulo"].startswith("P4.1"))
-        assert "piso" in item["sub"], item["sub"]
-        assert item["valor"] == "00:01"
+        assert "sem desconto" in item["sub"], item["sub"]
+        assert item["valor"] == mmss(b)     # preserva o medido

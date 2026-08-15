@@ -101,15 +101,26 @@ def desconto_p41(empresa_id: int = 1) -> int:
 
 
 def _com_desconto(bruto: pd.Series, desconto: float) -> pd.Series:
-    """Subtrai o desconto dos tempos válidos, com piso de 1 s.
+    """Subtrai o atraso de transmissão, quando ele cabe no valor medido.
 
-    O piso mantém válidos (> 0) os registros cuja saída real foi mais
-    rápida que o próprio atraso de transmissão — descartá-los inflaria
-    a média das unidades mais ágeis.
+    O desconto modela uma marcação que chega atrasada: o tempo real é o
+    registrado menos o atraso. Quando o registrado é MENOR que o próprio
+    atraso, o modelo não se aplica àquela marcação (provavelmente ela não
+    passou pela rede/GPS — lançamento manual, por exemplo) e subtrair
+    daria tempo negativo. Nesses casos o valor medido é preservado.
+
+    A alternativa anterior — achatar tudo num piso de 1 s — fabricava um
+    valor idêntico para milhares de empenhos.
+
+    Resta um artefato inevitável em qualquer regra com limiar: perto da
+    fronteira a ordem pode se inverter (com desconto de 15 s, um bruto de
+    15 s fica 15 s e um de 16 s vira 1 s). Atinge só os empenhos muito
+    curtos, cuja marcação já é de confiabilidade duvidosa; preservar o
+    medido é preferível a inventar um valor.
     """
     if desconto <= 0:
         return bruto
-    return (bruto - desconto).clip(lower=1.0).where(bruto > 0, bruto)
+    return (bruto - desconto).where(bruto > desconto, bruto)
 
 
 def carregar(empresa_id: int = 1) -> pd.DataFrame:

@@ -134,7 +134,9 @@ def _sub_p4_1(r) -> str:
     desconto = nucleo.desconto_p41()
     if bruto <= 0 or not desconto:
         return base
-    texto = f"{base} = {mmss(bruto)} − {mmss(desconto)} de transmissão"
-    if bruto - desconto < 1:
-        texto += " (piso de 00:01)"
-    return texto
+    if bruto <= desconto:
+        # Marcação abaixo do próprio atraso: o desconto não se aplica a
+        # ela, e o valor medido vale como está.
+        return (f"{base} = {mmss(bruto)} · abaixo do atraso de transmissão "
+                f"({mmss(desconto)}), medido sem desconto")
+    return f"{base} = {mmss(bruto)} − {mmss(desconto)} de transmissão"
