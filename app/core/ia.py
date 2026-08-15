@@ -3,15 +3,16 @@
 Interface única sobre OpenAI, Anthropic e Ollama (local). A escolha e as
 credenciais ficam em Configurações (§22):
 
-    ia_provedor   openai | anthropic | ollama
-    ia_modelo     ex.: gpt-4o-mini, claude-sonnet-4-5, llama3.1
+    ia_provedor   openai | anthropic | gemini | ollama
+    ia_modelo     ex.: gpt-4o-mini, claude-sonnet-4-5, gemini-flash-latest
     ia_api_key    criptografada (§39.29) — não usada pelo Ollama
     ia_base_url   endpoint do Ollama (padrão http://localhost:11434)
 
-Usa httpx direto, sem SDKs: são três chamadas HTTP simples e assim o
+Usa httpx direto, sem SDKs: são chamadas HTTP simples e assim o
 sistema não ganha dependências novas nem fica preso a versões de SDK.
 
-PRIVACIDADE: openai e anthropic enviam o conteúdo para fora da rede.
+PRIVACIDADE: openai, anthropic e gemini enviam o conteúdo para fora da
+rede.
 Quando o texto contiver dados de paciente, use o Ollama (local) ou
 anonimize antes — quem chama é responsável por isso (ver
 `anonimizar_texto`).
@@ -35,13 +36,16 @@ CONFIG_BASE_URL = "ia_base_url"
 PROVEDORES = {
     "openai": "OpenAI",
     "anthropic": "Anthropic",
+    "gemini": "Google Gemini",
     "ollama": "Ollama (local)",
 }
 MODELOS_SUGERIDOS = {
     "openai": "gpt-4o-mini",
     "anthropic": "claude-sonnet-4-5",
+    "gemini": "gemini-flash-latest",
     "ollama": "llama3.1",
 }
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 OLLAMA_PADRAO = "http://localhost:11434"
 CONFIG_TIMEOUT = "ia_timeout"
 # Um relatório RAC completo é uma geração longa; modelos locais costumam
@@ -94,6 +98,8 @@ def gerar(db: Session, prompt: str, sistema: str = "",
             return _openai(cfg, chave, prompt, sistema, json_esperado)
         if cfg["provedor"] == "anthropic":
             return _anthropic(cfg, chave, prompt, sistema)
+        if cfg["provedor"] == "gemini":
+            return _gemini(cfg, chave, prompt, sistema, json_esperado)
         if cfg["provedor"] == "ollama":
             return _ollama(cfg, prompt, sistema, json_esperado)
     except httpx.TimeoutException as exc:
@@ -159,6 +165,30 @@ def _anthropic(cfg: dict, chave: str, prompt: str, sistema: str) -> str:
         partes = [b.get("text", "") for b in resp.json().get("content", [])
                   if b.get("type") == "text"]
         return "\n".join(partes)
+
+
+def _gemini(cfg: dict, chave: str, prompt: str, sistema: str,
+            json_esperado: bool) -> str:
+    corpo = {"contents": [{"parts": [{"text": prompt}]}]}
+    if sistema:
+        corpo["systemInstruction"] = {"parts": [{"text": sistema}]}
+    if json_esperado:
+        corpo["generationConfig"] = {"responseMimeType": "application/json"}
+    url = f"{GEMINI_BASE}/models/{cfg['modelo']}:generateContent"
+    with httpx.Client(timeout=cfg["timeout"]) as http:
+        resp = http.post(url, json=corpo,
+                         headers={"x-goog-api-key": chave,
+                                  "Content-Type": "application/json"})
+        resp.raise_for_status()
+        dados = resp.json()
+        candidatos = dados.get("candidates") or []
+        if not candidatos:
+            # resposta bloqueada por filtro de segurança vem sem candidato
+            motivo = (dados.get("promptFeedback") or {}).get("blockReason")
+            raise IAError("O Gemini não devolveu resposta"
+                          + (f" (bloqueio: {motivo})." if motivo else "."))
+        partes = (candidatos[0].get("content") or {}).get("parts") or []
+        return "\n".join(p.get("text", "") for p in partes if p.get("text"))
 
 
 def _ollama(cfg: dict, prompt: str, sistema: str, json_esperado: bool) -> str:
@@ -233,3 +263,64 @@ def anonimizar_texto(texto: str, nomes: list[str] | None = None) -> str:
     texto = _RE_CNS.sub("[CNS]", texto)
     texto = _RE_TELEFONE.sub("[TELEFONE]", texto)
     return texto
+
+
+# ------------------------------------------------------ modelos disponíveis
+
+def listar_modelos(db: Session, empresa_id: int = 1, provedor: str = "",
+                   chave: str = "", base_url: str = "") -> list[str]:
+    """Modelos que o provedor oferece para esta credencial.
+
+    Aceita chave e endpoint avulsos para que a tela de configuração possa
+    listar antes de salvar. Levanta IAError com mensagem pronta.
+    """
+    provedor = (provedor or get_config(db, CONFIG_PROVEDOR,
+                                       empresa_id=empresa_id) or "").strip()
+    if not provedor:
+        raise IAError("Escolha um provedor para listar os modelos.")
+    chave = chave.strip() or (get_config(db, CONFIG_API_KEY,
+                                         empresa_id=empresa_id) or "")
+    base_url = (base_url.strip()
+                or get_config(db, CONFIG_BASE_URL, empresa_id=empresa_id)
+                or OLLAMA_PADRAO)
+    if provedor != "ollama" and not chave:
+        raise IAError("Informe a chave de API para listar os modelos "
+                      f"do {PROVEDORES.get(provedor, provedor)}.")
+    try:
+        with httpx.Client(timeout=30.0) as http:
+            if provedor == "openai":
+                r = http.get("https://api.openai.com/v1/models",
+                             headers={"Authorization": f"Bearer {chave}"})
+                r.raise_for_status()
+                nomes = [m["id"] for m in r.json().get("data", [])]
+                # a lista traz embeddings, tts, whisper… — só o que conversa
+                nomes = [n for n in nomes
+                         if n.startswith(("gpt-", "o1", "o3", "o4", "chatgpt"))]
+            elif provedor == "anthropic":
+                r = http.get("https://api.anthropic.com/v1/models",
+                             headers={"x-api-key": chave,
+                                      "anthropic-version": "2023-06-01"})
+                r.raise_for_status()
+                nomes = [m["id"] for m in r.json().get("data", [])]
+            elif provedor == "gemini":
+                r = http.get(f"{GEMINI_BASE}/models",
+                             headers={"x-goog-api-key": chave})
+                r.raise_for_status()
+                nomes = [
+                    m["name"].removeprefix("models/")
+                    for m in r.json().get("models", [])
+                    # só os que geram texto (fora embeddings e imagem)
+                    if "generateContent" in (m.get("supportedGenerationMethods")
+                                             or [])]
+            elif provedor == "ollama":
+                r = http.get(f"{base_url.rstrip('/')}/api/tags")
+                r.raise_for_status()
+                nomes = [m["name"] for m in r.json().get("models", [])]
+            else:
+                raise IAError(f"Provedor desconhecido: {provedor}")
+    except httpx.HTTPStatusError as exc:
+        raise IAError(_erro_http(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise IAError(f"Não foi possível consultar os modelos: {exc}") from exc
+
+    return sorted(set(nomes))

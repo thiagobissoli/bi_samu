@@ -162,6 +162,32 @@ def config(
                   erro=None, ok=None)
 
 
+@router.post("/modelos", include_in_schema=False)
+def modelos(
+    provedor: str = Form(""),
+    api_key: str = Form(""),
+    base_url: str = Form(""),
+    usuario: Usuario = Depends(require_permission("investigacao.configurar")),
+    db: Session = Depends(get_session),
+):
+    """Modelos disponíveis no provedor, para preencher o dropdown.
+
+    É POST porque a chave pode vir do formulário ainda não salvo — numa
+    query string ela acabaria nos logs de acesso.
+    """
+    from fastapi.responses import JSONResponse
+
+    try:
+        lista = ia.listar_modelos(db, usuario.empresa_id, provedor=provedor,
+                                  chave=api_key, base_url=base_url)
+    except ia.IAError as exc:
+        return JSONResponse(status_code=400, content={
+            "success": False, "message": str(exc), "data": None,
+            "errors": [str(exc)]})
+    return {"success": True, "message": "",
+            "data": {"modelos": lista, "total": len(lista)}, "errors": []}
+
+
 @router.post("/config", include_in_schema=False)
 def salvar_config(
     request: Request,

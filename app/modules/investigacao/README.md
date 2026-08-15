@@ -163,8 +163,11 @@ de qualquer versão.
 ### Provedores
 
 Configuráveis em `/investigacao/config` (permissão
-`investigacao.configurar`): **OpenAI**, **Anthropic** e **Ollama
-(local)**. Chaves guardadas criptografadas (§39.29). Há botão de teste
+`investigacao.configurar`): **OpenAI**, **Anthropic**, **Google
+Gemini** e **Ollama (local)**. O campo Modelo traz um **dropdown com os
+modelos que a credencial oferece** (consultados no próprio provedor),
+aceitando também nome digitado — provedores lançam modelos antes de
+documentá-los. Chaves guardadas criptografadas (§39.29). Há botão de teste
 de conexão.
 
 Modelos de raciocínio no Ollama (qwen3, deepseek-r1…) devolvem o texto
@@ -172,7 +175,8 @@ no campo `thinking` em vez de `response` — o cliente trata os dois.
 
 ### Privacidade (LGPD)
 
-OpenAI e Anthropic processam o conteúdo **fora da rede do SAMU**, e o
+OpenAI, Anthropic e Gemini processam o conteúdo **fora da rede do
+SAMU**, e o
 prontuário contém dados pessoais e de saúde (LGPD art. 11). Para
 analisar o texto integral, o indicado é o **Ollama local**. Ao usar
 provedor externo, a anonimização vem ligada por padrão: remove nome do

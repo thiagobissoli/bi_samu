@@ -1313,3 +1313,144 @@ def test_relatos_dos_envolvidos(monkeypatch):
                         headers={"accept": "text/html"}).text
     assert 'name="relatos"' in pagina
     assert "Condutor socorrista" in pagina
+
+
+def test_provedor_gemini(monkeypatch):
+    """Formato da requisição, leitura da resposta e bloqueio por filtro."""
+    import httpx
+
+    from app.core import ia
+
+    assert "gemini" in ia.PROVEDORES
+    assert ia.MODELOS_SUGERIDOS["gemini"]
+
+    capturado = {}
+
+    class RespostaFalsa:
+        status_code = 200
+
+        def __init__(self, corpo):
+            self._corpo = corpo
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._corpo
+
+    class ClienteFalso:
+        def __init__(self, corpo):
+            self._corpo = corpo
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            capturado["url"] = url
+            capturado["json"] = json
+            capturado["headers"] = headers
+            return RespostaFalsa(self._corpo)
+
+    corpo_ok = {"candidates": [{"content": {"parts": [{"text": '{"ok": true}'}]}}]}
+    monkeypatch.setattr(httpx, "Client", lambda **k: ClienteFalso(corpo_ok))
+
+    cfg = {"modelo": "gemini-flash-latest", "timeout": 60.0}
+    texto = ia._gemini(cfg, "CHAVE", "pergunta", "instrução", True)
+
+    assert texto == '{"ok": true}'
+    # endpoint e autenticação no formato da API do Gemini
+    assert capturado["url"].endswith(
+        "/models/gemini-flash-latest:generateContent")
+    assert capturado["headers"]["x-goog-api-key"] == "CHAVE"
+    assert capturado["json"]["contents"][0]["parts"][0]["text"] == "pergunta"
+    assert (capturado["json"]["systemInstruction"]["parts"][0]["text"]
+            == "instrução")
+    assert (capturado["json"]["generationConfig"]["responseMimeType"]
+            == "application/json")
+
+    # resposta bloqueada por filtro vem sem candidato: erro legível
+    bloqueado = {"promptFeedback": {"blockReason": "SAFETY"}}
+    monkeypatch.setattr(httpx, "Client", lambda **k: ClienteFalso(bloqueado))
+    try:
+        ia._gemini(cfg, "CHAVE", "p", "", False)
+        raise AssertionError("deveria ter levantado IAError")
+    except ia.IAError as exc:
+        assert "SAFETY" in str(exc)
+
+
+def test_listagem_de_modelos(monkeypatch):
+    """Dropdown: cada provedor devolve sua lista, com erro legível."""
+    import httpx
+
+    from app.core import ia
+    from app.core.database import SessionLocal
+
+    respostas = {
+        "https://api.openai.com/v1/models": {
+            "data": [{"id": "gpt-4o-mini"}, {"id": "text-embedding-3-small"},
+                     {"id": "o3-mini"}, {"id": "whisper-1"}]},
+        "https://api.anthropic.com/v1/models": {
+            "data": [{"id": "claude-sonnet-4-5"}]},
+        f"{ia.GEMINI_BASE}/models": {"models": [
+            {"name": "models/gemini-flash-latest",
+             "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/text-embedding-004",
+             "supportedGenerationMethods": ["embedContent"]}]},
+        "http://localhost:11434/api/tags": {"models": [{"name": "llama3.1"}]},
+    }
+
+    class RespostaFalsa:
+        def __init__(self, corpo):
+            self._corpo = corpo
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._corpo
+
+    class ClienteFalso:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, headers=None):
+            return RespostaFalsa(respostas[url])
+
+    monkeypatch.setattr(httpx, "Client", lambda **k: ClienteFalso())
+    db = SessionLocal()
+    try:
+        # OpenAI: some o que não conversa (embeddings, whisper)
+        openai = ia.listar_modelos(db, 1, provedor="openai", chave="k")
+        assert openai == ["gpt-4o-mini", "o3-mini"]
+        assert ia.listar_modelos(db, 1, provedor="anthropic",
+                                 chave="k") == ["claude-sonnet-4-5"]
+        # Gemini: só os que geram conteúdo, sem o prefixo "models/"
+        assert ia.listar_modelos(db, 1, provedor="gemini",
+                                 chave="k") == ["gemini-flash-latest"]
+        assert ia.listar_modelos(db, 1, provedor="ollama",
+                                 base_url="http://localhost:11434") == ["llama3.1"]
+        # provedor externo sem chave: erro explicativo, sem chamar a rede
+        try:
+            ia.listar_modelos(db, 1, provedor="gemini", chave="")
+        except ia.IAError as exc:
+            assert "chave de API" in str(exc)
+    finally:
+        db.close()
+
+
+def test_config_tem_gemini_e_dropdown():
+    _login()
+    pagina = client.get("/investigacao/config",
+                        headers={"accept": "text/html"}).text
+    assert "Google Gemini" in pagina
+    assert 'id="modelo_lista"' in pagina          # dropdown
+    assert 'id="modelo"' in pagina                # campo livre continua
+    assert "/investigacao/modelos" in pagina
+    # o aviso de privacidade passa a citar o Gemini
+    assert "Gemini processam o conteúdo" in pagina
