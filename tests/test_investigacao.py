@@ -1076,3 +1076,98 @@ def test_codigo_da_notificacao_removido(monkeypatch):
     assert 'name="notificacao_data"' in pagina
     assert 'name="time_investigacao"' in pagina
     assert 'action="/investigacao/dados-gerais"' in pagina
+
+
+def test_texto_do_prontuario_liberado_apos_o_download():
+    """Baixar o PDF tem de habilitar 'Ver o texto extraído' na mesma tela.
+
+    Antes, o download registrava o texto mas a página não recarregava —
+    a seção só aparecia se o usuário atualizasse na mão.
+    """
+    import re
+
+    from app.core.database import SessionLocal
+
+    _login()
+    service = InvestigacaoService(1)
+    casos = service.cruzamentos(service.opcoes()["dia_max"])["casos"]
+
+    numero = None
+    for caso in casos[:8]:
+        db = SessionLocal()
+        try:
+            if not service.dossie(db, caso["ocorrencia"]).get("prontuario"):
+                numero = caso["ocorrencia"]
+                break
+        finally:
+            db.close()
+    if not numero:                     # todos já baixados neste ambiente
+        return
+
+    antes = client.get(f"/investigacao/?ocorrencia={numero}",
+                       headers={"accept": "text/html"}).text
+    assert 'data-tem-texto="0"' in antes
+    assert "Baixar do vSky" in antes
+    assert 'id="prontuario-texto"' not in antes
+
+    resp = client.get(f"/investigacao/prontuario?ocorrencia={numero}")
+    if resp.status_code != 200:        # portal indisponível no ambiente
+        return
+    assert resp.headers["content-type"] == "application/pdf"
+
+    depois = client.get(f"/investigacao/?ocorrencia={numero}",
+                        headers={"accept": "text/html"}).text
+    assert 'data-tem-texto="1"' in depois
+    assert "Abrir PDF" in depois
+    assert 'id="prontuario-texto"' in depois
+    assert re.search(r"Ver o texto extraído do PDF \(\d+ caracteres\)", depois)
+    # o botão avisa a página para recarregar e abrir a seção
+    assert "prontuario-baixado" in depois
+
+
+def test_prontuario_sem_texto_nao_diz_que_falta_baixar():
+    """PDF digitalizado (sem texto) não pode ser rotulado 'não baixado'."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from app.core.database import SessionLocal
+    from app.modules.download_vsky.models import VskyProntuario
+
+    _login()
+    numero = "999999998"               # registro sintético, sem tocar dados reais
+    db = SessionLocal()
+    try:
+        registro = VskyProntuario(
+            empresa_id=1, ocorrencia=numero, caminho="x.pdf", tamanho=1024,
+            paginas=1, texto=None, baixado_em=datetime.now(timezone.utc))
+        db.add(registro)
+        db.commit()
+        pront = db.scalar(select(VskyProntuario).where(
+            VskyProntuario.ocorrencia == numero))
+        assert pront is not None and not pront.texto
+    finally:
+        db.close()
+
+    from app.modules.investigacao.templates import __name__ as _  # noqa: F401
+    from app.core.templating import templates
+    html = templates.get_template("investigacao/_dossie.html").render(
+        dossie={"prontuario": {"baixado_em": "01/01/2026 10:00", "paginas": 1,
+                               "tamanho_kb": 1, "texto": None},
+                "indicadores": [], "atraso": {}, "fatores_tr": {},
+                "analise_ia": None},
+        investigacao={"ocorrencia": numero, "cadeia": [], "equipe": [],
+                      "com_empenho": True, "situacao": ""},
+        ia_config={"pronto": False}, erro_ia=None,
+        usuario_logado=type("U", (), {"permissoes": []})())
+    assert "sem texto extraível" in html
+    assert "ainda não baixado" not in html
+
+    db = SessionLocal()
+    try:
+        alvo = db.scalar(select(VskyProntuario).where(
+            VskyProntuario.ocorrencia == numero))
+        db.delete(alvo)
+        db.commit()
+    finally:
+        db.close()

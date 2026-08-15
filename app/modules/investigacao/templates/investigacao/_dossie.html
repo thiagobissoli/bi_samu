@@ -262,23 +262,32 @@
                 {{ dossie.prontuario.tamanho_kb }} KB
             </span>
             {% endif %}
-            <a class="btn btn-sm btn-outline-danger"
+            <a class="btn btn-sm btn-outline-danger" id="btn-prontuario"
                href="/investigacao/prontuario?ocorrencia={{ investigacao.ocorrencia }}"
+               data-tem-texto="{{ 1 if dossie.prontuario and dossie.prontuario.texto else 0 }}"
                target="_blank">
                 <i class="fa-solid fa-download me-1"></i>
                 {% if dossie.prontuario %}Abrir PDF{% else %}Baixar do vSky{% endif %}
             </a>
+            <span class="small text-muted" id="prontuario-status"></span>
         </div>
     </div>
     {% if dossie.prontuario and dossie.prontuario.texto %}
     <div class="card-body">
-        <details>
+        <details id="prontuario-texto">
             <summary class="small text-muted">
                 Ver o texto extraído do PDF ({{ dossie.prontuario.texto | length }} caracteres)
             </summary>
             <pre class="border rounded-3 p-2 mt-2 mb-0" style="max-height: 320px;
                  overflow:auto; white-space: pre-wrap; font-size:.72rem;">{{ dossie.prontuario.texto }}</pre>
         </details>
+    </div>
+    {% elif dossie.prontuario %}
+    <div class="card-body text-muted small">
+        <i class="fa-solid fa-triangle-exclamation me-1"></i>
+        PDF baixado, mas <strong>sem texto extraível</strong> — provavelmente
+        é um documento digitalizado (imagem). O PDF pode ser aberto, mas o
+        conteúdo não entra na análise por IA.
     </div>
     {% else %}
     <div class="card-body text-muted small">

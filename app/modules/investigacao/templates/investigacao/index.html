@@ -352,4 +352,59 @@ $(function () {
     });
 });
 </script>
+<script>
+// Prontuário: baixa via fetch para saber quando terminou. Na primeira
+// vez o texto do PDF ainda não foi extraído — recarrega a página para
+// liberar "Ver o texto extraído do PDF" sem o usuário ter de atualizar.
+(function () {
+    const btn = document.getElementById("btn-prontuario");
+    if (!btn) return;
+    const status = document.getElementById("prontuario-status");
+    btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        const temTexto = btn.dataset.temTexto === "1";
+        // A aba precisa ser aberta DURANTE o clique, senão o navegador
+        // bloqueia como pop-up (o fetch abaixo é assíncrono).
+        const aba = window.open("", "_blank");
+        status.textContent = temTexto ? "abrindo…" : "baixando do vSky…";
+        btn.classList.add("disabled");
+        fetch(btn.href).then(function (r) {
+            if (!r.ok) {
+                return r.json().then(
+                    function (j) { throw new Error(j.message || "falhou"); },
+                    function () { throw new Error("falha ao obter o PDF"); });
+            }
+            return r.blob();
+        }).then(function (blob) {
+            const url = URL.createObjectURL(blob);
+            if (aba) { aba.location = url; } else { window.open(url, "_blank"); }
+            if (temTexto) {
+                status.textContent = "✓ PDF aberto";
+                return;
+            }
+            // O download registrou o texto extraído: recarrega para
+            // liberar a seção. O reload destrói o blob, então dá-se um
+            // instante para a outra aba começar a carregá-lo.
+            status.textContent = "✓ baixado — carregando o texto…";
+            sessionStorage.setItem("prontuario-baixado", "1");
+            setTimeout(function () { location.reload(); }, 1500);
+        }).catch(function (e) {
+            if (aba) aba.close();
+            status.textContent = "✕ " + e.message;
+        }).finally(function () {
+            btn.classList.remove("disabled");
+        });
+    });
+
+    // Depois do reload, abre a seção do texto e rola até ela
+    if (sessionStorage.getItem("prontuario-baixado")) {
+        sessionStorage.removeItem("prontuario-baixado");
+        const bloco = document.getElementById("prontuario-texto");
+        if (bloco) {
+            bloco.open = true;
+            bloco.scrollIntoView({behavior: "smooth", block: "center"});
+        }
+    }
+})();
+</script>
 {% endblock %}
