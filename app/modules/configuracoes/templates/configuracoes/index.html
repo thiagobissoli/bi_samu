@@ -2,90 +2,187 @@
 
 {% block breadcrumb %}<li class="breadcrumb-item active">Configurações</li>{% endblock %}
 
+{% set pode_editar = "configuracao.editar" in usuario_logado.permissoes %}
+
 {% block content %}
-<div class="row">
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title"><i class="fa-solid fa-cog me-2"></i>Configurações da empresa (§22)</h3>
-            </div>
-            <div class="card-body">
-                {% if items %}
-                <table class="table table-striped align-middle">
-                    <thead><tr><th>Chave</th><th>Valor</th>
-                        {% if "configuracao.editar" in usuario_logado.permissoes %}<th class="text-end">Ações</th>{% endif %}
-                    </tr></thead>
-                    <tbody>
-                    {% for item in items %}
-                    <tr>
-                        <form method="post" action="/configuracoes/salvar">
-                            <td>
-                                <code>{{ item.chave }}</code>
-                                {% if item.sensivel %}
-                                <i class="fa-solid fa-lock text-warning" title="Valor sensível — armazenado criptografado"></i>
-                                {% endif %}
-                                <input type="hidden" name="chave" value="{{ item.chave }}">
-                            </td>
-                            <td>
-                                {% if item.sensivel %}
-                                <input type="password" name="valor" class="form-control form-control-sm"
-                                       placeholder="{{ '••••• (definido — digite para trocar)' if item.definido else '(não definido)' }}"
-                                       autocomplete="new-password"
-                                       {{ "" if "configuracao.editar" in usuario_logado.permissoes else "disabled" }}>
-                                {% else %}
-                                <input type="text" name="valor" class="form-control form-control-sm" value="{{ item.valor }}"
-                                       {{ "" if "configuracao.editar" in usuario_logado.permissoes else "disabled" }}>
-                                {% endif %}
-                            </td>
-                            {% if "configuracao.editar" in usuario_logado.permissoes %}
-                            <td class="text-end text-nowrap">
-                                <button class="btn btn-outline-primary btn-sm" title="Salvar"><i class="fa-solid fa-check"></i></button>
-                        </form>
-                                {% if "configuracao.excluir" in usuario_logado.permissoes %}
-                                <form method="post" action="/configuracoes/{{ item.id }}/delete" class="d-inline"
-                                      onsubmit="return confirm('Excluir a chave {{ item.chave }}? O sistema voltará ao valor padrão.');">
-                                    <button class="btn btn-outline-danger btn-sm" title="Excluir"><i class="fa-solid fa-trash"></i></button>
-                                </form>
-                                {% endif %}
-                            </td>
-                            {% else %}
-                        </form>
-                            {% endif %}
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-                <p class="text-muted mb-0"><small>
-                    <i class="fa-solid fa-lock text-warning"></i> Chaves com <code>pass</code>, <code>senha</code>,
-                    <code>token</code>, <code>secret</code> ou <code>api_key</code> no nome são criptografadas no banco
-                    e mascaradas na auditoria. As chaves <code>smtp_*</code> ativam o envio real de e-mail (§39.9);
-                    <code>timezone</code> define o fuso de exibição das datas (ex.: America/Sao_Paulo).
-                </small></p>
-                {% else %}<p class="text-muted mb-0">Nenhuma configuração.</p>{% endif %}
-            </div>
-        </div>
+<div class="card mb-3">
+    <div class="card-body py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="text-muted small">
+            <i class="fa-solid fa-circle-question me-1"></i>
+            {{ total }} chaves. Passe o mouse no <strong>(?)</strong> de cada uma
+            para ver o que ela faz. Campo em branco = o sistema usa o padrão.
+        </span>
+        <input type="search" id="busca-config" class="form-control form-control-sm"
+               style="max-width:260px;" placeholder="Filtrar por nome ou chave…">
     </div>
-    {% if "configuracao.editar" in usuario_logado.permissoes %}
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header"><h3 class="card-title">Nova configuração</h3></div>
-            <form method="post" action="/configuracoes/salvar">
-                <div class="card-body">
-                    <div class="mb-2">
-                        <label class="form-label">Chave</label>
-                        <input type="text" name="chave" class="form-control" required placeholder="ex.: smtp_host">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Valor</label>
-                        <input type="text" name="valor" class="form-control">
-                    </div>
-                </div>
-                <div class="card-footer">
-                    <button class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Adicionar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    {% endif %}
 </div>
+
+{% for grupo in grupos %}
+<div class="card mb-3 grupo-config">
+    <div class="card-header py-2 d-block">
+        {# card-title do AdminLTE flutua à esquerda: sem o float:none a
+           descrição sobe e cola no título. #}
+        <h3 class="card-title fs-6 mb-0" style="float:none; display:block;">
+            <i class="fa-solid {{ grupo.icone }} me-2"></i>{{ grupo.titulo }}
+        </h3>
+        {% if grupo.descricao %}
+        <div class="text-muted small mt-1">{{ grupo.descricao }}</div>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm table-striped align-middle mb-0">
+            <thead>
+                <tr>
+                    <th style="width:34%;">Configuração</th>
+                    <th>Valor</th>
+                    <th style="width:16%;">Padrão</th>
+                    {% if pode_editar %}<th class="text-end" style="width:96px;">Ações</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in grupo.itens %}
+            <tr class="linha-config" data-busca="{{ (item.rotulo ~ ' ' ~ item.chave) | lower }}">
+                <form method="post" action="/configuracoes/salvar">
+                    <td>
+                        <div class="d-flex align-items-center gap-1">
+                            <span>{{ item.rotulo }}</span>
+                            {% if item.ajuda %}
+                            <button type="button" class="btn btn-link p-0 text-secondary lh-1"
+                                    data-bs-toggle="popover" data-bs-trigger="hover focus"
+                                    data-bs-placement="right" data-bs-title="{{ item.rotulo }}"
+                                    data-bs-content="{{ item.ajuda }}"
+                                    aria-label="O que é {{ item.rotulo }}">
+                                <i class="fa-regular fa-circle-question"></i>
+                            </button>
+                            {% endif %}
+                            {% if item.sensivel %}
+                            <i class="fa-solid fa-lock text-warning"
+                               title="Valor sensível — armazenado criptografado"></i>
+                            {% endif %}
+                        </div>
+                        <code class="small text-muted">{{ item.chave }}</code>
+                        {% if item.gerida_em %}
+                        <a class="small ms-1" href="{{ item.gerida_em }}"
+                           title="Tela própria para editar esta configuração">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> tela própria
+                        </a>
+                        {% endif %}
+                        <input type="hidden" name="chave" value="{{ item.chave }}">
+                    </td>
+                    <td>
+                        {% if item.somente_leitura %}
+                        <span class="text-muted small">
+                            {{ item.valor or "—" }}
+                            <em class="ms-1">(preenchido pelo sistema)</em>
+                        </span>
+                        {% elif item.sensivel %}
+                        <input type="password" name="valor" class="form-control form-control-sm"
+                               placeholder="{{ '••••• (definido — digite para trocar)' if item.definido else '(não definido)' }}"
+                               autocomplete="new-password" {{ "" if pode_editar else "disabled" }}>
+                        {% elif item.tipo == "lista" %}
+                        <select name="valor" class="form-select form-select-sm"
+                                {{ "" if pode_editar else "disabled" }}>
+                            <option value="">(padrão{{ ": " ~ item.padrao if item.padrao }})</option>
+                            {% for opcao in item.opcoes %}
+                            <option value="{{ opcao }}" {% if item.valor == opcao %}selected{% endif %}>{{ opcao }}</option>
+                            {% endfor %}
+                        </select>
+                        {% elif item.tipo == "booleano" %}
+                        <select name="valor" class="form-select form-select-sm"
+                                {{ "" if pode_editar else "disabled" }}>
+                            <option value="" {% if item.valor != "1" %}selected{% endif %}>desligado</option>
+                            <option value="1" {% if item.valor == "1" %}selected{% endif %}>ligado</option>
+                        </select>
+                        {% else %}
+                        <input type="{{ 'number' if item.tipo == 'numero' else ('time' if item.tipo == 'hora' else 'text') }}"
+                               name="valor" class="form-control form-control-sm"
+                               value="{{ item.valor }}" placeholder="{{ item.padrao }}"
+                               {{ "" if pode_editar else "disabled" }}>
+                        {% endif %}
+                    </td>
+                    <td class="small text-muted">{{ item.padrao or "—" }}</td>
+                    {% if pode_editar %}
+                    <td class="text-end text-nowrap">
+                        {% if not item.somente_leitura %}
+                        <button class="btn btn-outline-primary btn-sm" title="Salvar">
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                        {% endif %}
+                </form>
+                        {% if item.id and "configuracao.excluir" in usuario_logado.permissoes %}
+                        <form method="post" action="/configuracoes/{{ item.id }}/delete" class="d-inline"
+                              onsubmit="return confirm('Excluir a chave {{ item.chave }}? O sistema voltará ao valor padrão.');">
+                            <button class="btn btn-outline-danger btn-sm"
+                                    title="Voltar ao padrão"><i class="fa-solid fa-rotate-left"></i></button>
+                        </form>
+                        {% endif %}
+                    </td>
+                    {% else %}
+                </form>
+                    {% endif %}
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+<div class="card mb-3">
+    <div class="card-body">
+        <p class="text-muted small mb-2">
+            <i class="fa-solid fa-lock text-warning"></i>
+            Chaves com <code>pass</code>, <code>senha</code>, <code>token</code>,
+            <code>secret</code> ou <code>api_key</code> no nome são criptografadas
+            no banco e mascaradas na auditoria.
+            <i class="fa-solid fa-rotate-left ms-2"></i>
+            Apagar o valor devolve a chave ao padrão.
+        </p>
+        {% if pode_editar %}
+        <form method="post" action="/configuracoes/salvar" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small mb-1">Chave avulsa</label>
+                <input type="text" name="chave" class="form-control form-control-sm"
+                       required placeholder="ex.: minha_chave">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small mb-1">Valor</label>
+                <input type="text" name="valor" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-outline-primary btn-sm">
+                    <i class="fa-solid fa-plus"></i> Adicionar
+                </button>
+                <span class="form-text ms-2">
+                    Para chaves que o sistema ainda não conhece.
+                </span>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function (el) {
+        new bootstrap.Popover(el);
+    });
+    // Com mais de 40 chaves, achar uma no olho é lento.
+    const busca = document.getElementById("busca-config");
+    busca.addEventListener("input", function () {
+        const termo = this.value.trim().toLowerCase();
+        document.querySelectorAll(".grupo-config").forEach(function (grupo) {
+            let visiveis = 0;
+            grupo.querySelectorAll(".linha-config").forEach(function (linha) {
+                const bate = !termo || linha.dataset.busca.indexOf(termo) >= 0;
+                linha.style.display = bate ? "" : "none";
+                if (bate) visiveis++;
+            });
+            grupo.style.display = visiveis ? "" : "none";
+        });
+    });
+})();
+</script>
 {% endblock %}

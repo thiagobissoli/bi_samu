@@ -23,24 +23,50 @@ def index(
     usuario: Usuario = Depends(require_permission("configuracao.listar")),
     db: Session = Depends(get_session),
 ):
+    from app.modules.configuracoes.catalogo import CATALOGO, catalogadas
+
     registros = list(db.scalars(
         select(Configuracao).where(
             Configuracao.deleted_at.is_(None),
             Configuracao.empresa_id == usuario.empresa_id,
         ).order_by(Configuracao.chave)
     ))
-    items = [
-        {
-            "id": c.id,
-            "chave": c.chave,
-            "sensivel": is_sensitive(c.chave),
-            "valor": "" if is_sensitive(c.chave) else (c.valor or ""),
-            "definido": bool(c.valor),
+    gravadas = {c.chave: c for c in registros}
+
+    def _item(chave: str, definicao=None) -> dict:
+        registro = gravadas.get(chave)
+        sensivel = is_sensitive(chave)
+        return {
+            "id": registro.id if registro else None,
+            "chave": chave,
+            "rotulo": definicao.rotulo if definicao else chave,
+            "ajuda": definicao.ajuda if definicao else "",
+            "padrao": definicao.padrao if definicao else "",
+            "tipo": definicao.tipo if definicao else "texto",
+            "opcoes": list(definicao.opcoes) if definicao else [],
+            "somente_leitura": definicao.somente_leitura if definicao else False,
+            "gerida_em": definicao.gerida_em if definicao else "",
+            "sensivel": sensivel,
+            "valor": "" if sensivel else ((registro.valor if registro else "") or ""),
+            "definido": bool(registro and registro.valor),
         }
-        for c in registros
-    ]
+
+    # Todas as chaves conhecidas aparecem, mesmo as que nunca foram gravadas:
+    # sem isso, quem não decorou o nome exato não tinha como criá-las.
+    grupos = [{"titulo": g.titulo, "icone": g.icone, "descricao": g.descricao,
+               "itens": [_item(c.chave, c) for c in g.chaves]}
+              for g in CATALOGO]
+    # Chave gravada fora do catálogo (criada à mão ou de módulo removido)
+    # não some da tela — só perde a explicação.
+    conhecidas = catalogadas()
+    extras = [_item(c.chave) for c in registros if c.chave not in conhecidas]
+    if extras:
+        grupos.append({"titulo": "Outras chaves", "icone": "fa-key",
+                       "descricao": "Gravadas fora do catálogo do sistema.",
+                       "itens": extras})
     return render(request, "configuracoes/index.html", usuario,
-                  page_title="Configurações", items=items)
+                  page_title="Configurações", grupos=grupos,
+                  total=sum(len(g["itens"]) for g in grupos))
 
 
 @router.post("/salvar", include_in_schema=False)
