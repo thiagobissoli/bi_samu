@@ -171,6 +171,48 @@ def _mmss(segundos) -> str | None:
     return mmss(segundos)
 
 
+@router.get("/investigar", summary="Prepara a ocorrência para investigação")
+def investigar(
+    id: int,
+    usuario: Usuario = Depends(require_permission("reuniao_indicadores.visualizar")),
+    db: Session = Depends(get_session),
+):
+    """Garante o PDF do prontuário e devolve o destino da investigação.
+
+    O botão do modal chama isto antes de abrir a tela de investigação: sem a
+    ficha em PDF a análise fica cega à evolução clínica. Se o download falhar
+    (portal fora do ar, credencial vencida) a investigação ainda é oferecida,
+    com o aviso do que faltou — melhor investigar sem o PDF do que não
+    investigar.
+    """
+    from urllib.parse import quote
+
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import select
+
+    from app.modules.download_vsky.models import VskyRegistroAnalitico as R
+    from app.modules.download_vsky.service import obter_prontuario
+
+    registro = db.scalar(select(R).where(
+        R.id == id, R.empresa_id == usuario.empresa_id,
+        R.deleted_at.is_(None)))
+    if registro is None or not registro.ocorrencia:
+        return JSONResponse(status_code=404, content={
+            "success": False, "message": "Ocorrência não encontrada.",
+            "data": None, "errors": ["id inválido"]})
+
+    numero = str(registro.ocorrencia).strip()
+    destino = f"/investigacao/?ocorrencia={quote(numero)}"
+    try:
+        caminho = obter_prontuario(db, usuario.empresa_id, numero)
+        aviso, baixado = None, caminho.is_file()
+    except ValueError as exc:
+        aviso, baixado = str(exc), False
+    return {"success": True, "message": aviso or "", "errors": [],
+            "data": {"ocorrencia": numero, "prontuario": baixado,
+                     "aviso": aviso, "destino": destino}}
+
+
 @router.get("/prontuario", summary="Baixa o PDF do prontuário da ocorrência")
 def prontuario(
     id: int,

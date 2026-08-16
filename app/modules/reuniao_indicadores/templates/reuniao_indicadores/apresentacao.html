@@ -167,6 +167,14 @@
             font-weight: 600; padding: .38rem .9rem;
         }
         .drill-pront:hover { filter: brightness(1.1); }
+        .drill-investigar {
+            display: inline-block; margin: 1rem 0 .8rem .6rem;
+            background: #1f3350; color: #cfe2ff; border: 1px solid #3b5b8a;
+            border-radius: 8px; font-family: var(--mono); font-size: .75rem;
+            font-weight: 600; padding: .38rem .9rem; cursor: pointer;
+        }
+        .drill-investigar:hover { background: #274067; }
+        .drill-investigar[disabled] { opacity: .6; cursor: progress; }
         .ind-grade {
             display: grid; gap: .6rem; margin: .4rem 0 1rem;
             grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -517,6 +525,8 @@
                            'href="/reuniao_indicadores/prontuario?id=' + d.id + '">' +
                            (temPront ? "⬇ Abrir prontuário (PDF)"
                                      : "⬇ Baixar prontuário (PDF)") + "</a>" +
+                           '<button class="drill-investigar" id="drill-investigar" ' +
+                           'data-id="' + d.id + '">🔎 Investigar evento</button>' +
                            '<span class="drill-pront-status" id="drill-pront-status"></span>';
                 if (inds.length) {
                     html += '<div class="detalhe-secao">Indicadores desta ' +
@@ -601,6 +611,41 @@
                     }).finally(function () {
                         btnPront.style.pointerEvents = "";
                     });
+                });
+
+                // Investigar evento: o PDF da ficha é baixado ANTES de abrir a
+                // tela de investigação — a análise de causa raiz depende da
+                // evolução clínica descrita no prontuário. A aba é aberta já
+                // no clique (gesto do usuário) para o bloqueador de pop-up não
+                // barrar depois do fetch.
+                const btnInv = document.getElementById("drill-investigar");
+                btnInv.addEventListener("click", function () {
+                    const status = document.getElementById("drill-pront-status");
+                    const aba = window.open("", "_blank");
+                    btnInv.disabled = true;
+                    status.textContent = " baixando a ficha em PDF…";
+                    fetch("/reuniao_indicadores/investigar?id=" + d.id)
+                        .then(r => r.json())
+                        .then(function (corpo) {
+                            const dados = corpo.data;
+                            if (!corpo.success || !dados) {
+                                if (aba) aba.close();
+                                status.textContent = " ✕ " +
+                                    (corpo.message || "não foi possível investigar");
+                                return;
+                            }
+                            status.textContent = dados.prontuario
+                                ? " ✓ ficha baixada · abrindo a investigação"
+                                : " ⚠ sem o PDF (" + (dados.aviso || "falha") +
+                                  ") · abrindo a investigação mesmo assim";
+                            if (aba) { aba.location = dados.destino; }
+                            else { window.location = dados.destino; }
+                        })
+                        .catch(function () {
+                            if (aba) aba.close();
+                            status.textContent = " ✕ erro de rede";
+                        })
+                        .finally(function () { btnInv.disabled = false; });
                 });
             })
             .catch(voltarParaLista);

@@ -188,3 +188,73 @@ def test_indicadores_da_ocorrencia():
     if p1["valor"] != "—":
         assert p1["situacao"] in ("ok", "ruim")
         assert "meta" in p1["sub"]
+
+
+def _uma_ocorrencia() -> dict:
+    """Uma ocorrência qualquer vinda do drill, para os testes de detalhe."""
+    _login()
+    deck = client.get("/reuniao_indicadores/api").json()["data"]
+    ultimo = len(deck["slides"][1]["chart"]["labels"]) - 1
+    drill = client.get(f"/reuniao_indicadores/drill?chave=1:0:{ultimo}"
+                       ).json()["data"]
+    return drill["ocorrencias"][0]
+
+
+def test_botao_investigar_no_modal():
+    """O modal oferece o caminho para a investigação do evento."""
+    _login()
+    html = client.get("/reuniao_indicadores/",
+                      headers={"accept": "text/html"}).text
+    assert 'id="drill-investigar"' in html
+    assert "Investigar evento" in html
+    # a aba é aberta no clique (gesto do usuário), senão o bloqueador de
+    # pop-up barra a abertura que vem depois do fetch
+    assert 'window.open("", "_blank")' in html
+
+
+def test_investigar_baixa_o_pdf_antes_de_abrir(monkeypatch, tmp_path):
+    """A ficha em PDF é obtida ANTES de mandar o usuário para a investigação."""
+    from app.modules.download_vsky import service as dv
+
+    alvo = _uma_ocorrencia()
+    pedidos = []
+
+    def _falso(db, empresa_id, numero):
+        pedidos.append(numero)
+        arquivo = tmp_path / f"{numero}.pdf"
+        arquivo.write_bytes(b"%PDF-1.4 teste")
+        return arquivo
+
+    monkeypatch.setattr(dv, "obter_prontuario", _falso)
+    corpo = client.get(f"/reuniao_indicadores/investigar?id={alvo['id']}").json()
+
+    assert corpo["success"] is True
+    dados = corpo["data"]
+    assert pedidos == [alvo["ocorrencia"]], "o PDF não foi pedido ao vSky"
+    assert dados["prontuario"] is True
+    assert dados["aviso"] is None
+    assert dados["destino"] == f"/investigacao/?ocorrencia={alvo['ocorrencia']}"
+
+
+def test_investigar_segue_mesmo_sem_o_pdf(monkeypatch):
+    """Portal fora do ar não pode impedir a investigação — só avisa."""
+    from app.modules.download_vsky import service as dv
+
+    alvo = _uma_ocorrencia()
+    monkeypatch.setattr(dv, "obter_prontuario", lambda *a, **k: (_ for _ in ()).throw(
+        ValueError("Credenciais do vSky não configuradas")))
+    corpo = client.get(f"/reuniao_indicadores/investigar?id={alvo['id']}").json()
+
+    assert corpo["success"] is True
+    dados = corpo["data"]
+    assert dados["prontuario"] is False
+    assert "Credenciais" in dados["aviso"]
+    # o destino continua oferecido: investigar sem PDF é melhor que não investigar
+    assert dados["destino"].endswith(alvo["ocorrencia"])
+
+
+def test_investigar_com_id_invalido():
+    _login()
+    resp = client.get("/reuniao_indicadores/investigar?id=99999999")
+    assert resp.status_code == 404
+    assert resp.json()["success"] is False
