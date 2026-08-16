@@ -18,9 +18,12 @@ import pandas as pd
 from app.modules.indicadores import nucleo
 from app.modules.indicadores.constants import (
     ADEQUACAO,
+    AUDITORIA_INDICADORES,
     CAP_TEMPO,
     DIMENSOES_DESEMPENHO,
+    METAS_TEMPO,
     METRICAS_DESEMPENHO,
+    PREFIXO_CONFIG_META,
     MOTIVOS_EXCLUIDOS_DESPERDICIO,
     NEWS_BANDAS,
     NEWS_CRITERIOS,
@@ -1048,6 +1051,221 @@ class IndicadoresService:
                                              "Todas as situações", "Situação",
                                              top=100)],
         }
+
+    # ------------------------------------- Auditoria de Ocorrências
+
+    def tema_auditoria_ocorrencias(self, df: pd.DataFrame) -> dict:
+        """Duas perguntas de auditoria sobre o mesmo recorte filtrado.
+
+        1. A ocorrência foi atendida por viatura do próprio município?
+        2. Com que frequência cada indicador estourou a meta — e como isso
+           se compara à referência que o próprio serviço pratica?
+        """
+        kpis, charts, tables = [], [], []
+        cobertura = self._auditoria_cobertura(df)
+        if cobertura:
+            kpis += cobertura["kpis"]
+            charts += cobertura["charts"]
+            tables += cobertura["tables"]
+        indicadores = self._auditoria_indicadores(df)
+        if indicadores:
+            kpis += indicadores["kpis"]
+            charts += indicadores["charts"]
+            tables += indicadores["tables"]
+        return {"kpis": kpis, "charts": charts, "tables": tables}
+
+    def _auditoria_principal(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Uma linha por ocorrência: a viatura que de fato a atendeu.
+
+        Ocorrência com vários empenhos é comum. A que conta para cobertura
+        é a que chegou primeiro; se nenhuma chegou, a primeira despachada.
+        """
+        emp = df[df["unidade"].notna()].copy()
+        if emp.empty:
+            return emp
+        emp["_sem_chegada"] = emp["dt_chegada_no_local"].isna()
+        emp = emp.sort_values(["_sem_chegada", "dt_chegada_no_local",
+                               "dt_data_controlador"])
+        # Empenho sem número de ocorrência não pode ser agrupado com os
+        # outros: cada um vale por si, senão todos virariam uma ocorrência só.
+        com_numero = emp[emp["ocorrencia"].notna()].drop_duplicates(
+            subset="ocorrencia", keep="first")
+        return pd.concat([com_numero, emp[emp["ocorrencia"].isna()]])
+
+    def _auditoria_cobertura(self, df: pd.DataFrame) -> dict | None:
+        """Atendimento por viatura do próprio município × de outro."""
+        principal = self._auditoria_principal(df)
+        if principal.empty:
+            return None
+        aval = principal[principal["fora_do_municipio"].notna()]
+        if aval.empty:
+            return None
+
+        fora = int(aval["fora_do_municipio"].sum())
+        proprio = len(aval) - fora
+        pct_fora = fora / len(aval) * 100
+        sem_base = len(principal) - len(aval)
+
+        kpis = [
+            {"label": "Ocorrências",
+             "valor": f"{len(aval):,}".replace(",", "."),
+             "sub": (f"com viatura e município identificados" if not sem_base
+                     else f"{sem_base:,}".replace(",", ".") +
+                     " sem município identificado")},
+            {"label": "Viatura da casa",
+             "valor": f"{proprio / len(aval) * 100:.1f}%",
+             "sub": f"{proprio:,}".replace(",", ".") +
+                    " do próprio município"},
+            {"label": "Viatura de fora",
+             "valor": f"{pct_fora:.1f}%",
+             "sub": f"{fora:,}".replace(",", ".") + " de outro município"},
+        ]
+        charts = [{"tipo": "doughnut",
+                   "titulo": "Origem da viatura que atendeu",
+                   "labels": ["Do próprio município", "De outro município"],
+                   "datasets": [{"label": "Ocorrências",
+                                 "data": [proprio, fora]}]}]
+
+        # Por município da ocorrência. A cor compara com a média do serviço
+        # (a "referência"): quem depende de fora bem mais que a casa toda.
+        grupo = aval.groupby("cidade")["fora_do_municipio"].agg(["size", "sum"])
+        grupo = grupo[grupo["size"] > 0].sort_values("size", ascending=False)
+        linhas = []
+        for cidade, r in grupo.iterrows():
+            total, qtd = int(r["size"]), int(r["sum"])
+            pct = qtd / total * 100
+            if pct > pct_fora * 2:
+                cls = "table-danger"
+            elif pct > pct_fora:
+                cls = "table-warning"
+            else:
+                cls = "table-success"
+            de_fora = aval[(aval["cidade"] == cidade)
+                           & aval["fora_do_municipio"].fillna(False)]
+            origem = de_fora["municipio_base"].mode()
+            linhas.append([cidade, total, qtd,
+                           {"v": f"{pct:.1f}%", "cls": cls},
+                           origem.iat[0] if not origem.empty else "—"])
+        tables = [{
+            "titulo": (f"Cobertura por município da ocorrência — verde abaixo "
+                       f"da média do serviço ({pct_fora:.1f}% de fora), "
+                       f"vermelho acima do dobro dela"),
+            "colunas": ["Município da ocorrência", "Ocorrências",
+                        "Atendidas por viatura de fora", "% de fora",
+                        "Principal município de origem"],
+            "linhas": linhas,
+        }]
+
+        pares = aval[aval["fora_do_municipio"].fillna(False)].groupby(
+            ["municipio_base", "cidade"]).size().sort_values(ascending=False)
+        if not pares.empty:
+            tables.append({
+                "titulo": "Quem atende fora da própria base — base → município "
+                          "atendido (30 maiores)",
+                "colunas": ["Base da viatura", "Município atendido",
+                            "Ocorrências"],
+                "linhas": [[base, cidade, int(qtd)]
+                           for (base, cidade), qtd in pares.head(30).items()],
+            })
+        return {"kpis": kpis, "charts": charts, "tables": tables}
+
+    def _auditoria_indicadores(self, df: pd.DataFrame) -> dict | None:
+        """% de descumprimento da meta por indicador, com a referência real.
+
+        A referência é o que o serviço pratica no recorte (mediana e p90),
+        e é ela que define a cor: se a mediana já passou da meta, a maioria
+        descumpre; se só o p90 passou, o problema está na cauda.
+        """
+        metas = self._metas_tempo()
+        linhas, labels, valores = [], [], []
+        for col, rotulo, sub in AUDITORIA_INDICADORES:
+            if col not in df.columns:
+                continue
+            valida = self._validos(df, col)
+            if valida.empty:
+                continue
+            mediana, p90 = float(valida.median()), float(valida.quantile(0.9))
+
+            if col == "t_p2":
+                # Meta por cor do código: cada linha tem o seu limite.
+                limite = df.loc[valida.index, "codigo_cor"].map(SLA_P2_POR_COR)
+                com_meta = limite.notna()
+                avaliados = int(com_meta.sum())
+                acima = int((valida[com_meta] > limite[com_meta]).sum())
+                meta_txt = "01:30 / 03:00 / 04:00 por cor"
+                referencia = SLA_P2_POR_COR["amarelo"]
+            else:
+                meta = metas.get(col)
+                if meta is None:
+                    # Sem meta (P8 depende da distância ao hospital): entra
+                    # só com a referência do serviço, sem juízo de valor.
+                    linhas.append([f"{rotulo} · {sub}",
+                                   {"v": "sem meta", "cls": "text-muted"},
+                                   len(valida), {"v": "—", "cls": "text-muted"},
+                                   self._hms(mediana), self._hms(p90)])
+                    continue
+                avaliados = len(valida)
+                acima = int((valida > meta).sum())
+                meta_txt, referencia = self._hms(meta), meta
+
+            if not avaliados:
+                continue
+            pct = acima / avaliados * 100
+            if mediana > referencia:
+                cls = "table-danger"      # a maioria dos atendimentos falha
+            elif p90 > referencia:
+                cls = "table-warning"     # falha na cauda
+            else:
+                cls = "table-success"
+            linhas.append([f"{rotulo} · {sub}", meta_txt, avaliados,
+                           {"v": f"{pct:.1f}%", "cls": cls},
+                           self._hms(mediana), self._hms(p90)])
+            labels.append(rotulo)
+            valores.append(round(pct, 1))
+
+        if not linhas:
+            return None
+
+        piores = sorted(zip(labels, valores), key=lambda x: -x[1])[:3]
+        kpis = [{"label": "Pior indicador",
+                 "valor": f"{piores[0][1]:.1f}%",
+                 "sub": f"{piores[0][0]} acima da meta"}] if piores else []
+        charts = [{"tipo": "bar", "horizontal": True,
+                   "titulo": "% de atendimentos acima da meta, por indicador",
+                   "labels": labels,
+                   "datasets": [{"label": "% acima da meta", "data": valores}],
+                   "height": max(240, 26 * len(labels) + 60)}]
+        tables = [{
+            "titulo": ("Descumprimento de meta por indicador — verde: até o "
+                       "p90 dentro da meta · amarelo: a cauda estoura · "
+                       "vermelho: a mediana já estoura"),
+            "colunas": ["Indicador", "Meta", "Atendimentos avaliados",
+                        "% acima da meta", "Mediana do serviço",
+                        "p90 do serviço"],
+            "linhas": linhas,
+        }]
+        return {"kpis": kpis, "charts": charts, "tables": tables}
+
+    def _metas_tempo(self) -> dict[str, int]:
+        """Metas em segundos, com o ajuste feito em /configuracoes."""
+        from app.core.config_service import get_config
+        from app.core.database import SessionLocal
+
+        metas = dict(METAS_TEMPO)
+        db = SessionLocal()
+        try:
+            for col in list(metas):
+                valor = get_config(db, f"{PREFIXO_CONFIG_META}{col}_segundos",
+                                   empresa_id=self.empresa_id)
+                if valor in (None, ""):
+                    continue
+                try:
+                    metas[col] = max(int(str(valor).strip()), 1)
+                except ValueError:
+                    pass
+        finally:
+            db.close()
+        return metas
 
     def tema_localidade(self, df: pd.DataFrame) -> dict:
         return {

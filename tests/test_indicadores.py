@@ -1,5 +1,6 @@
 """Testes do módulo Indicadores."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.seeds import ADMIN_EMAIL, ADMIN_SENHA
@@ -431,3 +432,181 @@ def test_p4_1_mostra_a_memoria_de_calculo():
                     if i["rotulo"].startswith("P4.1"))
         assert "sem desconto" in item["sub"], item["sub"]
         assert item["valor"] == mmss(b)     # preserva o medido
+
+
+# ------------------------------------------------ Auditoria de Ocorrências
+
+def test_municipio_da_base_sai_do_nome_da_unidade():
+    """"USA 10 - VITORIA" tem base VITORIA; complemento que não é município
+    (aeromédico, NEP, VIR-01) não vira base."""
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    com_sufixo = df[df["unidade"].fillna("").str.contains(" - ")]
+    assert not com_sufixo.empty
+
+    amostra = com_sufixo[com_sufixo["unidade"].str.endswith("VITORIA")]
+    if not amostra.empty:
+        assert (amostra["municipio_base"] == "VITORIA").all()
+
+    # complementos que não são município ficam sem base
+    for nome in ("USA - AEROMEDICO", "USA - NEP 33", "VIR - 01"):
+        linhas = df[df["unidade"] == nome]
+        if not linhas.empty:
+            assert linhas["municipio_base"].isna().all(), nome
+
+
+def test_fora_do_municipio_e_nulo_quando_falta_um_dos_lados():
+    """Sem base ou sem cidade não dá para afirmar nada — tem que ser nulo,
+    nunca False (que contaria como atendimento do próprio município)."""
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    incompleto = df[df["municipio_base"].isna() | df["cidade_norm"].isna()]
+    assert incompleto["fora_do_municipio"].isna().all()
+
+    completo = df[df["municipio_base"].notna() & df["cidade_norm"].notna()]
+    assert completo["fora_do_municipio"].notna().all()
+    # e o valor confere com a comparação direta
+    esperado = completo["municipio_base"] != completo["cidade_norm"]
+    assert (completo["fora_do_municipio"].astype(bool) == esperado).all()
+
+
+def test_auditoria_conta_uma_linha_por_ocorrencia():
+    """Ocorrência com vários empenhos conta uma vez, pela viatura que atendeu."""
+    import pandas as pd
+
+    from app.modules.indicadores.service import IndicadoresService
+
+    service = IndicadoresService(1)
+    df = nucleo_df()
+    if df.empty:
+        pytest.skip("sem dados importados")
+    principal = service._auditoria_principal(df)
+    com_numero = principal[principal["ocorrencia"].notna()]
+    assert not com_numero["ocorrencia"].duplicated().any()
+
+    # a escolhida é a que chegou primeiro, quando alguma chegou
+    empenhos = df[df["unidade"].notna()]
+    multiplos = empenhos[empenhos.duplicated("ocorrencia", keep=False)
+                         & empenhos["ocorrencia"].notna()]
+    chegaram = multiplos[multiplos["dt_chegada_no_local"].notna()]
+    if not chegaram.empty:
+        numero = chegaram.iloc[0]["ocorrencia"]
+        grupo = chegaram[chegaram["ocorrencia"] == numero]
+        escolhida = principal[principal["ocorrencia"] == numero]
+        assert len(escolhida) == 1
+        assert (escolhida.iloc[0]["dt_chegada_no_local"]
+                == grupo["dt_chegada_no_local"].min())
+
+
+def nucleo_df():
+    from app.modules.indicadores import nucleo
+    return nucleo.carregar(1)
+
+
+def test_dashboard_auditoria_ocorrencias():
+    from app.modules.indicadores.service import IndicadoresService
+
+    dados = IndicadoresService(1).dashboard("auditoria-ocorrencias", {})
+    if not dados["kpis"]:
+        pytest.skip("sem dados importados")
+
+    rotulos = [k["label"] for k in dados["kpis"]]
+    assert "Viatura da casa" in rotulos and "Viatura de fora" in rotulos
+    # os dois percentuais de cobertura somam 100%
+    casa = float(next(k for k in dados["kpis"]
+                      if k["label"] == "Viatura da casa")["valor"].rstrip("%"))
+    fora = float(next(k for k in dados["kpis"]
+                      if k["label"] == "Viatura de fora")["valor"].rstrip("%"))
+    assert abs(casa + fora - 100) < 0.2
+
+    titulos = [t["titulo"] for t in dados["tables"]]
+    assert any("Cobertura por município" in t for t in titulos)
+    assert any("Descumprimento de meta" in t for t in titulos)
+
+
+def test_auditoria_indicadores_traz_meta_e_referencia():
+    """Cada linha mostra a meta, o % que a ultrapassou e o que o serviço
+    realmente pratica (mediana e p90)."""
+    import re
+
+    from app.modules.indicadores.service import IndicadoresService
+
+    dados = IndicadoresService(1).dashboard("auditoria-ocorrencias", {})
+    tabelas = [t for t in dados["tables"] if "Descumprimento" in t["titulo"]]
+    if not tabelas:
+        pytest.skip("sem dados importados")
+    tabela = tabelas[0]
+    assert tabela["colunas"][-2:] == ["Mediana do serviço", "p90 do serviço"]
+
+    rotulos = [linha[0] for linha in tabela["linhas"]]
+    for esperado in ("P1 · Atendimento TARM", "P4.1 · Saída de base",
+                     "Tempo de Resposta"):
+        assert any(r.startswith(esperado) for r in rotulos), esperado
+
+    for linha in tabela["linhas"]:
+        _, meta, n, pct, mediana, p90 = linha
+        assert n > 0
+        for tempo in (mediana, p90):
+            assert re.fullmatch(r"\d{2,}:\d{2}", tempo), tempo
+        if isinstance(meta, dict):          # P8 não tem meta
+            assert meta["v"] == "sem meta" and pct["v"] == "—"
+        else:
+            assert re.fullmatch(r"\d{1,2}\.\d%", pct["v"]), pct["v"]
+            assert pct["cls"] in ("table-success", "table-warning",
+                                  "table-danger")
+
+
+def test_cor_do_indicador_segue_a_referencia_do_servico():
+    """Vermelho só quando a mediana já estourou a meta; amarelo quando
+    apenas o p90 estoura; verde quando nem o p90 estoura."""
+    from app.modules.indicadores.service import IndicadoresService
+
+    dados = IndicadoresService(1).dashboard("auditoria-ocorrencias", {})
+    tabelas = [t for t in dados["tables"] if "Descumprimento" in t["titulo"]]
+    if not tabelas:
+        pytest.skip("sem dados importados")
+
+    def segundos(mmss: str) -> int:
+        m, s = mmss.split(":")
+        return int(m) * 60 + int(s)
+
+    metas = IndicadoresService(1)._metas_tempo()
+    for linha in tabelas[0]["linhas"]:
+        rotulo, meta, _, pct, mediana, p90 = linha
+        if isinstance(meta, dict) or "P2 ·" in rotulo:
+            continue                       # sem meta / meta variável por cor
+        limite = segundos(meta)
+        assert limite in metas.values()
+        if segundos(mediana) > limite:
+            assert pct["cls"] == "table-danger", rotulo
+        elif segundos(p90) > limite:
+            assert pct["cls"] == "table-warning", rotulo
+        else:
+            assert pct["cls"] == "table-success", rotulo
+
+
+def test_meta_ajustavel_em_configuracoes():
+    """A meta pode ser mudada em /configuracoes sem tocar no código."""
+    from app.core.config_service import set_config
+    from app.core.database import SessionLocal
+    from app.modules.indicadores.constants import PREFIXO_CONFIG_META
+    from app.modules.indicadores.service import IndicadoresService
+
+    chave = f"{PREFIXO_CONFIG_META}tempo_resposta_segundos"
+    service = IndicadoresService(1)
+    assert service._metas_tempo()["tempo_resposta"] == 600
+    db = SessionLocal()
+    try:
+        set_config(db, chave, "900", 1)
+        assert service._metas_tempo()["tempo_resposta"] == 900
+        set_config(db, chave, None, 1)
+        assert service._metas_tempo()["tempo_resposta"] == 600
+    finally:
+        set_config(db, chave, None, 1)
+        db.close()

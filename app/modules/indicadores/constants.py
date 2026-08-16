@@ -49,6 +49,42 @@ SLA_P1 = 90
 SLA_P2_POR_COR = {"vermelho": 90, "amarelo": 180, "verde": 240,
                   "orientacao_medica": 240}
 
+# Metas de tempo (segundos) — página Auditoria de Ocorrências.
+# A cadeia fecha por construção: central (4 min) + P4 (6 min) = tempo de
+# resposta (10 min); dentro do P4, saída de base (2 min) + deslocamento
+# (4 min). Assim o descumprimento de uma etapa explica o da seguinte.
+# P2 não entra aqui: a meta varia por cor (SLA_P2_POR_COR). P8 fica sem
+# meta — o transporte depende da distância até o hospital, que não é
+# escolha da equipe.
+# Ajustáveis em /configuracoes pela chave indicadores_meta_<coluna>_segundos.
+METAS_TEMPO = {
+    "t_central": 240,
+    "t_p1": SLA_P1,
+    "t_p3": 60,
+    "t_p4": 360,
+    "t_p4_1": 120,
+    "t_p4_2": 240,
+    "t_p5_6_7": 900,
+    "t_p9": 900,
+    "tempo_resposta": 600,
+}
+PREFIXO_CONFIG_META = "indicadores_meta_"
+
+# Indicadores auditados, na ordem do fluxo do atendimento.
+AUDITORIA_INDICADORES = [
+    ("t_central", "Tempo de Central", "controlador − abertura"),
+    ("t_p1", "P1 · Atendimento TARM", "TARM − abertura"),
+    ("t_p2", "P2 · Regulação médica", "regulador − TARM"),
+    ("t_p3", "P3 · Despacho", "controlador − regulador"),
+    ("t_p4_1", "P4.1 · Saída de base", "início desloc. − controlador"),
+    ("t_p4_2", "P4.2 · Deslocamento", "chegada − início desloc."),
+    ("t_p4", "P4 · Tempo de chegada", "chegada − controlador"),
+    ("tempo_resposta", "Tempo de Resposta", "chegada − abertura · 1ª unidade"),
+    ("t_p5_6_7", "P5-7 · Tempo de cena", "saída p/ hospital − chegada"),
+    ("t_p8", "P8 · Transporte", "chegada hospital − saída p/ hospital"),
+    ("t_p9", "P9 · Transf. de cuidados", "encerrado − chegada hospital"),
+]
+
 # Faixas de validade por métrica de tempo (segundos) — descarta outliers
 CAP_TEMPO = {
     "t_p1": 3600, "t_p2": 3600, "t_p3": 3600,
@@ -160,6 +196,9 @@ TEMAS = {
                 "Distribuição por código e % das 4 cores"),
     "situacao": ("Situação Atendimento", "fa-clipboard-check",
                  "Desfechos das ocorrências"),
+    "auditoria-ocorrencias": ("Auditoria de Ocorrências", "fa-scale-balanced",
+                              "Atendimento por viatura de outro município e "
+                              "descumprimento de meta por indicador"),
     "localidade": ("Cidade e Micro Região", "fa-map-location-dot",
                    "Distribuição geográfica das ocorrências"),
     "perfil-paciente": ("Sexo, Idade e Faixa", "fa-user",

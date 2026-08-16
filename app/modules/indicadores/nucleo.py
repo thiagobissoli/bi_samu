@@ -330,6 +330,20 @@ def _derivar(df: pd.DataFrame,
     df["cidade_norm"] = df["cidade"].map(lambda v: norm_txt(v) if pd.notna(v) else None)
     df["convenio"] = df["cidade_norm"].isin(CIDADES_CONVENIO)
 
+    # --- município da base × município da ocorrência ----------------------
+    # O nome da unidade carrega a base: "USA 10 - VITORIA". Nem todo
+    # complemento é município ("USA - AEROMEDICO", "USA - NEP 33", "VIR - 01"),
+    # por isso só vale como base o que também aparece como cidade de alguma
+    # ocorrência — regra que se corrige sozinha quando a frota muda.
+    municipios = set(df["cidade_norm"].dropna().unique())
+    base_txt = seg2.map(norm_txt).replace("", None)
+    df["municipio_base"] = base_txt.where(base_txt.isin(municipios))
+    comparavel = df["municipio_base"].notna() & df["cidade_norm"].notna()
+    # Nulo (não False) quando falta a base ou a cidade: sem os dois lados não
+    # dá para afirmar que o atendimento foi do próprio município.
+    df["fora_do_municipio"] = (df["municipio_base"] != df["cidade_norm"]) \
+        .astype("boolean").where(comparavel)
+
     # --- paciente ---------------------------------------------------------
     df["idade_num"] = pd.to_numeric(df["idade"], errors="coerce")
 
