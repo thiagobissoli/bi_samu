@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Backup</li>
+{% endblock %}
+
+{% block content %}
+{% if erro %}
+<div class="alert alert-danger alert-dismissible fade show">
+    {{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if ok %}
+<div class="alert alert-success alert-dismissible fade show">
+    {{ ok }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+{% if not copias %}
+<div class="alert alert-warning">
+    <i class="fa-solid fa-triangle-exclamation me-1"></i>
+    <strong>Não há nenhuma cópia de segurança.</strong>
+    O banco guarda os registros importados do vSky, os relatórios RAC
+    aprovados e as configurações — uma falha de disco levaria tudo.
+</div>
+{% endif %}
+
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header py-2">
+                <h3 class="card-title fs-6 mb-0">
+                    <i class="fa-solid fa-clock me-2"></i>Cópia automática
+                </h3>
+            </div>
+            <form method="post" action="/backup/config">
+                <div class="card-body">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox"
+                               id="ativo" name="ativo" value="1"
+                               {% if ativo %}checked{% endif %}>
+                        <label class="form-check-label" for="ativo">
+                            Gerar cópia todos os dias
+                        </label>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label small mb-1" for="hora">
+                                Hora
+                            </label>
+                            <input type="time" class="form-control form-control-sm"
+                                   id="hora" name="hora" value="{{ hora }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small mb-1" for="manter">
+                                Cópias a manter
+                            </label>
+                            <input type="number" min="1" max="365"
+                                   class="form-control form-control-sm"
+                                   id="manter" name="manter" value="{{ manter }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small mb-1" for="diretorio">
+                                Pasta de destino
+                            </label>
+                            <input type="text" class="form-control form-control-sm"
+                                   id="diretorio" name="diretorio"
+                                   value="{{ diretorio }}">
+                            <div class="form-text">
+                                Guardar num disco diferente do banco protege
+                                contra falha de hardware.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-secondary mt-3 mb-0 small">
+                        <div><strong>Próxima:</strong> {{ proxima or "—" }}</div>
+                        <div><strong>Última:</strong> {{ ultima or "nunca" }}</div>
+                        <div><strong>Resultado:</strong> {{ status or "—" }}</div>
+                    </div>
+                </div>
+                <div class="card-footer d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fa-solid fa-floppy-disk me-1"></i>Salvar
+                    </button>
+                    <button type="submit" formaction="/backup/executar"
+                            class="btn btn-outline-danger btn-sm">
+                        <i class="fa-solid fa-database me-1"></i>Copiar agora
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <h3 class="card-title fs-6 mb-0">
+                    <i class="fa-solid fa-box-archive me-2"></i>Cópias existentes
+                </h3>
+                <span class="badge text-bg-secondary">{{ copias | length }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if copias %}
+                <div class="table-responsive" style="max-height:420px; overflow-y:auto;">
+                    <table class="table table-sm table-striped align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Arquivo</th><th>Gerada em</th>
+                                <th>Tamanho</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in copias %}
+                            <tr>
+                                <td class="font-monospace small">{{ c.nome }}</td>
+                                <td class="small">
+                                    {{ c.criado_em }}
+                                    {% if c.idade_dias == 0 %}
+                                    <span class="badge text-bg-success">hoje</span>
+                                    {% endif %}
+                                </td>
+                                <td class="small">{{ c.tamanho_mb }} MB</td>
+                                <td>
+                                    <a class="btn btn-outline-secondary btn-sm py-0"
+                                       href="/backup/baixar?nome={{ c.nome }}">
+                                        Baixar
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="p-3 text-muted">
+                    Nenhuma cópia gerada ainda.
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer">
+                <div class="form-text mb-0">
+                    <i class="fa-solid fa-circle-info me-1"></i>
+                    Para restaurar uma cópia do MySQL:
+                    <code>gunzip &lt; arquivo.sql.gz | mysql -u root -p samu</code>.
+                    Teste a restauração periodicamente — cópia nunca testada
+                    não é cópia.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

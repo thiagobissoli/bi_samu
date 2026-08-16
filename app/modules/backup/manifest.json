@@ -1,0 +1,15 @@
+{
+    "name": "Backup",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [],
+    "permissions": [
+        "backup.visualizar",
+        "backup.executar"
+    ],
+    "menu": [
+        {"label": "Backup", "url": "/backup", "icon": "fa-database",
+         "permission": "backup.visualizar", "order": 90}
+    ],
+    "routes": ["/backup"]
+}
