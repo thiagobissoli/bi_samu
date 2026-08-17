@@ -1,5 +1,6 @@
 """Testes do módulo Painel de Gestão."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.seeds import ADMIN_EMAIL, ADMIN_SENHA
@@ -175,3 +176,72 @@ def test_envio_relatorio_por_email(monkeypatch):
         set_config(db, "relatorio_email_destinatarios", None, empresa_id=1)
     finally:
         db.close()
+
+
+def test_desperdicio_do_painel_cobre_toda_a_frota():
+    """O painel mede toda a frota; a Reunião de Indicadores, só o ISCMV.
+
+    São universos diferentes de propósito, mas quem compara as duas telas
+    precisa ver isso escrito — senão parece que uma delas está errada.
+    """
+    from app.modules.painel_gestao.service import PainelGestaoService
+
+    secoes = PainelGestaoService(1).montar()["secoes"]
+    sec = next(s for s in secoes if s["id"] == "desperdicio")
+    assert "toda a frota" in sec["nota"]
+    assert "ISCMV" in sec["nota"]
+
+
+def test_desperdicio_do_painel_mostra_o_denominador():
+    """O sub dizia "168 saídas" quando 168 era o nº de desperdícios; lido
+    assim, a porcentagem não fechava com nada."""
+    import re
+
+    from app.modules.painel_gestao.service import PainelGestaoService
+
+    secoes = PainelGestaoService(1).montar()["secoes"]
+    sec = next(s for s in secoes if s["id"] == "desperdicio")
+    kpis = sec["blocos"][0]["kpis"]
+    assert len(kpis) == 2
+    for kpi in kpis:
+        achado = re.search(r"(\d+) de (\d+) saídas", kpi["sub"])
+        assert achado, kpi["sub"]
+        casos, saidas = int(achado.group(1)), int(achado.group(2))
+        assert casos <= saidas
+        # e o percentual exibido é exatamente casos/saídas
+        pct = float(kpi["valor"].rstrip("%"))
+        assert abs(pct - casos / saidas * 100) < 0.06, kpi
+
+
+def test_painel_e_reuniao_diferem_apenas_pelo_iscmv():
+    """A diferença entre as duas telas é o filtro ISCMV, nada mais."""
+    from app.modules.indicadores import nucleo
+    from app.modules.indicadores.constants import (
+        MOTIVOS_EXCLUIDOS_DESPERDICIO, SITUACOES_DESPERDICIO)
+    from app.modules.painel_gestao.service import PainelGestaoService
+
+    painel = PainelGestaoService(1).montar()
+    sec = next(s for s in painel["secoes"] if s["id"] == "desperdicio")
+    semana = painel["semana"]
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    cod = df["motivo"].fillna("").str.split(" ").str[0].str.upper()
+    comum = (df["dt_inicio_deslocamento"].notna()
+             & ~cod.isin(MOTIVOS_EXCLUIDOS_DESPERDICIO))
+
+    def conta(universo):
+        sit = universo["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
+        cand = sit.isin(SITUACOES_DESPERDICIO)
+        real = cand & universo["dt_chegada_no_local"].notna()
+        na_semana = universo["semana_iso"] == semana
+        return int((real & na_semana).sum()), int(na_semana.sum())
+
+    todos, saidas_todos = conta(df[comum])
+    iscmv, saidas_iscmv = conta(df[comum & df["iscmv"]])
+
+    # o painel publica o número da frota inteira
+    assert f"{todos} de {saidas_todos} saídas" in sec["blocos"][0]["kpis"][0]["sub"]
+    # e o recorte ISCMV é de fato menor — é o que a Reunião mostra
+    assert iscmv <= todos and saidas_iscmv <= saidas_todos

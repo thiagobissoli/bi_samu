@@ -352,18 +352,23 @@ class PainelGestaoService:
         secoes.append({
             "id": "desperdicio", "titulo": "Desperdício",
             "icone": "fa-recycle", "cor": "danger",
-            "nota": "todas as saídas · sem necessidade — real: chegou ao "
-                    "local · evitado: cancelada no trajeto",
+            # O universo aqui é TODA a frota; a Reunião de Indicadores mede o
+            # mesmo desperdício restrito ao núcleo ISCMV. Os dois números são
+            # legítimos e diferentes — dizer de quem é a conta evita a leitura
+            # de que um dos painéis está errado.
+            "nota": "toda a frota (a Reunião de Indicadores usa só o núcleo "
+                    "ISCMV) · sem necessidade — real: chegou ao local · "
+                    "evitado: cancelada no trajeto",
             "blocos": [
                 {"kpis": [
                     {"label": "Real — última semana",
                      "valor": f"{(real & sem_u).sum() / n_sem * 100:.1f}%",
                      "sub": f"semana {sem_ult} · "
-                            f"{int((real & sem_u).sum())} saídas"},
+                            f"{int((real & sem_u).sum())} de {n_sem} saídas"},
                     {"label": "Evitado — última semana",
                      "valor": f"{(evitado & sem_u).sum() / n_sem * 100:.1f}%",
                      "sub": f"semana {sem_ult} · "
-                            f"{int((evitado & sem_u).sum())} canceladas"},
+                            f"{int((evitado & sem_u).sum())} de {n_sem} saídas"},
                  ],
                  "chart": {"tipo": "line",
                            "titulo": "% real × evitado sobre as saídas (12 meses)",
