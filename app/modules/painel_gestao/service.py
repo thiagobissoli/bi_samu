@@ -352,12 +352,9 @@ class PainelGestaoService:
         secoes.append({
             "id": "desperdicio", "titulo": "Desperdício",
             "icone": "fa-recycle", "cor": "danger",
-            # O universo aqui é TODA a frota; a Reunião de Indicadores mede o
-            # mesmo desperdício restrito ao núcleo ISCMV. Os dois números são
-            # legítimos e diferentes — dizer de quem é a conta evita a leitura
-            # de que um dos painéis está errado.
-            "nota": "toda a frota (a Reunião de Indicadores usa só o núcleo "
-                    "ISCMV) · sem necessidade — real: chegou ao local · "
+            # Mesmo universo da Reunião de Indicadores (toda a frota): as
+            # duas telas precisam mostrar o mesmo número para a mesma semana.
+            "nota": "toda a frota · sem necessidade — real: chegou ao local · "
                     "evitado: cancelada no trajeto",
             "blocos": [
                 {"kpis": [

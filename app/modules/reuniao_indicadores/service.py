@@ -432,7 +432,10 @@ class ReuniaoIndicadoresService:
 
         # ---- 9/10/11/12. desperdício ----------------------------------------
         motivo_cod = df["motivo"].fillna("").str.split(" ").str[0].str.upper()
-        universo = df[df["dt_inicio_deslocamento"].notna() & df["iscmv"]
+        # Toda a frota, não só o núcleo ISCMV: é o mesmo universo do card de
+        # Desperdício no Painel de Gestão. Enquanto os dois recortes conviviam,
+        # a mesma semana aparecia com números diferentes nas duas telas.
+        universo = df[df["dt_inicio_deslocamento"].notna()
                       & ~motivo_cod.isin(MOTIVOS_EXCLUIDOS_DESPERDICIO)]
         sit = universo["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
         cand = sit.isin(SITUACOES_DESPERDICIO)
@@ -452,9 +455,9 @@ class ReuniaoIndicadoresService:
         drill_semanal(si_desp, 0, universo[real])
         drill_semanal(si_desp, 1, universo[evitado])
         slides.append({
-            "kicker": "Desperdício operacional · Saída efetiva · ISCMV",
+            "kicker": "Desperdício operacional · Saída efetiva · Toda a frota",
             "titulo": "Desperdícios operacionais com saída efetiva",
-            "subtitulo": "Saída efetiva de viatura · núcleo ISCMV · exclui "
+            "subtitulo": "Saída efetiva de viatura · toda a frota · exclui "
                          "hipoglicemia revertida (PCG3) e PCR/Óbito (PCC3) · "
                          "desperdício REAL (chegou ao local) × EVITADO "
                          "(mitigado no trajeto) · números = última semana "
@@ -470,7 +473,7 @@ class ReuniaoIndicadoresService:
                  "sub": "mitigado no trajeto (sem chegada no local)",
                  "cor": VERDE},
                 {"valor": f"{n_saidas_sem:,}".replace(",", "."),
-                 "label": "Saídas efetivas ISCMV",
+                 "label": "Saídas efetivas",
                  "sub": f"denominador · última semana ({sem_data})",
                  "cor": LARANJA},
                 {"valor": f"{reais_periodo:,}".replace(",", "."),
@@ -515,7 +518,7 @@ class ReuniaoIndicadoresService:
         slides.append({
             "kicker": "Desperdício · Por tipo de unidade",
             "titulo": "Distribuição de desperdício por tipo de unidade",
-            "subtitulo": "viatura ISCMV · USA × USB · desperdício REAL "
+            "subtitulo": "toda a frota · USA × USB · desperdício REAL "
                          "(chegou ao local) · evolução semanal · números = "
                          f"última semana ({sem_data})",
             "kpis": kpis10,

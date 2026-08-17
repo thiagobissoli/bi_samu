@@ -179,17 +179,46 @@ def test_envio_relatorio_por_email(monkeypatch):
 
 
 def test_desperdicio_do_painel_cobre_toda_a_frota():
-    """O painel mede toda a frota; a Reunião de Indicadores, só o ISCMV.
-
-    São universos diferentes de propósito, mas quem compara as duas telas
-    precisa ver isso escrito — senão parece que uma delas está errada.
-    """
     from app.modules.painel_gestao.service import PainelGestaoService
 
     secoes = PainelGestaoService(1).montar()["secoes"]
     sec = next(s for s in secoes if s["id"] == "desperdicio")
     assert "toda a frota" in sec["nota"]
-    assert "ISCMV" in sec["nota"]
+
+
+def test_desperdicio_bate_entre_painel_e_reuniao():
+    """Mesma semana, mesmo número nas duas telas.
+
+    Enquanto a Reunião media só o núcleo ISCMV e o Painel a frota inteira,
+    a mesma semana aparecia como 96 desperdícios num lugar e 168 no outro.
+    """
+    import re
+
+    from app.modules.painel_gestao.service import PainelGestaoService
+    from app.modules.reuniao_indicadores.service import (
+        ReuniaoIndicadoresService)
+
+    painel = PainelGestaoService(1).montar()
+    deck = ReuniaoIndicadoresService(1).montar()
+    if not painel["secoes"] or not deck["slides"]:
+        pytest.skip("sem dados importados")
+
+    assert painel["semana"] == deck["semana"]
+    sec = next(s for s in painel["secoes"] if s["id"] == "desperdicio")
+    slide = next(s for s in deck["slides"]
+                 if s["titulo"].startswith("Desperdícios operacionais"))
+
+    achado = re.search(r"(\d+) de (\d+) saídas",
+                       sec["blocos"][0]["kpis"][0]["sub"])
+    real_painel, saidas_painel = int(achado.group(1)), int(achado.group(2))
+
+    kpis = {k["label"].split(" ·")[0]: k for k in slide["kpis"]}
+    assert int(kpis["Desperdício REAL"]["valor"]) == real_painel
+    assert int(kpis["Saídas efetivas"]["valor"].replace(".", "")) == saidas_painel
+
+    evitado_painel = int(re.search(r"(\d+) de ",
+                                   sec["blocos"][0]["kpis"][1]["sub"]).group(1))
+    assert int(kpis["Desperdício EVITADO"]["valor"]) == evitado_painel
 
 
 def test_desperdicio_do_painel_mostra_o_denominador():
