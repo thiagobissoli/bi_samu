@@ -122,8 +122,10 @@ def _params_calendarios(request: Request) -> dict:
             return padrao
 
     return {"indicadores": escolhidos or list(CALENDARIO_INDICADORES),
+            # o interruptor "Calendário compacto" manda modo=semana
             "modo": q.get("modo", "mes"),
             "aproximar": q.get("aproximar") == "1",
+            "ocorrencias": q.get("ocorrencias") == "1",
             "dias": _inteiro("dias", CALENDARIO_DIAS_PADRAO),
             "unidades": _inteiro("unidades", CALENDARIO_UNIDADES_MAX)}
 

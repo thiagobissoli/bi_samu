@@ -1160,7 +1160,8 @@ class IndicadoresService:
     def calendarios(self, filtros: dict, indicadores: list[str] | None = None,
                     modo: str = "mes", aproximar: bool = False,
                     dias: int = CALENDARIO_DIAS_PADRAO,
-                    unidades: int = CALENDARIO_UNIDADES_MAX) -> dict:
+                    unidades: int = CALENDARIO_UNIDADES_MAX,
+                    ocorrencias: bool = False) -> dict:
         """Calendário por unidade com um ou mais indicadores de tempo.
 
         Cada dia traz a média do turno diurno e do noturno, por indicador.
@@ -1186,7 +1187,7 @@ class IndicadoresService:
         vazio = {"indicadores": self._calendario_meta(escolhidos), "modo": modo,
                  "aproximar": aproximar, "dias": dias, "unidades": [],
                  "periodo": None, "unidades_omitidas": 0, "total": 0,
-                 "unidades_no_filtro": 0}
+                 "unidades_no_filtro": 0, "ocorrencias": ocorrencias}
         if base.empty:
             return _json_safe(vazio)
 
@@ -1198,7 +1199,7 @@ class IndicadoresService:
             return _json_safe(vazio)
 
         celulas = self._calendario_celulas(base, escolhidos)
-        ocorrencias = base.groupby("unidade_curta").size()
+        empenhos = base.groupby("unidade_curta").size()
         cidades = base.groupby("unidade_curta")["cidade"].agg(
             lambda s: s.mode().iat[0] if not s.mode().empty else "")
 
@@ -1221,7 +1222,7 @@ class IndicadoresService:
                                if len(validos) else None)
             cartoes.append({
                 "unidade": unidade, "cidade": cidades.get(unidade, ""),
-                "total": int(ocorrencias.get(unidade, 0)),
+                "total": int(empenhos.get(unidade, 0)),
                 # crus para a API, formatados para a tela
                 "medias": medias, "limites": limites,
                 "medias_txt": {k: self._mmss_min(v) for k, v in medias.items()},
@@ -1236,6 +1237,7 @@ class IndicadoresService:
         return _json_safe({
             "indicadores": self._calendario_meta(escolhidos), "modo": modo,
             "aproximar": aproximar, "dias": dias, "unidades": cartoes,
+            "ocorrencias": ocorrencias,
             "unidades_omitidas": omitidas, "total": int(len(base)),
             "unidades_no_filtro": len(ordenadas),
             "periodo": {"inicio": datas[0].strftime("%d/%m/%Y"),
@@ -1315,10 +1317,17 @@ class IndicadoresService:
 
     @staticmethod
     def _mmss_min(minutos: float | None) -> str:
-        """Minutos decimais -> mm:ss (o formato usado no resto do sistema)."""
+        """Minutos decimais -> mm:ss, ou 2h07 acima de uma hora.
+
+        A célula de um dia é estreita; "127:03" ao lado de outro tempo não
+        cabe, e a hora explícita ainda é mais fácil de ler.
+        """
         if minutos is None or pd.isna(minutos):
             return "—"
         total = int(round(float(minutos) * 60))
+        if total >= 3600:
+            inteiros = round(total / 60)      # arredonda, não trunca
+            return f"{inteiros // 60}h{inteiros % 60:02d}"
         return f"{total // 60:02d}:{total % 60:02d}"
 
     def _calendario_grade(self, por_dia: dict, escolhidos: list[str],

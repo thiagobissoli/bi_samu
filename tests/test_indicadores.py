@@ -736,12 +736,35 @@ def test_calendario_agrupa_por_dia_de_plantao_e_turno():
                                    & (alvo["turno"] == marca)]
                     assert len(recorte) == faixa[f"{turno}_n"], (data, turno)
                     esperado = recorte["tempo_resposta"].mean() / 60
-                    minutos = int(faixa[turno].split(":")[0]) \
-                        + int(faixa[turno].split(":")[1]) / 60
-                    # mm:ss arredonda ao segundo: meio segundo de folga
-                    assert abs(minutos - esperado) < 0.009, (data, turno)
+                    minutos = _minutos_do_rotulo(faixa[turno])
+                    # mm:ss arredonda ao segundo: meio segundo de folga.
+                    # Acima de 1 h o rótulo é 2h07, com folga de meio minuto.
+                    folga = 0.51 if "h" in faixa[turno] else 0.009
+                    assert abs(minutos - esperado) < folga, (data, turno)
                     conferidas += 1
     assert conferidas > 0, "nenhuma célula preenchida para conferir"
+
+
+def _minutos_do_rotulo(rotulo: str) -> float:
+    """"08:36" -> 8.6 · "2h07" -> 127.0 (os dois formatos da célula)."""
+    if "h" in rotulo:
+        horas, minutos = rotulo.split("h")
+        return int(horas) * 60 + int(minutos)
+    mm, ss = rotulo.split(":")
+    return int(mm) + int(ss) / 60
+
+
+def test_formato_do_tempo_na_celula():
+    from app.modules.indicadores.service import IndicadoresService
+
+    fmt = IndicadoresService._mmss_min
+    assert fmt(8.6) == "08:36"
+    assert fmt(0) == "00:00"
+    assert fmt(None) == "—"
+    # acima de uma hora vira 2h07: "127:03" não cabe na largura de um dia
+    assert fmt(127.05) == "2h07"
+    assert fmt(60) == "1h00"
+    assert fmt(59.99) == "59:59"
 
 
 def test_pareto_marca_os_20_por_cento_piores():
@@ -840,3 +863,94 @@ def test_calendario_filtrado_por_recurso_traz_so_aquele_tipo():
             continue
         nomes = [u["unidade"] for u in dados["unidades"]]
         assert all(n.startswith(tipo) for n in nomes), (tipo, nomes[:5])
+
+
+def test_interruptores_do_calendario():
+    """Nº Ocorrências, Calendário compacto e Aproximar valor, como no DBSamu."""
+    _login()
+    base = "/indicadores/calendarios?unidades=2&indicador=tempo-resposta"
+    html = client.get(base, headers={"accept": "text/html"}).text
+    for rotulo in ("Nº Ocorrências", "Calendário compacto", "Aproximar valor"):
+        assert rotulo in html, rotulo
+    assert html.count('role="switch"') == 3
+    # o interruptor compacto manda modo=semana; desmarcado, a rota cai em "mes"
+    assert 'name="modo" value="semana"' in html
+
+
+def test_contagens_aparecem_so_com_o_interruptor_ligado():
+    _login()
+    base = "/indicadores/calendarios?unidades=2&indicador=tempo-resposta"
+    sem = client.get(base, headers={"accept": "text/html"}).text
+    com = client.get(base + "&ocorrencias=1", headers={"accept": "text/html"}).text
+    assert 'class="cal-n"' not in sem
+    assert 'class="cal-n"' in com
+    # dia sem atendimento não ganha "(☀0 ☾0)"
+    import re
+    pares = re.findall(r'class="cal-n">\(&#9728;(\d+) &#9790;(\d+)\)', com)
+    assert pares, "nenhuma contagem renderizada"
+    assert not any(d == "0" and n == "0" for d, n in pares)
+
+
+def test_contagem_da_celula_bate_com_o_numero_de_atendimentos():
+    from app.modules.indicadores.service import IndicadoresService
+
+    dados = IndicadoresService(1).calendarios({}, ["tempo-resposta"], "mes",
+                                              False, 31, unidades=2,
+                                              ocorrencias=True)
+    if not dados["unidades"]:
+        pytest.skip("sem dados importados")
+    df = nucleo_df()
+    unidade = dados["unidades"][0]
+    validos = df[(df["unidade_curta"] == unidade["unidade"])
+                 & (df["tempo_resposta"] > 0) & (df["tempo_resposta"] < 10800)]
+    soma = sum(f["diurno_n"] + f["noturno_n"]
+               for semana in unidade["grade"] for dia in semana
+               for f in dia["faixas"])
+    # o período da grade é o mesmo dos últimos 31 dias com movimento
+    datas = {pd_data for semana in unidade["grade"] for dia in semana
+             if not dia["fora"] for pd_data in [dia["iso"]]}
+    import pandas as pd
+    no_periodo = validos[validos["plantao_data"].map(
+        lambda d: d.strftime("%Y-%m-%d")).isin(datas)]
+    assert soma == len(no_periodo)
+
+
+def test_impressao_orienta_a_pagina_conforme_a_visao():
+    """Paisagem para a grade dia a dia; retrato para a compacta."""
+    import re
+
+    _login()
+    base = "/indicadores/calendarios?unidades=2&indicador=tempo-resposta"
+    for modo, esperado in (("mes", "landscape"), ("semana", "portrait")):
+        html = client.get(f"{base}&modo={modo}" if modo == "semana" else base,
+                          headers={"accept": "text/html"}).text
+        achado = re.search(r"@page\s*\{\s*size:\s*A4 (\w+);", html)
+        assert achado, "regra @page ausente"
+        assert achado.group(1) == esperado, (modo, achado.group(1))
+
+
+def test_impressao_um_calendario_por_pagina():
+    _login()
+    html = client.get("/indicadores/calendarios?unidades=3"
+                      "&indicador=tempo-resposta",
+                      headers={"accept": "text/html"}).text
+    assert "break-after: page" in html
+    # a última não força uma folha em branco no fim
+    assert ".cal-cartao:last-of-type" in html
+    # o menu e o painel de filtros não vão para o papel
+    assert ".app-sidebar" in html and "display: none !important" in html
+
+
+def test_periodo_analisado_dentro_de_cada_calendario():
+    """Na impressão cada folha é um calendário — e a visão compacta não tem
+    data nas células, então o período tem de estar no próprio cartão."""
+    _login()
+    for modo in ("mes", "semana"):
+        html = client.get("/indicadores/calendarios?unidades=3"
+                          f"&indicador=tempo-resposta&modo={modo}",
+                          headers={"accept": "text/html"}).text
+        cartoes = html.count('class="card mb-3 cal-cartao"')
+        assert cartoes == 3, cartoes
+        assert html.count("Período analisado:") == cartoes, modo
+        if modo == "semana":
+            assert "médias por dia da semana" in html

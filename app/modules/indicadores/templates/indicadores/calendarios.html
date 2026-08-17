@@ -46,11 +46,79 @@
     .cal-ok   { color: #0d6efd; }
     .cal-ruim { color: #dc3545; font-weight: 800; }
     .cal-vazio { color: var(--bs-secondary-color, #adb5bd); }
-    .cal-n { color: var(--bs-secondary-color, #adb5bd); font-size: .56rem; }
+    /* Contagem em linha própria: junto dos tempos, a coluna de um dia é
+       estreita demais e o texto era cortado na borda. */
+    .cal-n {
+        display: block; color: var(--bs-secondary-color, #adb5bd);
+        font-size: .56rem;
+    }
+    .cal-periodo {
+        background: var(--bs-primary-bg-subtle, #cfe2ff);
+        color: var(--bs-emphasis-color, #212529);
+        font-size: .7rem; font-weight: 600; text-align: center;
+        padding: .2rem .4rem;
+    }
+    .cal-interruptor { max-width: 15rem; padding-left: 2.6em; }
+    .cal-interruptor .form-check-input { margin-left: -2.6em; }
+    .cal-interruptor .form-check-label { font-size: .8rem; line-height: 1.25; }
+    .cal-interruptor .form-check-label span { font-size: .72rem; }
+    /* Impressão: um calendário por página. Paisagem para a grade dia a dia
+       (7 colunas x 5 semanas), retrato para a compacta (uma linha de 7). A
+       orientação vem do modo, por isso a regra @page é gerada no servidor. */
+    @page {
+        size: A4 {{ "portrait" if dados.modo == "semana" else "landscape" }};
+        margin: 8mm;
+    }
     @media print {
-        .cal-sem-impressao { display: none !important; }
-        .cal-cartao { page-break-inside: avoid; break-inside: avoid; }
-        .cal-dia, .cal-cabecalho { background: #fff !important; }
+        /* O sistema é escuro na tela; no papel tudo vira claro, senão sai
+           texto branco em fundo branco. */
+        * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .cal-sem-impressao,
+        .app-sidebar, .app-header, .app-footer,
+        .breadcrumb, .content-header { display: none !important; }
+        html, body, .app-wrapper, .app-main, .app-content {
+            background: #fff !important; color: #000 !important;
+            margin: 0 !important; padding: 0 !important;
+        }
+        .app-content > .container-fluid { padding: 0 !important; }
+
+        .cal-cartao {
+            page-break-inside: avoid; break-inside: avoid;
+            page-break-after: always; break-after: page;
+            border: 1px solid #999; margin: 0 !important;
+            background: #fff !important; color: #000 !important;
+        }
+        /* sem isto sobra uma folha em branco no fim */
+        .cal-cartao:last-of-type {
+            page-break-after: auto; break-after: auto;
+        }
+        .cal-cartao .card-header, .cal-cartao .card-footer,
+        .cal-cartao .card-body {
+            background: #fff !important; color: #000 !important;
+        }
+        .cal-cartao .text-muted { color: #444 !important; }
+        .cal-cartao .badge {
+            border: 1px solid #666; color: #000 !important;
+            background: #fff !important; font-weight: 700;
+        }
+        .cal-periodo {
+            background: #e7e7e7 !important; color: #000 !important;
+            border-bottom: 1px solid #999; font-size: .78rem;
+        }
+        .cal-grade { background: #999 !important; }
+        .cal-dia, .cal-cabecalho {
+            background: #fff !important; color: #000 !important;
+        }
+        .cal-dia.fds, .cal-cabecalho.fds { background: #f0f0f0 !important; }
+        .cal-data { color: #000 !important; }
+        .cal-dia.semana .cal-data {
+            background: #e7e7e7 !important; color: #000 !important;
+        }
+        .cal-faixa .rot, .cal-n { color: #555 !important; }
+        /* O Pareto é o dado: azul e vermelho têm de sair impressos */
+        .cal-ok   { color: #0d47a1 !important; }
+        .cal-ruim { color: #b71c1c !important; }
+        .cal-vazio { color: #999 !important; }
     }
 </style>
 {% endblock %}
@@ -81,13 +149,6 @@
                 </div>
             </div>
 
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="modo">Visão</label>
-                <select id="modo" name="modo" class="form-select form-select-sm">
-                    <option value="mes" {% if params.modo == "mes" %}selected{% endif %}>Dia a dia</option>
-                    <option value="semana" {% if params.modo == "semana" %}selected{% endif %}>Média por dia da semana</option>
-                </select>
-            </div>
             <div class="col-auto">
                 <label class="form-label mb-0 small" for="dias"
                        title="Últimos dias com movimento no filtro">Dias</label>
@@ -160,15 +221,6 @@
             </div>
             <div class="col-auto">
                 <div class="form-check form-check-inline mb-1">
-                    <input class="form-check-input" type="checkbox" id="aproximar"
-                           name="aproximar" value="1"
-                           {% if params.aproximar %}checked{% endif %}>
-                    <label class="form-check-label small" for="aproximar"
-                           title="Marca as k piores médias (k = maior entre 3 e 20% de n) em vez do percentil exato">
-                        Aproximar valor
-                    </label>
-                </div>
-                <div class="form-check form-check-inline mb-1">
                     <input class="form-check-input" type="checkbox" id="convenio"
                            name="convenio" value="1"
                            {% if filtros.convenio %}checked{% endif %}>
@@ -181,21 +233,64 @@
                     <label class="form-check-label small" for="iscmv">ISCMV</label>
                 </div>
             </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm">
-                    <i class="fa-solid fa-calendar-days"></i> Gerar calendário
-                </button>
-                <a href="/indicadores/calendarios" class="btn btn-outline-secondary btn-sm">Limpar</a>
-                <button type="button" class="btn btn-outline-secondary btn-sm"
-                        onclick="window.print();">
-                    <i class="fa-solid fa-print"></i> Imprimir
-                </button>
+
+            <div class="col-12">
+                <div class="d-flex flex-wrap align-items-start gap-4 pt-1
+                            border-top mt-1">
+                    <div class="form-check form-switch cal-interruptor">
+                        <input class="form-check-input" type="checkbox"
+                               role="switch" id="ocorrencias" name="ocorrencias"
+                               value="1" {% if params.ocorrencias %}checked{% endif %}>
+                        <label class="form-check-label" for="ocorrencias">
+                            <strong>Nº Ocorrências</strong>
+                            <span class="d-block text-muted">
+                                Exibe quantos atendimentos formaram cada média
+                            </span>
+                        </label>
+                    </div>
+                    <div class="form-check form-switch cal-interruptor">
+                        {# name=modo com value=semana: desmarcado não envia nada
+                           e a rota cai no padrão "mes". #}
+                        <input class="form-check-input" type="checkbox"
+                               role="switch" id="modo" name="modo" value="semana"
+                               {% if params.modo == "semana" %}checked{% endif %}>
+                        <label class="form-check-label" for="modo">
+                            <strong>Calendário compacto</strong>
+                            <span class="d-block text-muted">
+                                Média por dia da semana, em vez de dia a dia
+                            </span>
+                        </label>
+                    </div>
+                    <div class="form-check form-switch cal-interruptor">
+                        <input class="form-check-input" type="checkbox"
+                               role="switch" id="aproximar" name="aproximar"
+                               value="1" {% if params.aproximar %}checked{% endif %}>
+                        <label class="form-check-label" for="aproximar">
+                            <strong>Aproximar valor</strong>
+                            <span class="d-block text-muted">
+                                Marca as k piores médias, k = maior entre 3 e
+                                20% de n (ex.: 9 → 3), em vez do percentil exato
+                            </span>
+                        </label>
+                    </div>
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                                onclick="window.print();">
+                            <i class="fa-solid fa-print"></i> Imprimir calendário
+                        </button>
+                        <a href="/indicadores/calendarios"
+                           class="btn btn-outline-secondary btn-sm">Limpar</a>
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="fa-solid fa-calendar-days"></i> Gerar calendário
+                        </button>
+                    </div>
+                </div>
             </div>
         </form>
     </div>
 </div>
 
-<p class="text-muted mb-2 small">
+<p class="cal-sem-impressao text-muted mb-2 small">
     <i class="fa-solid fa-circle-info me-1"></i>
     Cada dia traz a média do turno <strong>&#9728; diurno</strong> (07:00–18:59) e
     <strong>&#9790; noturno</strong>, em mm:ss, por indicador.
@@ -212,7 +307,7 @@
     Nenhum atendimento com unidade e horários válidos nos filtros selecionados.
 </div>
 {% else %}
-<p class="text-muted mb-3 small">
+<p class="cal-sem-impressao text-muted mb-3 small">
     Período: <strong>{{ dados.periodo.inicio }}</strong> a
     <strong>{{ dados.periodo.fim }}</strong> ({{ dados.periodo.dias }} dias com
     movimento) · <strong>{{ dados.total }}</strong> empenhos ·
@@ -246,6 +341,16 @@
         </span>
     </div>
     <div class="card-body p-0">
+        {# Período dentro do cartão: na impressão cada página é um calendário,
+           e a compacta não tem data nenhuma nas células — sem isto a folha
+           não diz de quando são os números. #}
+        <div class="cal-periodo">
+            <i class="fa-solid fa-calendar-range me-1"></i>
+            Período analisado: <strong>{{ dados.periodo.inicio }}</strong> a
+            <strong>{{ dados.periodo.fim }}</strong>
+            ({{ dados.periodo.dias }} dias com movimento)
+            {% if dados.modo == "semana" %} · médias por dia da semana{% endif %}
+        </div>
         <div class="cal-grade">
             {% for nome in ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"] %}
             <div class="cal-cabecalho {% if loop.index0 in [0, 6] %}fds{% endif %}">{{ nome }}</div>
@@ -261,6 +366,10 @@
                           title="Diurno · {{ f.diurno_n }} atendimento(s)">&#9728;{{ f.diurno }}</span>
                     <span class="{{ 'cal-ruim' if f.noturno_ruim else ('cal-vazio' if f.noturno == '—' else 'cal-ok') }}"
                           title="Noturno · {{ f.noturno_n }} atendimento(s)">&#9790;{{ f.noturno }}</span>
+                    {# dia sem atendimento não ganha "(☀0 ☾0)": só ruído #}
+                    {% if dados.ocorrencias and (f.diurno_n or f.noturno_n) %}
+                    <span class="cal-n">(&#9728;{{ f.diurno_n }} &#9790;{{ f.noturno_n }})</span>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -280,7 +389,7 @@
 </div>
 {% endfor %}
 
-<p class="text-muted small">
+<p class="cal-sem-impressao text-muted small">
     <i class="fa-solid fa-circle-info me-1"></i>
     <strong>Pareto 80/20 por unidade e por indicador:</strong>
     <span style="color: #0d6efd;">&#9679;</span> os 80% melhores tempos da própria
