@@ -186,6 +186,8 @@ TEMAS = {
                    "Saída p/ hospital − Chegada no local"),
     "tempo-saida-base": ("Tempo de Saída de Base (P4.1)", "fa-house-flag",
                          "Início deslocamento − Data controlador"),
+    "tempo-deslocamento": ("Tempo de Deslocamento (P4.2)", "fa-route",
+                           "Chegada no local − Início deslocamento"),
     "tempo-resposta": ("Tempo de Resposta", "fa-stopwatch",
                        "Chegada no local − Data ocorrência"),
     "transferencia-cuidados": ("Transferência de Cuidados (P9)", "fa-bed-pulse",

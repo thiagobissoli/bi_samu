@@ -610,3 +610,78 @@ def test_meta_ajustavel_em_configuracoes():
     finally:
         set_config(db, chave, None, 1)
         db.close()
+
+
+# ------------------------------------------- Tempo de Deslocamento (P4.2)
+
+def test_dashboard_tempo_deslocamento():
+    from app.modules.indicadores.service import IndicadoresService
+
+    dados = IndicadoresService(1).dashboard("tempo-deslocamento", {})
+    assert dados["titulo"] == "Tempo de Deslocamento (P4.2)"
+    if not dados["kpis"]:
+        pytest.skip("sem dados importados")
+
+    titulos = [c["titulo"] for c in dados["charts"]]
+    # cortes que respondem por trânsito e por distância
+    for esperado in ("por hora do dia", "por dia da semana", "por plantão",
+                     "por cidade", "por unidade"):
+        assert any(esperado in t for t in titulos), esperado
+    assert all("Deslocamento (P4.2)" in t for t in titulos)
+
+
+def test_comparacao_de_deslocamento_exclui_viatura_de_outro_municipio():
+    """Viatura que veio de fora demora por distância, não por desempenho —
+    deixá-la na tabela a colocaria no vermelho sem ter culpa."""
+    from app.modules.indicadores.service import IndicadoresService
+
+    service = IndicadoresService(1)
+    df = nucleo_df()
+    if df.empty:
+        pytest.skip("sem dados importados")
+    tabela = service._tabela_deslocamento_por_cidade(df)
+    if tabela is None:
+        pytest.skip("sem deslocamentos válidos")
+
+    # nenhuma dupla cidade × unidade da tabela pode ser de outro município
+    de_fora = df[df["fora_do_municipio"].eq(True)]
+    pares_de_fora = set(zip(de_fora["cidade"], de_fora["unidade_curta"]))
+    for linha in tabela["linhas"]:
+        cidade, unidade = linha[0], linha[1]
+        if (cidade, unidade) in pares_de_fora:
+            # o par só é aceitável se a mesma unidade também atende dali
+            proprios = df[(df["cidade"] == cidade)
+                          & (df["unidade_curta"] == unidade)
+                          & df["fora_do_municipio"].eq(False)]
+            assert not proprios.empty, f"{unidade} não é de {cidade}"
+
+
+def test_deslocamento_compara_com_a_mediana_da_propria_cidade():
+    from app.modules.indicadores.service import IndicadoresService
+
+    service = IndicadoresService(1)
+    df = nucleo_df()
+    if df.empty:
+        pytest.skip("sem dados importados")
+    tabela = service._tabela_deslocamento_por_cidade(df)
+    if tabela is None:
+        pytest.skip("sem deslocamentos válidos")
+
+    def segundos(mmss: str) -> int:
+        m, s = mmss.split(":")
+        return int(m) * 60 + int(s)
+
+    por_cidade = {}
+    for linha in tabela["linhas"]:
+        cidade, _, n, unidade_mediana, cidade_mediana, diferenca = linha
+        assert n >= 5
+        # a referência é a mesma para todas as unidades da cidade
+        por_cidade.setdefault(cidade, cidade_mediana)
+        assert por_cidade[cidade] == cidade_mediana, cidade
+        # e a diferença fecha com as duas medianas
+        esperado = segundos(unidade_mediana["v"]) - segundos(cidade_mediana)
+        sinal = -1 if diferenca["v"].startswith("−") else 1
+        assert abs(sinal * segundos(diferenca["v"][1:]) - esperado) <= 1
+        # acima da mediana nunca sai verde
+        if esperado > 0:
+            assert diferenca["cls"] in ("table-warning", "table-danger")

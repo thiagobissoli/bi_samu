@@ -678,6 +678,104 @@ class IndicadoresService:
             dados["tables"].append(tabela)
         return dados
 
+    def tema_tempo_deslocamento(self, df: pd.DataFrame) -> dict:
+        """P4.2 — da saída da base até chegar no local.
+
+        Ao contrário do P4.1, aqui a distância manda: comparar unidades de
+        municípios diferentes não diz nada sobre a equipe. Por isso o corte
+        principal é cidade — unidade, que compara quem percorre trajetos
+        parecidos, e entram os recortes que respondem por trânsito (hora do
+        dia, dia da semana, plantão).
+        """
+        rotulo = "Deslocamento (P4.2)"
+        dados = self._tema_tempo_generico(df, "t_p4_2", rotulo)
+        # Por unidade completo (substitui o top 15 genérico)
+        dados["charts"][2] = self._por_categoria(
+            df, "t_p4_2", "unidade_curta", f"{rotulo} por unidade",
+            top=None, min_n=1)
+        dados["charts"].insert(1, self._por_semana(
+            df, "t_p4_2", f"{rotulo} — média semanal (min)"))
+        dados["charts"].insert(2, self._por_mes(
+            df, "t_p4_2", f"{rotulo} — média mensal (min)"))
+
+        combinada = df["cidade"].fillna("") + " — " + df["unidade_curta"].fillna("")
+        dfx = df.assign(cidade_unidade=combinada.where(
+            df["cidade"].notna() & df["unidade_curta"].ne("")))
+        dados["charts"] += [
+            self._por_categoria(df, "t_p4_2", "cidade",
+                                f"{rotulo} por cidade", top=None, min_n=1),
+            self._por_categoria(dfx, "t_p4_2", "cidade_unidade",
+                                f"{rotulo} por cidade — unidade",
+                                top=None, min_n=5),
+            self._por_categoria(df, "t_p4_2", "micro_regiao",
+                                f"{rotulo} por micro região",
+                                top=None, min_n=1),
+            self._por_categoria(df, "t_p4_2", "plantao_dia_semana",
+                                f"{rotulo} por dia da semana",
+                                top=None, min_n=1, horizontal=False),
+            self._por_categoria(df, "t_p4_2", "plantao",
+                                f"{rotulo} por plantão", top=None, min_n=1),
+            self._por_categoria(df, "t_p4_2", "recurso",
+                                f"{rotulo} por tipo de transporte (USA/USB)",
+                                top=None, min_n=1, horizontal=False),
+            self._por_categoria(df, "t_p4_2", "codigo_da_ocorrencia",
+                                f"{rotulo} por código da ocorrência",
+                                top=None, min_n=1),
+        ]
+        tabela = self._tabela_deslocamento_por_cidade(df)
+        if tabela:
+            dados["tables"].append(tabela)
+        return dados
+
+    def _tabela_deslocamento_por_cidade(self, df: pd.DataFrame) -> dict | None:
+        """Unidades de uma mesma cidade, lado a lado.
+
+        A comparação só é justa dentro da cidade — quem atende Vitória e
+        quem atende Nova Venécia não percorrem a mesma distância. E, dentro
+        da cidade, só entram as viaturas da própria base: uma viatura que
+        veio de outro município leva mais tempo por distância, não por
+        desempenho, e apareceria no vermelho sem ter culpa.
+        """
+        cap = CAP_TEMPO.get("t_p4_2", 7200)
+        base = df[(df["t_p4_2"] > 0) & (df["t_p4_2"] < cap)
+                  & df["cidade"].notna()
+                  & df["unidade_curta"].notna() & df["unidade_curta"].ne("")
+                  & df["fora_do_municipio"].eq(False)]
+        if base.empty:
+            return None
+        medianas = base.groupby("cidade")["t_p4_2"].median()
+        grupo = base.groupby(["cidade", "unidade_curta"])["t_p4_2"].agg(
+            ["median", "count"])
+        grupo = grupo[grupo["count"] >= 5]
+        if grupo.empty:
+            return None
+
+        linhas = []
+        for (cidade, unidade), r in grupo.sort_values(
+                ["cidade", "median"]).iterrows():
+            referencia = float(medianas[cidade])
+            desvio = float(r["median"]) - referencia
+            if desvio > referencia * 0.25:
+                cls = "table-danger"
+            elif desvio > 0:
+                cls = "table-warning"
+            else:
+                cls = "table-success"
+            sinal = "+" if desvio >= 0 else "−"
+            linhas.append([cidade, unidade, int(r["count"]),
+                           {"v": self._hms(r["median"]), "cls": cls},
+                           self._hms(referencia),
+                           {"v": f"{sinal}{self._hms(abs(desvio))}",
+                            "cls": cls}])
+        return {"titulo": ("Deslocamento por unidade dentro da cidade — só "
+                           "viaturas da própria base, porque distância não é "
+                           "desempenho (n ≥ 5; vermelho: 25% acima da mediana "
+                           "da cidade)"),
+                "colunas": ["Cidade", "Unidade", "Deslocamentos",
+                            "Mediana da unidade", "Mediana da cidade",
+                            "Diferença"],
+                "linhas": linhas}
+
     def _tabela_ranking_saida_base(self, df: pd.DataFrame) -> dict | None:
         """Ranking mensal de P4.1 por unidade, no molde do relatório impresso.
 
