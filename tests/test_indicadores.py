@@ -1,5 +1,6 @@
 """Testes do módulo Indicadores."""
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
@@ -953,3 +954,121 @@ def test_periodo_analisado_dentro_de_cada_calendario():
         assert html.count("Período analisado:") == cartoes, modo
         if modo == "semana":
             assert "médias por dia da semana" in html
+
+
+def test_folha_impressa_tem_titulo_logo_e_centralizacao():
+    _login()
+    html = client.get("/indicadores/calendarios?unidades=3"
+                      "&indicador=tempo-resposta",
+                      headers={"accept": "text/html"}).text
+    cartoes = html.count('class="card mb-3 cal-cartao"')
+    assert cartoes == 3
+    # cabeçalho repetido em cada folha (cada cartão é uma página)
+    assert html.count('class="cal-folha-titulo">Indicadores Operacionais') == cartoes
+    assert html.count('class="cal-folha-logo"') == cartoes
+    # o cartão ocupa a folha e centraliza o conteúdo
+    assert "justify-content: center" in html
+    assert "min-height: 188.0mm" in html
+    # o título da página não vai ao papel, para não duplicar o cabeçalho
+    assert ".app-content-header" in html
+
+
+def test_escala_de_impressao_reduz_so_quando_nao_cabe():
+    from app.modules.indicadores.service import IndicadoresService
+
+    escala = IndicadoresService._escala_impressao
+    ids = ["tempo-resposta", "saida-base", "deslocamento", "cena",
+           "transferencia"]
+    # até 3 indicadores sem contagens a grade cabe inteira
+    for n in (1, 2, 3):
+        assert escala(ids[:n], False) == 1.0, n
+    # daí em diante reduz, e as contagens pesam mais
+    assert escala(ids[:4], False) < 1.0
+    assert escala(ids[:5], False) < escala(ids[:4], False)
+    assert escala(ids[:5], True) < escala(ids[:5], False)
+    # nunca amplia
+    assert all(escala(ids[:n], oc) <= 1.0
+               for n in range(1, 6) for oc in (False, True))
+
+
+def test_min_height_compensa_o_zoom():
+    """O zoom encolhe o min-height junto; sem dividir, o cartão deixaria de
+    ocupar a folha e o conteúdo voltaria para o topo."""
+    import re
+
+    _login()
+    ids = "&indicador=" + "&indicador=".join(
+        ["tempo-resposta", "saida-base", "deslocamento", "cena", "transferencia"])
+    html = client.get("/indicadores/calendarios?unidades=1&ocorrencias=1" + ids,
+                      headers={"accept": "text/html"}).text
+    zoom = float(re.search(r"zoom: ([\d.]+);", html).group(1))
+    altura = float(re.search(r"min-height: ([\d.]+)mm;", html).group(1))
+    assert zoom < 1.0
+    assert abs(altura * zoom - 188) < 1.0, (zoom, altura)
+
+
+def test_numero_de_empenhos_so_com_o_interruptor_ligado():
+    _login()
+    base = "/indicadores/calendarios?unidades=3&indicador=tempo-resposta"
+    sem = client.get(base, headers={"accept": "text/html"}).text
+    com = client.get(base + "&ocorrencias=1", headers={"accept": "text/html"}).text
+    assert " empenhos<" not in sem
+    assert com.count(" empenhos<") == 3
+
+
+def test_legenda_descreve_os_dois_turnos_e_o_dia_do_plantao():
+    _login()
+    html = client.get("/indicadores/calendarios?unidades=1"
+                      "&indicador=tempo-resposta",
+                      headers={"accept": "text/html"}).text
+    texto = " ".join(html.split())
+    assert "07:00–18:59" in texto and "19:00–06:59" in texto
+    assert "até as 06:59 do dia seguinte" in texto
+
+
+def test_turno_e_dia_do_plantao_conferem_com_a_legenda():
+    """Diurno 07:00–18:59, noturno 19:00–06:59, e a madrugada pertence ao
+    plantão da véspera — é o que a legenda promete ao leitor."""
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    base = df[df["dt_ocorr"].notna()]
+    horas = base["dt_ocorr"].dt.hour
+    assert set(horas[base["turno"] == "Diurno"].unique()) <= set(range(7, 19))
+    assert not (set(horas[base["turno"] == "Noturno"].unique())
+                & set(range(7, 19)))
+    # 00:00–06:59 cai na data do plantão do dia anterior
+    madrugada = base[horas < 7]
+    if not madrugada.empty:
+        esperado = (madrugada["dt_ocorr"].dt.date
+                    - pd.Timedelta(days=1).to_pytimedelta())
+        assert (madrugada["plantao_data"] == esperado).all()
+
+
+def test_folha_impressa_explica_os_simbolos():
+    """No papel o rodapé é a única legenda: sem ele ☀/☾ e as cores do Pareto
+    ficam sem significado."""
+    _login()
+    html = client.get("/indicadores/calendarios?unidades=2"
+                      "&indicador=tempo-resposta",
+                      headers={"accept": "text/html"}).text
+    # uma vez por cartão, dentro do rodapé que vai ao papel
+    assert html.count('class="cal-legenda-folha') == 2
+    trecho = " ".join(html.split('class="cal-legenda-folha')[1].split())
+    for marca in ("diurno 07:00–18:59", "noturno 19:00–06:59",
+                  "80% melhores", "20% piores"):
+        assert marca in trecho, marca
+
+
+def test_escala_de_impressao_deixa_todas_as_combinacoes_na_folha():
+    from app.modules.indicadores.constants import (CALENDARIO_ALTURA_MEDIDA,
+                                                   CALENDARIO_FOLHA_PX)
+    from app.modules.indicadores.service import IndicadoresService
+
+    ids = ["tempo-resposta", "saida-base", "deslocamento", "cena",
+           "transferencia"]
+    for (n, oc), medida in CALENDARIO_ALTURA_MEDIDA.items():
+        escala = IndicadoresService._escala_impressao(ids[:n], oc)
+        assert medida * escala <= CALENDARIO_FOLHA_PX + 1, (n, oc, escala)

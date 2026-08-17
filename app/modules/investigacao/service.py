@@ -56,7 +56,10 @@ class InvestigacaoService:
         # demais para representarem um único empenho.
         duracao = (base["fim"] - base["inicio"]).dt.total_seconds()
         base = base[(duracao > 0) & (duracao <= DURACAO_MAXIMA_HORAS * 3600)]
-        base["municipio_base"] = _municipio_da_unidade(base["unidade"])
+        # municipio_base vem do núcleo, que só aceita como base o complemento
+        # que também existe como cidade de ocorrência. A versão local daqui
+        # tomava qualquer sufixo por município e fazia o aeromédico, o VIR-01
+        # e o NEP 33 aparecerem como "viatura de outro município".
         return base
 
     def opcoes(self) -> dict:
@@ -374,11 +377,6 @@ class InvestigacaoService:
 
 
 # ------------------------------------------------------------ helpers
-
-def _municipio_da_unidade(serie: pd.Series) -> pd.Series:
-    """'USA 50 - CARIACICA' -> 'CARIACICA' (município-base da viatura)."""
-    return serie.str.split(" - ", n=1).str[1].str.strip()
-
 
 def _fora_do_municipio(linha) -> bool:
     """Viatura sediada em município diferente do da ocorrência."""

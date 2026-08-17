@@ -2,6 +2,8 @@
 
 import re
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from app.core.seeds import ADMIN_EMAIL, ADMIN_SENHA
@@ -62,11 +64,21 @@ def test_investigar_empenho_de_outro_municipio():
     casos = service.cruzamentos(dia)["casos"]
     if not casos:
         return
-    alvo = casos[0]
 
-    dados = client.get(
-        f"/investigacao/api/investigar?ocorrencia={alvo['ocorrencia']}"
-    ).json()["data"]
+    # O cruzamento aponta o EMPENHO que veio de fora; a investigação analisa a
+    # OCORRÊNCIA pelo primeiro empenho a se deslocar. Numa ocorrência com duas
+    # viaturas, a de fora pode ter sido a segunda — e aí a análise, com razão,
+    # não é o caso de viatura de fora. O teste precisa de um caso em que a de
+    # fora foi a primeira.
+    for candidato in casos:
+        dados = client.get("/investigacao/api/investigar"
+                           f"?ocorrencia={candidato['ocorrencia']}"
+                           ).json()["data"]
+        if dados.get("fora_do_municipio"):
+            alvo = candidato
+            break
+    else:
+        return   # no dia, toda viatura de fora foi reforço, não a primeira
 
     assert dados["ocorrencia"] == alvo["ocorrencia"]
     assert dados["fora_do_municipio"] is True
@@ -1500,3 +1512,36 @@ def test_historico_so_da_ocorrencia_em_analise(monkeypatch):
     assert "Histórico de versões" in pagina
     assert f"ocorrencia={b}&amp;versao=" in pagina or \
            f"ocorrencia={b}&versao=" in pagina
+
+
+def test_aeromedico_nao_conta_como_viatura_de_outro_municipio():
+    """"USA - AEROMEDICO" não tem município-base: o complemento do nome não é
+    cidade. Contá-lo como base faria o aeromédico aparecer sempre como
+    viatura vinda de fora."""
+    from app.modules.indicadores import nucleo
+    from app.modules.investigacao.service import _fora_do_municipio
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    for nome in ("USA - AEROMEDICO", "USA - NEP 33", "VIR - 01"):
+        linhas = df[df["unidade"] == nome]
+        if linhas.empty:
+            continue
+        assert linhas["municipio_base"].isna().all(), nome
+        # e a investigação usa a mesma definição do núcleo
+        assert not any(_fora_do_municipio(r) for _, r in linhas.iterrows()), nome
+
+
+def test_investigacao_usa_o_municipio_base_do_nucleo():
+    """Uma única definição de município-base no sistema — a do núcleo."""
+    from app.modules.investigacao.service import InvestigacaoService
+
+    base = InvestigacaoService(1)._empenhos()
+    if base.empty:
+        pytest.skip("sem dados importados")
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    esperado = df.loc[base.index, "municipio_base"]
+    assert base["municipio_base"].equals(esperado)

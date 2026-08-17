@@ -20,8 +20,10 @@ from app.modules.indicadores import nucleo
 from app.modules.indicadores.constants import (
     ADEQUACAO,
     AUDITORIA_INDICADORES,
+    CALENDARIO_ALTURA_MEDIDA,
     CALENDARIO_DIAS_MAX,
     CALENDARIO_DIAS_PADRAO,
+    CALENDARIO_FOLHA_PX,
     CALENDARIO_INDICADORES,
     CALENDARIO_UNIDADES_MAX,
     CAP_TEMPO,
@@ -1187,7 +1189,9 @@ class IndicadoresService:
         vazio = {"indicadores": self._calendario_meta(escolhidos), "modo": modo,
                  "aproximar": aproximar, "dias": dias, "unidades": [],
                  "periodo": None, "unidades_omitidas": 0, "total": 0,
-                 "unidades_no_filtro": 0, "ocorrencias": ocorrencias}
+                 "unidades_no_filtro": 0, "ocorrencias": ocorrencias,
+                 "escala_impressao": self._escala_impressao(escolhidos,
+                                                            ocorrencias)}
         if base.empty:
             return _json_safe(vazio)
 
@@ -1238,12 +1242,29 @@ class IndicadoresService:
             "indicadores": self._calendario_meta(escolhidos), "modo": modo,
             "aproximar": aproximar, "dias": dias, "unidades": cartoes,
             "ocorrencias": ocorrencias,
+            "escala_impressao": self._escala_impressao(escolhidos, ocorrencias),
             "unidades_omitidas": omitidas, "total": int(len(base)),
             "unidades_no_filtro": len(ordenadas),
             "periodo": {"inicio": datas[0].strftime("%d/%m/%Y"),
                         "fim": datas[-1].strftime("%d/%m/%Y"),
                         "dias": len(datas)},
         })
+
+    @staticmethod
+    def _escala_impressao(escolhidos: list[str], ocorrencias: bool) -> float:
+        """Quanto reduzir o cartão para caber numa folha (1.0 = tamanho cheio).
+
+        Com quatro ou cinco indicadores a grade passa da altura da folha e o
+        navegador quebraria o calendário no meio. A altura de cada combinação
+        foi medida no navegador (CALENDARIO_ALTURA_MEDIDA); a folga de 4%
+        absorve a variação que qualquer mexida no cartão provoca — sem ela,
+        acrescentar uma linha ao rodapé já bastaria para voltar a estourar.
+        """
+        medida = CALENDARIO_ALTURA_MEDIDA.get(
+            (len(escolhidos), bool(ocorrencias)), CALENDARIO_FOLHA_PX)
+        if medida <= CALENDARIO_FOLHA_PX:
+            return 1.0
+        return round(CALENDARIO_FOLHA_PX / (medida * 1.04), 2)
 
     @staticmethod
     def _calendario_meta(escolhidos: list[str]) -> list[dict]:

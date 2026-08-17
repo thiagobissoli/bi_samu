@@ -161,6 +161,18 @@ CALENDARIO_INDICADORES = {
                       "atend. encerrado − chegada no hospital", "#9b59b6",
                       "P9 transf."),
 }
+# Impressão: altura útil da folha A4 paisagem (188 mm ~ 711 px a 96 dpi) e a
+# altura que o cartão realmente ocupa, medida no navegador para cada nº de
+# indicadores, com e sem as contagens. Serve para reduzir a escala apenas
+# quando o calendário não caberia na folha — assim o caso comum (1 a 3
+# indicadores) sai em tamanho cheio.
+CALENDARIO_FOLHA_PX = 711
+CALENDARIO_ALTURA_MEDIDA = {
+    (1, False): 711, (2, False): 711, (3, False): 711,
+    (4, False): 839, (5, False): 967,
+    (1, True): 711, (2, True): 711, (3, True): 855,
+    (4, True): 1063, (5, True): 1247,
+}
 CALENDARIO_DIAS_MAX = 92          # teto do período desenhado na grade
 CALENDARIO_DIAS_PADRAO = 31
 CALENDARIO_UNIDADES_MAX = 20      # cada unidade é um cartão; a página cresce
