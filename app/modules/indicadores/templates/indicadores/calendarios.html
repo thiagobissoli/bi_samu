@@ -149,6 +149,16 @@
                 </select>
             </div>
             <div class="col-auto">
+                <label class="form-label mb-0 small" for="recurso"
+                       title="Identificado pela coluna Unidade (USA/USB)">Tipo de transporte</label>
+                <select id="recurso" name="recurso" class="form-select form-select-sm select2-multi"
+                        multiple data-width="140px">
+                    {% for op in opcoes.recursos %}
+                    <option value="{{ op }}" {% if op in filtros.recurso %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
                 <div class="form-check form-check-inline mb-1">
                     <input class="form-check-input" type="checkbox" id="aproximar"
                            name="aproximar" value="1"

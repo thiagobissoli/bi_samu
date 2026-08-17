@@ -818,3 +818,25 @@ def test_calendario_com_filtro_sem_resultado():
                       "?data_inicial=2000-01-01&data_final=2000-01-02",
                       headers={"accept": "text/html"}).text
     assert "Nenhum atendimento" in html
+
+
+def test_calendario_tem_filtro_de_tipo_de_transporte():
+    """USA/USB — o 'recurso', que a coluna Unidade identifica."""
+    _login()
+    html = client.get("/indicadores/calendarios?unidades=2",
+                      headers={"accept": "text/html"}).text
+    assert 'id="recurso"' in html and "Tipo de transporte" in html
+    assert 'value="USA"' in html and 'value="USB"' in html
+
+
+def test_calendario_filtrado_por_recurso_traz_so_aquele_tipo():
+    from app.modules.indicadores.service import IndicadoresService
+
+    service = IndicadoresService(1)
+    for tipo in ("USA", "USB"):
+        dados = service.calendarios({"recurso": [tipo]}, ["tempo-resposta"],
+                                    "mes", False, 31, unidades=200)
+        if not dados["unidades"]:
+            continue
+        nomes = [u["unidade"] for u in dados["unidades"]]
+        assert all(n.startswith(tipo) for n in nomes), (tipo, nomes[:5])
