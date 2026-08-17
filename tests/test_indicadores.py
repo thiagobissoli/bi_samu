@@ -915,18 +915,17 @@ def test_contagem_da_celula_bate_com_o_numero_de_atendimentos():
     assert soma == len(no_periodo)
 
 
-def test_impressao_orienta_a_pagina_conforme_a_visao():
-    """Paisagem para a grade dia a dia; retrato para a compacta."""
+def test_impressao_sempre_em_paisagem():
+    """As duas visões têm 7 colunas: é a largura que decide a legibilidade."""
     import re
 
     _login()
     base = "/indicadores/calendarios?unidades=2&indicador=tempo-resposta"
-    for modo, esperado in (("mes", "landscape"), ("semana", "portrait")):
-        html = client.get(f"{base}&modo={modo}" if modo == "semana" else base,
-                          headers={"accept": "text/html"}).text
+    for modo in ("mes", "semana"):
+        html = client.get(f"{base}&modo={modo}", headers={"accept": "text/html"}).text
         achado = re.search(r"@page\s*\{\s*size:\s*A4 (\w+);", html)
         assert achado, "regra @page ausente"
-        assert achado.group(1) == esperado, (modo, achado.group(1))
+        assert achado.group(1) == "landscape", (modo, achado.group(1))
 
 
 def test_impressao_um_calendario_por_pagina():

@@ -62,13 +62,9 @@
     .cal-interruptor .form-check-input { margin-left: -2.6em; }
     .cal-interruptor .form-check-label { font-size: .8rem; line-height: 1.25; }
     .cal-interruptor .form-check-label span { font-size: .72rem; }
-    /* Impressão: um calendário por página. Paisagem para a grade dia a dia
-       (7 colunas x 5 semanas), retrato para a compacta (uma linha de 7). A
-       orientação vem do modo, por isso a regra @page é gerada no servidor. */
-    @page {
-        size: A4 {{ "portrait" if dados.modo == "semana" else "landscape" }};
-        margin: 8mm;
-    }
+    /* Impressão: um calendário por folha, sempre em paisagem — as duas
+       visões têm 7 colunas, e é a largura que decide a legibilidade. */
+    @page { size: A4 landscape; margin: 8mm; }
     @media print {
         /* O sistema é escuro na tela; no papel tudo vira claro, senão sai
            texto branco em fundo branco. */
