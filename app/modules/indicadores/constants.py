@@ -142,6 +142,31 @@ NEWS_BANDAS = [
     ("Alto", "≥7 pontos"),
 ]
 
+# Página de Calendários: indicadores exibíveis em cada dia/turno.
+# id -> (coluna, rótulo, descrição, cor, rótulo na célula). A cor identifica o
+# indicador em todas as células, como no DBSamu de onde a página veio; o
+# rótulo da célula é curto porque a coluna de um dia tem pouca largura — o
+# nome completo fica no cabeçalho e na legenda.
+CALENDARIO_INDICADORES = {
+    "tempo-resposta": ("tempo_resposta", "T. Resposta",
+                       "chegada no local − abertura", "#0d6efd", "Resposta"),
+    "saida-base": ("t_p4_1", "T. Saída de base (P4.1)",
+                   "início desloc. − controlador", "#00b894", "P4.1 saída"),
+    "deslocamento": ("t_p4_2", "T. Deslocamento (P4.2)",
+                     "chegada no local − início desloc.", "#e056fd",
+                     "P4.2 desloc."),
+    "cena": ("t_p5_6_7", "T. Cena (P5-7)",
+             "saída p/ hospital − chegada no local", "#e17055", "P5-7 cena"),
+    "transferencia": ("t_p9", "Transf. Cuidados (P9)",
+                      "atend. encerrado − chegada no hospital", "#9b59b6",
+                      "P9 transf."),
+}
+CALENDARIO_DIAS_MAX = 92          # teto do período desenhado na grade
+CALENDARIO_DIAS_PADRAO = 31
+CALENDARIO_UNIDADES_MAX = 20      # cada unidade é um cartão; a página cresce
+                                  # rápido (5 indicadores x 31 dias x unidade),
+                                  # e o campo "Unidades" da tela levanta o teto
+
 # Página de Desempenho: métricas e dimensões analisáveis
 METRICAS_DESEMPENHO = {
     "tempo-resposta": ("tempo_resposta", "Tempo de Resposta"),

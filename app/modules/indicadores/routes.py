@@ -108,6 +108,57 @@ def api_desempenho(
     return {"success": True, "message": "", "data": dados, "errors": []}
 
 
+def _params_calendarios(request: Request) -> dict:
+    from app.modules.indicadores.constants import (CALENDARIO_DIAS_PADRAO,
+                                                   CALENDARIO_INDICADORES,
+                                                   CALENDARIO_UNIDADES_MAX)
+    q = request.query_params
+    escolhidos = [i for i in q.getlist("indicador") if i in CALENDARIO_INDICADORES]
+
+    def _inteiro(nome: str, padrao: int) -> int:
+        try:
+            return int(q.get(nome, padrao))
+        except ValueError:
+            return padrao
+
+    return {"indicadores": escolhidos or list(CALENDARIO_INDICADORES),
+            "modo": q.get("modo", "mes"),
+            "aproximar": q.get("aproximar") == "1",
+            "dias": _inteiro("dias", CALENDARIO_DIAS_PADRAO),
+            "unidades": _inteiro("unidades", CALENDARIO_UNIDADES_MAX)}
+
+
+@router.get("/calendarios", include_in_schema=False)
+def calendarios(
+    request: Request,
+    usuario: Usuario = Depends(require_permission("indicadores.visualizar")),
+    db: Session = Depends(get_session),
+):
+    from app.modules.indicadores.constants import CALENDARIO_INDICADORES
+
+    service = IndicadoresService(usuario.empresa_id)
+    filtros = _filtros(request)
+    params = _params_calendarios(request)
+    dados = service.calendarios(filtros, **params)
+    return render(request, "indicadores/calendarios.html", usuario,
+                  page_title="Calendários de Indicadores", dados=dados,
+                  filtros=filtros, qs=_query_string(filtros),
+                  disponiveis=CALENDARIO_INDICADORES, params=params,
+                  opcoes=service.opcoes_filtros())
+
+
+@router.get("/api/calendarios", summary="Calendário de indicadores por unidade")
+def api_calendarios(
+    request: Request,
+    usuario: Usuario = Depends(require_permission("indicadores.visualizar")),
+    db: Session = Depends(get_session),
+):
+    service = IndicadoresService(usuario.empresa_id)
+    dados = service.calendarios(_filtros(request),
+                                **_params_calendarios(request))
+    return {"success": True, "message": "", "data": dados, "errors": []}
+
+
 @router.get("/api/{tema}", summary="Dados de um dashboard de indicadores")
 def api_tema(
     tema: str,

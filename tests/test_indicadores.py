@@ -685,3 +685,136 @@ def test_deslocamento_compara_com_a_mediana_da_propria_cidade():
         # acima da mediana nunca sai verde
         if esperado > 0:
             assert diferenca["cls"] in ("table-warning", "table-danger")
+
+
+# --------------------------------------------- Calendários de Indicadores
+
+def test_pagina_de_calendarios_renderiza():
+    _login()
+    resp = client.get("/indicadores/calendarios?unidades=3",
+                      headers={"accept": "text/html"})
+    assert resp.status_code == 200
+    assert "Calendários de Indicadores" in resp.text
+    # os cinco indicadores estão oferecidos
+    for rotulo in ("T. Resposta", "T. Saída de base (P4.1)",
+                   "T. Deslocamento (P4.2)", "T. Cena (P5-7)",
+                   "Transf. Cuidados (P9)"):
+        assert rotulo in resp.text, rotulo
+    assert "Pareto desta unidade" in resp.text
+
+
+def test_calendario_agrupa_por_dia_de_plantao_e_turno():
+    """A média de cada célula tem que bater com a média calculada à mão."""
+    import pandas as pd
+
+    from app.modules.indicadores.service import IndicadoresService
+
+    service = IndicadoresService(1)
+    dados = service.calendarios({}, ["tempo-resposta"], "mes", False, 7,
+                                unidades=3)
+    if not dados["unidades"]:
+        pytest.skip("sem dados importados")
+
+    df = nucleo_df()
+    unidade = dados["unidades"][0]
+    alvo = df[(df["unidade_curta"] == unidade["unidade"])
+              & (df["tempo_resposta"] > 0)
+              & (df["tempo_resposta"] < 10800)]
+
+    conferidas = 0
+    for semana in unidade["grade"]:
+        for dia in semana:
+            if dia["fora"]:
+                continue
+            data = pd.Timestamp(dia["iso"]).date()
+            for faixa in dia["faixas"]:
+                for turno, marca in (("diurno", "Diurno"),
+                                     ("noturno", "Noturno")):
+                    if faixa[turno] == "—":
+                        continue
+                    recorte = alvo[(alvo["plantao_data"] == data)
+                                   & (alvo["turno"] == marca)]
+                    assert len(recorte) == faixa[f"{turno}_n"], (data, turno)
+                    esperado = recorte["tempo_resposta"].mean() / 60
+                    minutos = int(faixa[turno].split(":")[0]) \
+                        + int(faixa[turno].split(":")[1]) / 60
+                    # mm:ss arredonda ao segundo: meio segundo de folga
+                    assert abs(minutos - esperado) < 0.009, (data, turno)
+                    conferidas += 1
+    assert conferidas > 0, "nenhuma célula preenchida para conferir"
+
+
+def test_pareto_marca_os_20_por_cento_piores():
+    from app.modules.indicadores.service import IndicadoresService
+
+    limite = IndicadoresService._pareto_limite
+    valores = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # p80 exato: o 8º valor em ordem crescente
+    assert limite(valores, False) == 8
+    # aproximado: k = max(3, 20% de 10) = 3 piores -> começa no 8
+    assert limite(valores, True) == 8
+    # com poucas medições o p80 não destacaria ninguém; o modo aproximado
+    # garante ao menos 3
+    assert limite([5, 9], False) == 9
+    assert limite([5, 9], True) == 5
+    assert limite([], False) is None
+
+
+def test_pareto_e_por_unidade_nao_do_servico():
+    """Cada unidade é comparada consigo mesma — quem atende área extensa não
+    pode ser cobrada pelo tempo de quem atende área urbana."""
+    from app.modules.indicadores.service import IndicadoresService
+
+    dados = IndicadoresService(1).calendarios({}, ["deslocamento"], "mes",
+                                              False, 31, unidades=8)
+    if len(dados["unidades"]) < 2:
+        pytest.skip("dados insuficientes")
+    limites = {u["unidade"]: u["limites"]["deslocamento"]
+               for u in dados["unidades"]
+               if u["limites"]["deslocamento"] is not None}
+    assert len(set(limites.values())) > 1, \
+        "todas as unidades com o mesmo limite sugere Pareto global"
+
+
+def test_calendario_respeita_teto_de_unidades_e_avisa():
+    from app.modules.indicadores.service import IndicadoresService
+
+    dados = IndicadoresService(1).calendarios({}, None, "mes", False, 31,
+                                              unidades=2)
+    if not dados["unidades"]:
+        pytest.skip("sem dados importados")
+    assert len(dados["unidades"]) == 2
+    assert dados["unidades_omitidas"] == dados["unidades_no_filtro"] - 2
+    assert dados["unidades_omitidas"] > 0
+
+    _login()
+    html = client.get("/indicadores/calendarios?unidades=2",
+                      headers={"accept": "text/html"}).text
+    assert "fora da página" in html
+
+
+def test_calendario_modo_semana_tem_uma_linha_de_sete_dias():
+    from app.modules.indicadores.service import IndicadoresService
+
+    dados = IndicadoresService(1).calendarios({}, ["tempo-resposta"], "semana",
+                                              False, 31, unidades=2)
+    if not dados["unidades"]:
+        pytest.skip("sem dados importados")
+    grade = dados["unidades"][0]["grade"]
+    assert len(grade) == 1 and len(grade[0]) == 7
+    assert [c["rotulo"] for c in grade[0]] == [
+        "Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"]
+
+
+def test_calendario_com_filtro_sem_resultado():
+    from app.modules.indicadores.service import IndicadoresService
+
+    dados = IndicadoresService(1).calendarios(
+        {"data_inicial": "2000-01-01", "data_final": "2000-01-02"})
+    assert dados["unidades"] == [] and dados["periodo"] is None
+
+    _login()
+    html = client.get("/indicadores/calendarios"
+                      "?data_inicial=2000-01-01&data_final=2000-01-02",
+                      headers={"accept": "text/html"}).text
+    assert "Nenhum atendimento" in html

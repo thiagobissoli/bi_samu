@@ -10,6 +10,7 @@ Vitória), ISCMV, transporte, motivo e tipo.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -19,6 +20,10 @@ from app.modules.indicadores import nucleo
 from app.modules.indicadores.constants import (
     ADEQUACAO,
     AUDITORIA_INDICADORES,
+    CALENDARIO_DIAS_MAX,
+    CALENDARIO_DIAS_PADRAO,
+    CALENDARIO_INDICADORES,
+    CALENDARIO_UNIDADES_MAX,
     CAP_TEMPO,
     DIMENSOES_DESEMPENHO,
     METAS_TEMPO,
@@ -1149,6 +1154,248 @@ class IndicadoresService:
                                              "Todas as situações", "Situação",
                                              top=100)],
         }
+
+    # ------------------------------------------------ página Calendários
+
+    def calendarios(self, filtros: dict, indicadores: list[str] | None = None,
+                    modo: str = "mes", aproximar: bool = False,
+                    dias: int = CALENDARIO_DIAS_PADRAO,
+                    unidades: int = CALENDARIO_UNIDADES_MAX) -> dict:
+        """Calendário por unidade com um ou mais indicadores de tempo.
+
+        Cada dia traz a média do turno diurno e do noturno, por indicador.
+        O dia é o do plantão (referência às 07:00), não o do calendário:
+        assim o turno noturno que atravessa a meia-noite fica inteiro na
+        noite em que começou, como a escala enxerga.
+
+        A cor do valor sai de um Pareto por unidade × indicador — os 20%
+        piores da própria unidade em vermelho. Comparar a unidade consigo
+        mesma evita o falso alarme de cobrar de quem atende área extensa o
+        tempo de quem atende área urbana.
+        """
+        escolhidos = [i for i in (indicadores or []) if i in CALENDARIO_INDICADORES]
+        if not escolhidos:
+            escolhidos = list(CALENDARIO_INDICADORES)
+        dias = max(1, min(int(dias), CALENDARIO_DIAS_MAX))
+        teto_unidades = max(1, min(int(unidades), 200))
+        modo = modo if modo in ("mes", "semana") else "mes"
+
+        df = self._filtrar(nucleo.carregar(self.empresa_id), filtros)
+        base = df[df["unidade_curta"].notna() & df["unidade_curta"].ne("")
+                  & df["plantao_data"].notna()]
+        vazio = {"indicadores": self._calendario_meta(escolhidos), "modo": modo,
+                 "aproximar": aproximar, "dias": dias, "unidades": [],
+                 "periodo": None, "unidades_omitidas": 0, "total": 0,
+                 "unidades_no_filtro": 0}
+        if base.empty:
+            return _json_safe(vazio)
+
+        # Últimos N dias com movimento — a grade inteira não caberia numa tela
+        # nem numa folha, e o interesse é sempre no período recente.
+        datas = sorted(base["plantao_data"].unique())[-dias:]
+        base = base[base["plantao_data"].isin(set(datas))]
+        if base.empty:
+            return _json_safe(vazio)
+
+        celulas = self._calendario_celulas(base, escolhidos)
+        ocorrencias = base.groupby("unidade_curta").size()
+        cidades = base.groupby("unidade_curta")["cidade"].agg(
+            lambda s: s.mode().iat[0] if not s.mode().empty else "")
+
+        ordenadas = sorted(celulas)
+        omitidas = max(0, len(ordenadas) - teto_unidades)
+        cartoes = []
+        for unidade in ordenadas[:teto_unidades]:
+            por_dia = celulas[unidade]
+            limites, medias = {}, {}
+            for ind in escolhidos:
+                valores = [v for dia in por_dia.values()
+                           for v in (dia.get(ind, {}).get("diurno"),
+                                     dia.get(ind, {}).get("noturno"))
+                           if v is not None]
+                limites[ind] = self._pareto_limite(valores, aproximar)
+                col = CALENDARIO_INDICADORES[ind][0]
+                validos = self._validos(base[base["unidade_curta"] == unidade],
+                                        col)
+                medias[ind] = (round(float(validos.mean()) / 60, 3)
+                               if len(validos) else None)
+            cartoes.append({
+                "unidade": unidade, "cidade": cidades.get(unidade, ""),
+                "total": int(ocorrencias.get(unidade, 0)),
+                # crus para a API, formatados para a tela
+                "medias": medias, "limites": limites,
+                "medias_txt": {k: self._mmss_min(v) for k, v in medias.items()},
+                "limites_txt": {k: self._mmss_min(v) for k, v in limites.items()},
+                "grade": (self._calendario_por_dia_semana(por_dia, escolhidos,
+                                                          aproximar)
+                          if modo == "semana"
+                          else self._calendario_grade(por_dia, escolhidos,
+                                                      limites, aproximar)),
+            })
+
+        return _json_safe({
+            "indicadores": self._calendario_meta(escolhidos), "modo": modo,
+            "aproximar": aproximar, "dias": dias, "unidades": cartoes,
+            "unidades_omitidas": omitidas, "total": int(len(base)),
+            "unidades_no_filtro": len(ordenadas),
+            "periodo": {"inicio": datas[0].strftime("%d/%m/%Y"),
+                        "fim": datas[-1].strftime("%d/%m/%Y"),
+                        "dias": len(datas)},
+        })
+
+    @staticmethod
+    def _calendario_meta(escolhidos: list[str]) -> list[dict]:
+        return [{"id": i, "rotulo": CALENDARIO_INDICADORES[i][1],
+                 "descricao": CALENDARIO_INDICADORES[i][2],
+                 "cor": CALENDARIO_INDICADORES[i][3],
+                 "curto": CALENDARIO_INDICADORES[i][4]} for i in escolhidos]
+
+    def _calendario_celulas(self, base: pd.DataFrame,
+                            escolhidos: list[str]) -> dict:
+        """{unidade: {data: {indicador: {diurno, noturno, *_n}}}}.
+
+        Uma agregação por indicador (e não por célula) — com 400 mil linhas,
+        montar isso em laço Python levaria minutos.
+        """
+        celulas: dict = {}
+        for ind in escolhidos:
+            col = CALENDARIO_INDICADORES[ind][0]
+            cap = CAP_TEMPO.get(col, 14400)
+            recorte = base[(base[col] > 0) & (base[col] < cap)]
+            if recorte.empty:
+                continue
+            agregado = recorte.groupby(
+                ["unidade_curta", "plantao_data", "turno"])[col].agg(
+                ["mean", "count"])
+            for (unidade, data, turno), linha in agregado.iterrows():
+                dia = celulas.setdefault(unidade, {}).setdefault(data, {})
+                alvo = dia.setdefault(ind, {"diurno": None, "noturno": None,
+                                            "diurno_n": 0, "noturno_n": 0})
+                chave = "diurno" if str(turno).lower().startswith("diurno") \
+                    else "noturno"
+                alvo[chave] = round(float(linha["mean"]) / 60, 3)
+                alvo[f"{chave}_n"] = int(linha["count"])
+        return celulas
+
+    @staticmethod
+    def _pareto_limite(valores: list[float], aproximar: bool) -> float | None:
+        """Piso dos 20% piores da própria unidade.
+
+        Com 'aproximar', em vez do percentil exato marca as k piores médias
+        (k = max(3, 20% de n)) — com poucas medições o p80 pode não destacar
+        ninguém, e o objetivo é sempre ter os piores dias visíveis.
+        """
+        if not valores:
+            return None
+        ordenados = sorted(valores)
+        n = len(ordenados)
+        if aproximar:
+            k = max(3, round(n * 0.2))
+            k = max(1, min(n, k))
+            return ordenados[n - k]
+        return ordenados[max(0, math.ceil(n * 0.8) - 1)]
+
+    def _calendario_faixas(self, dia: dict | None, escolhidos: list[str],
+                           limites: dict, aproximar: bool) -> list[dict]:
+        faixas = []
+        for ind in escolhidos:
+            _, _, _, cor, curto = CALENDARIO_INDICADORES[ind]
+            valor = (dia or {}).get(ind) or {}
+            limite = limites.get(ind)
+            faixa = {"id": ind, "rotulo": curto, "cor": cor}
+            for turno in ("diurno", "noturno"):
+                minutos = valor.get(turno)
+                faixa[turno] = self._mmss_min(minutos)
+                faixa[f"{turno}_n"] = valor.get(f"{turno}_n") or 0
+                faixa[f"{turno}_ruim"] = bool(
+                    minutos is not None and limite is not None
+                    and (minutos >= limite if aproximar else minutos > limite))
+            faixas.append(faixa)
+        return faixas
+
+    @staticmethod
+    def _mmss_min(minutos: float | None) -> str:
+        """Minutos decimais -> mm:ss (o formato usado no resto do sistema)."""
+        if minutos is None or pd.isna(minutos):
+            return "—"
+        total = int(round(float(minutos) * 60))
+        return f"{total // 60:02d}:{total % 60:02d}"
+
+    def _calendario_grade(self, por_dia: dict, escolhidos: list[str],
+                          limites: dict, aproximar: bool) -> list[dict]:
+        """Semanas de domingo a sábado cobrindo o período, com os vazios."""
+        from datetime import timedelta
+
+        datas = sorted(por_dia)
+        inicio = datas[0] - timedelta(days=(datas[0].weekday() + 1) % 7)
+        fim = datas[-1] + timedelta(days=(5 - datas[-1].weekday()) % 7)
+        semanas, atual, dia = [], [], inicio
+        while dia <= fim:
+            atual.append({
+                "rotulo": dia.strftime("%d/%m"),
+                "iso": dia.strftime("%Y-%m-%d"),
+                "fim_de_semana": dia.weekday() >= 5,
+                "fora": dia not in por_dia,
+                "faixas": self._calendario_faixas(por_dia.get(dia), escolhidos,
+                                                  limites, aproximar),
+            })
+            if len(atual) == 7:
+                semanas.append(atual)
+                atual = []
+            dia += timedelta(days=1)
+        if atual:
+            semanas.append(atual)
+        return semanas
+
+    def _calendario_por_dia_semana(self, por_dia: dict, escolhidos: list[str],
+                                   aproximar: bool) -> list[dict]:
+        """Modo compacto: média de cada dia da semana no período.
+
+        O Pareto é recalculado sobre as médias agregadas — sobre o limite dos
+        dias soltos, um dia da semana inteiro raramente apareceria.
+        """
+        semana: dict = {d: {} for d in range(7)}
+        contagem: dict = {d: {} for d in range(7)}
+        for data, dia in por_dia.items():
+            indice = (data.weekday() + 1) % 7        # domingo = 0
+            for ind, valor in dia.items():
+                acumulado = semana[indice].setdefault(
+                    ind, {"diurno": [], "noturno": []})
+                somas = contagem[indice].setdefault(
+                    ind, {"diurno_n": 0, "noturno_n": 0})
+                for turno in ("diurno", "noturno"):
+                    if valor.get(turno) is not None:
+                        acumulado[turno].append(valor[turno])
+                        somas[f"{turno}_n"] += valor.get(f"{turno}_n") or 0
+
+        medias: dict = {}
+        for indice in range(7):
+            medias[indice] = {}
+            for ind, acumulado in semana[indice].items():
+                celula = {}
+                for turno in ("diurno", "noturno"):
+                    vals = acumulado[turno]
+                    celula[turno] = (round(sum(vals) / len(vals), 3)
+                                     if vals else None)
+                    celula[f"{turno}_n"] = contagem[indice][ind][f"{turno}_n"]
+                medias[indice][ind] = celula
+
+        limites_semana = {}
+        for ind in escolhidos:
+            valores = [v for indice in range(7)
+                       for v in (medias[indice].get(ind, {}).get("diurno"),
+                                 medias[indice].get(ind, {}).get("noturno"))
+                       if v is not None]
+            limites_semana[ind] = self._pareto_limite(valores, aproximar)
+
+        nomes = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta",
+                 "Sábado"]
+        return [[{
+            "rotulo": nomes[indice], "iso": "", "fim_de_semana": indice in (0, 6),
+            "fora": not medias[indice],
+            "faixas": self._calendario_faixas(medias[indice], escolhidos,
+                                              limites_semana, aproximar),
+        } for indice in range(7)]]
 
     # ------------------------------------- Auditoria de Ocorrências
 

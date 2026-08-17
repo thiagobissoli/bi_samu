@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/select2/select2.min.css') }}">
+<style>
+    .select2-container .select2-selection--multiple {
+        min-height: 31px; font-size: .875rem;
+        border-color: var(--bs-border-color, #dee2e6);
+    }
+    .select2-container--default .select2-selection--multiple .select2-selection__choice {
+        margin-top: 3px; font-size: .78rem;
+    }
+    .cal-grade {
+        display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 1px; background: var(--bs-border-color, #dee2e6);
+    }
+    .cal-cabecalho {
+        background: var(--bs-tertiary-bg, #f1f3f5); text-align: center;
+        font-size: .68rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .04em; padding: .25rem 0;
+    }
+    .cal-cabecalho.fds, .cal-dia.fds { background: var(--bs-secondary-bg, #e9ecef); }
+    .cal-dia {
+        background: var(--bs-body-bg, #fff); min-height: 52px;
+        padding: .18rem .25rem;
+    }
+    .cal-dia.fora { opacity: .38; }
+    .cal-data {
+        font-size: .66rem; font-weight: 700; color: var(--bs-secondary-color, #6c757d);
+        margin-bottom: .1rem;
+    }
+    .cal-dia.semana .cal-data {
+        background: var(--bs-primary-bg-subtle, #cfe2ff); text-align: center;
+        border-radius: 3px; color: var(--bs-emphasis-color, #212529);
+    }
+    .cal-faixa {
+        border-left: 3px solid #999; padding-left: .25rem; margin-bottom: .1rem;
+        font-size: .64rem; line-height: 1.25; font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .cal-faixa .rot {
+        display: block; font-size: .56rem; text-transform: uppercase;
+        letter-spacing: .03em; color: var(--bs-secondary-color, #6c757d);
+        overflow: hidden; text-overflow: ellipsis;
+    }
+    .cal-ok   { color: #0d6efd; }
+    .cal-ruim { color: #dc3545; font-weight: 800; }
+    .cal-vazio { color: var(--bs-secondary-color, #adb5bd); }
+    .cal-n { color: var(--bs-secondary-color, #adb5bd); font-size: .56rem; }
+    @media print {
+        .cal-sem-impressao { display: none !important; }
+        .cal-cartao { page-break-inside: avoid; break-inside: avoid; }
+        .cal-dia, .cal-cabecalho { background: #fff !important; }
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/indicadores/{% if qs %}?{{ qs }}{% endif %}">Indicadores</a></li>
+<li class="breadcrumb-item active">Calendários</li>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3 cal-sem-impressao">
+    <div class="card-body py-2">
+        <form method="get" action="/indicadores/calendarios" class="row g-2 align-items-end">
+            <div class="col-12">
+                <label class="form-label mb-1 small fw-semibold">Indicadores exibidos em cada dia</label>
+                <div class="d-flex flex-wrap gap-3">
+                    {% for id, meta in disponiveis.items() %}
+                    <div class="form-check form-check-inline m-0">
+                        <input class="form-check-input" type="checkbox" name="indicador"
+                               id="ind-{{ id }}" value="{{ id }}"
+                               {% if id in params.indicadores %}checked{% endif %}>
+                        <label class="form-check-label small" for="ind-{{ id }}"
+                               title="{{ meta[2] }}">
+                            <span style="color: {{ meta[3] }};">&#9632;</span> {{ meta[1] }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="modo">Visão</label>
+                <select id="modo" name="modo" class="form-select form-select-sm">
+                    <option value="mes" {% if params.modo == "mes" %}selected{% endif %}>Dia a dia</option>
+                    <option value="semana" {% if params.modo == "semana" %}selected{% endif %}>Média por dia da semana</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="dias"
+                       title="Últimos dias com movimento no filtro">Dias</label>
+                <input type="number" id="dias" name="dias" min="1" max="92"
+                       value="{{ params.dias }}" class="form-control form-control-sm"
+                       style="width: 5.5rem;">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="unidades"
+                       title="Cada unidade é um cartão">Unidades</label>
+                <input type="number" id="unidades" name="unidades" min="1" max="200"
+                       value="{{ params.unidades }}" class="form-control form-control-sm"
+                       style="width: 5.5rem;">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="data_inicial">Data inicial</label>
+                <input type="date" id="data_inicial" name="data_inicial"
+                       value="{{ filtros.data_inicial }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="data_final">Data final</label>
+                <input type="date" id="data_final" name="data_final"
+                       value="{{ filtros.data_final }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="unidade">Unidade</label>
+                <select id="unidade" name="unidade" class="form-select form-select-sm select2-multi"
+                        multiple data-width="170px">
+                    {% for op in opcoes.unidades %}
+                    <option value="{{ op }}" {% if op in filtros.unidade %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="cidade">Cidade</label>
+                <select id="cidade" name="cidade" class="form-select form-select-sm select2-multi"
+                        multiple data-width="170px">
+                    {% for op in opcoes.cidades %}
+                    <option value="{{ op }}" {% if op in filtros.cidade %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="codigo">Código</label>
+                <select id="codigo" name="codigo" class="form-select form-select-sm select2-multi"
+                        multiple data-width="170px">
+                    {% for op in opcoes.codigos %}
+                    <option value="{{ op }}" {% if op in filtros.codigo %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="transporte">Transporte</label>
+                <select id="transporte" name="transporte" class="form-select form-select-sm select2-multi"
+                        multiple data-width="160px">
+                    {% for op in opcoes.transportes %}
+                    <option value="{{ op }}" {% if op in filtros.transporte %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <div class="form-check form-check-inline mb-1">
+                    <input class="form-check-input" type="checkbox" id="aproximar"
+                           name="aproximar" value="1"
+                           {% if params.aproximar %}checked{% endif %}>
+                    <label class="form-check-label small" for="aproximar"
+                           title="Marca as k piores médias (k = maior entre 3 e 20% de n) em vez do percentil exato">
+                        Aproximar valor
+                    </label>
+                </div>
+                <div class="form-check form-check-inline mb-1">
+                    <input class="form-check-input" type="checkbox" id="convenio"
+                           name="convenio" value="1"
+                           {% if filtros.convenio %}checked{% endif %}>
+                    <label class="form-check-label small" for="convenio"
+                           title="Vitória + Vila Velha + Serra + Cariacica">Convênio (GV)</label>
+                </div>
+                <div class="form-check form-check-inline mb-1">
+                    <input class="form-check-input" type="checkbox" id="iscmv"
+                           name="iscmv" value="1" {% if filtros.iscmv %}checked{% endif %}>
+                    <label class="form-check-label small" for="iscmv">ISCMV</label>
+                </div>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="fa-solid fa-calendar-days"></i> Gerar calendário
+                </button>
+                <a href="/indicadores/calendarios" class="btn btn-outline-secondary btn-sm">Limpar</a>
+                <button type="button" class="btn btn-outline-secondary btn-sm"
+                        onclick="window.print();">
+                    <i class="fa-solid fa-print"></i> Imprimir
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<p class="text-muted mb-2 small">
+    <i class="fa-solid fa-circle-info me-1"></i>
+    Cada dia traz a média do turno <strong>&#9728; diurno</strong> (07:00–18:59) e
+    <strong>&#9790; noturno</strong>, em mm:ss, por indicador.
+    O dia é o do <strong>plantão</strong>: o turno noturno que passa da meia-noite
+    fica inteiro na noite em que começou.
+    {% for ind in dados.indicadores %}
+    <span class="ms-2"><span style="color: {{ ind.cor }};">&#9632;</span>
+        <strong>{{ ind.rotulo }}</strong>: {{ ind.descricao }}</span>{% if not loop.last %} ·{% endif %}
+    {% endfor %}
+</p>
+
+{% if not dados.unidades %}
+<div class="alert alert-warning">
+    Nenhum atendimento com unidade e horários válidos nos filtros selecionados.
+</div>
+{% else %}
+<p class="text-muted mb-3 small">
+    Período: <strong>{{ dados.periodo.inicio }}</strong> a
+    <strong>{{ dados.periodo.fim }}</strong> ({{ dados.periodo.dias }} dias com
+    movimento) · <strong>{{ dados.total }}</strong> empenhos ·
+    {{ dados.unidades | length }} de {{ dados.unidades_no_filtro }} unidades.
+    {% if dados.unidades_omitidas %}
+    <span class="text-danger fw-semibold">
+        {{ dados.unidades_omitidas }} unidade(s) fora da página — filtre por
+        unidade ou cidade, ou aumente o campo "Unidades".
+    </span>
+    {% endif %}
+</p>
+
+{% for u in dados.unidades %}
+<div class="card mb-3 cal-cartao">
+    <div class="card-header py-1 d-flex flex-wrap justify-content-between align-items-center gap-1">
+        <span class="fw-semibold">
+            <i class="fa-solid fa-truck-medical me-1"></i>{{ u.unidade }}
+            {% if u.cidade %}<span class="text-muted fw-normal">— {{ u.cidade }}</span>{% endif %}
+            {% if dados.modo == "semana" %}
+            <span class="text-muted fw-normal small">(média por dia da semana)</span>
+            {% endif %}
+        </span>
+        <span class="d-flex flex-wrap gap-1 align-items-center">
+            <span class="badge text-bg-light">{{ u.total }} empenhos</span>
+            {% for ind in dados.indicadores %}
+            <span class="badge" style="background: {{ ind.cor }}; font-size: .62rem;"
+                  title="Média do período">
+                {{ ind.rotulo }}: {{ u.medias_txt[ind.id] }}
+            </span>
+            {% endfor %}
+        </span>
+    </div>
+    <div class="card-body p-0">
+        <div class="cal-grade">
+            {% for nome in ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"] %}
+            <div class="cal-cabecalho {% if loop.index0 in [0, 6] %}fds{% endif %}">{{ nome }}</div>
+            {% endfor %}
+            {% for semana in u.grade %}
+            {% for dia in semana %}
+            <div class="cal-dia {% if dia.fim_de_semana %}fds{% endif %}{% if dia.fora %} fora{% endif %}{% if dados.modo == 'semana' %} semana{% endif %}">
+                <div class="cal-data">{{ dia.rotulo }}</div>
+                {% for f in dia.faixas %}
+                <div class="cal-faixa" style="border-left-color: {{ f.cor }};">
+                    <span class="rot">{{ f.rotulo }}</span>
+                    <span class="{{ 'cal-ruim' if f.diurno_ruim else ('cal-vazio' if f.diurno == '—' else 'cal-ok') }}"
+                          title="Diurno · {{ f.diurno_n }} atendimento(s)">&#9728;{{ f.diurno }}</span>
+                    <span class="{{ 'cal-ruim' if f.noturno_ruim else ('cal-vazio' if f.noturno == '—' else 'cal-ok') }}"
+                          title="Noturno · {{ f.noturno_n }} atendimento(s)">&#9790;{{ f.noturno }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+    <div class="card-footer py-1">
+        <span class="text-muted" style="font-size: .68rem;">
+            Pareto desta unidade —
+            {% for ind in dados.indicadores %}
+            <span style="color: {{ ind.cor }};">&#9632;</span> {{ ind.rotulo }}:
+            piores a partir de <strong>{{ u.limites_txt[ind.id] }}</strong>{% if not loop.last %} ·{% endif %}
+            {% endfor %}
+        </span>
+    </div>
+</div>
+{% endfor %}
+
+<p class="text-muted small">
+    <i class="fa-solid fa-circle-info me-1"></i>
+    <strong>Pareto 80/20 por unidade e por indicador:</strong>
+    <span style="color: #0d6efd;">&#9679;</span> os 80% melhores tempos da própria
+    unidade · <span style="color: #dc3545;">&#9679;</span> os 20% piores.
+    Comparar a unidade consigo mesma evita cobrar de quem atende área extensa o
+    tempo de quem atende área urbana.
+    {% if dados.aproximar %}
+    <span class="d-block"><strong>Aproximar valor ativo:</strong> em vermelho as
+    k piores médias, k = maior entre 3 e 20% de n.</span>
+    {% else %}
+    <span class="d-block">Com poucas medições o percentil pode não destacar
+    ninguém; marque <strong>Aproximar valor</strong> para sempre ver os piores
+    dias.</span>
+    {% endif %}
+</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='vendor/select2/select2.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/select2/pt-BR.js') }}"></script>
+<script>
+$(function () {
+    $(".select2-multi").each(function () {
+        $(this).select2({
+            width: $(this).data("width") || "180px",
+            placeholder: "Todas", language: "pt-BR",
+            closeOnSelect: false, allowClear: false,
+        });
+    });
+});
+</script>
+{% endblock %}
