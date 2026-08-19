@@ -180,6 +180,8 @@
                     <th>Status</th>
                     <th>Linhas</th>
                     <th>Novas</th>
+                    <th title="Correções vindas do vSky: a versão anterior do
+                               mesmo empenho foi aposentada">Atualizadas</th>
                     <th>Duplicadas</th>
                     <th>Executada em</th>
                     <th class="text-end">Ações</th>
@@ -207,6 +209,12 @@
                     </td>
                     <td>{{ item.total_linhas }}</td>
                     <td><span class="text-success fw-semibold">{{ item.linhas_novas }}</span></td>
+                    <td>
+                        {% if item.linhas_superadas %}
+                        <span class="text-warning fw-semibold"
+                              title="versões anteriores aposentadas">{{ item.linhas_superadas }}</span>
+                        {% else %}<span class="text-muted">0</span>{% endif %}
+                    </td>
                     <td><span class="text-muted">{{ item.linhas_duplicadas }}</span></td>
                     <td>{{ item.created_at | localdt }}</td>
                     <td class="text-end">

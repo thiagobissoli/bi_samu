@@ -332,6 +332,7 @@ def test_download_automatico_usa_formato_de_data_aceito(monkeypatch):
             class Item:
                 status = STATUS_CONCLUIDO
                 linhas_novas = 3
+                linhas_superadas = 2
                 linhas_duplicadas = 1
                 erro = None
             return Item()
@@ -426,3 +427,208 @@ def test_ficha_corrompida_nao_derruba_o_download():
 
     boa = _pdf_de_teste("USA 100")
     assert _juntar_fichas([boa, b"nao sou um pdf"]) == boa
+
+
+# ------------------- correções vindas do vSky entre dois downloads
+
+def _linha_minima(**campos) -> dict:
+    """Linha do relatório com todas as colunas, para exercitar o importador."""
+    from app.modules.download_vsky.constants import COLUNAS
+
+    linha = {slug: "" for slug, _ in COLUNAS}
+    linha.update(campos)
+    return linha
+
+
+def _servico(db):
+    from app.modules.download_vsky.service import DownloadVskyService
+
+    return DownloadVskyService(db, empresa_id=1)
+
+
+def _importacao(db, rotulo: str):
+    """Importação de fachada. A data 2099 marca o que é de teste, para a
+    limpeza no fim não encostar em importação de verdade."""
+    from app.modules.download_vsky.models import VskyImportacao
+
+    item = VskyImportacao(empresa_id=1, data_inicial="01/01/2099",
+                          data_final="02/01/2099", status="concluido")
+    db.add(item)
+    db.commit()
+    return item
+
+
+def _limpar_importacoes_de_teste(db) -> None:
+    from sqlalchemy import delete
+
+    from app.modules.download_vsky.models import VskyImportacao
+
+    db.execute(delete(VskyImportacao).where(
+        VskyImportacao.data_inicial == "01/01/2099"))
+    db.commit()
+
+
+def _vivos(db, ocorrencia: str):
+    from sqlalchemy import select
+
+    from app.modules.download_vsky.models import VskyRegistroAnalitico as R
+
+    return db.scalars(select(R).where(R.ocorrencia == ocorrencia,
+                                      R.deleted_at.is_(None))
+                      .order_by(R.id)).all()
+
+
+def test_correcao_do_vsky_substitui_a_versao_anterior():
+    """Mesma ocorrência e unidade voltando com o status mudado é atualização,
+    não registro novo — senão o empenho conta duas vezes nos painéis."""
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    numero = "9900001"
+    try:
+        primeiro = _importacao(db, "1º download")
+        novas, _, superadas, _ = _servico(db)._inserir_linhas(
+            [_linha_minima(ocorrencia=numero, unidade="USB 99 - TESTE",
+                           status_da_ocorrencia="Em Atendimento",
+                           data_ocorrencia="01/01/2099 08:00:00")], primeiro)
+        assert (novas, superadas) == (1, 0)
+
+        segundo = _importacao(db, "2º download")
+        novas, _, superadas, _ = _servico(db)._inserir_linhas(
+            [_linha_minima(ocorrencia=numero, unidade="USB 99 - TESTE",
+                           status_da_ocorrencia="Encerrada",
+                           data_ocorrencia="01/01/2099 08:00:00",
+                           atendimento_encerrado="01/01/2099 09:10:00")], segundo)
+        assert (novas, superadas) == (1, 1)
+
+        vivos = _vivos(db, numero)
+        assert len(vivos) == 1, "a versão antiga continuou contando"
+        assert vivos[0].status_da_ocorrencia == "Encerrada"
+        assert vivos[0].atendimento_encerrado == "01/01/2099 09:10:00"
+    finally:
+        _limpar_teste(db, numero)
+
+
+def test_duas_vitimas_no_mesmo_arquivo_continuam_dois_registros():
+    """Uma ocorrência com duas vítimas traz duas linhas iguais em (ocorrência,
+    unidade) no MESMO arquivo — nenhuma delas é versão velha da outra."""
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    numero = "9900002"
+    try:
+        item = _importacao(db, "download único")
+        novas, _, superadas, _ = _servico(db)._inserir_linhas([
+            _linha_minima(ocorrencia=numero, unidade="USB 99 - TESTE",
+                          paciente="VITIMA A", sexo="M",
+                          data_ocorrencia="01/01/2099 08:00:00"),
+            _linha_minima(ocorrencia=numero, unidade="USB 99 - TESTE",
+                          paciente="VITIMA B", sexo="F",
+                          data_ocorrencia="01/01/2099 08:00:00"),
+        ], item)
+        assert (novas, superadas) == (2, 0)
+        assert len(_vivos(db, numero)) == 2
+
+        # o mesmo arquivo reimportado não muda nada
+        novas, _, superadas, _ = _servico(db)._inserir_linhas([
+            _linha_minima(ocorrencia=numero, unidade="USB 99 - TESTE",
+                          paciente="VITIMA A", sexo="M",
+                          data_ocorrencia="01/01/2099 08:00:00"),
+            _linha_minima(ocorrencia=numero, unidade="USB 99 - TESTE",
+                          paciente="VITIMA B", sexo="F",
+                          data_ocorrencia="01/01/2099 08:00:00"),
+        ], _importacao(db, "reimportação"))
+        assert (novas, superadas) == (0, 0)
+        assert len(_vivos(db, numero)) == 2
+    finally:
+        _limpar_teste(db, numero)
+
+
+def test_reimportar_o_mesmo_arquivo_nao_aposenta_nada():
+    """Reimportação é rotina (o agendador rebaixa os últimos dias): não pode
+    trocar ids nem marcar exclusões a cada passada."""
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    numero = "9900003"
+    try:
+        linha = _linha_minima(ocorrencia=numero, unidade="USA 99 - TESTE",
+                              status_da_ocorrencia="Encerrada",
+                              data_ocorrencia="01/01/2099 08:00:00")
+        _servico(db)._inserir_linhas([linha], _importacao(db, "1º"))
+        ids_antes = [r.id for r in _vivos(db, numero)]
+
+        novas, duplicadas, superadas, _ = _servico(db)._inserir_linhas(
+            [linha], _importacao(db, "2º"))
+        assert (novas, superadas) == (0, 0) and duplicadas == 1
+        assert [r.id for r in _vivos(db, numero)] == ids_antes
+    finally:
+        _limpar_teste(db, numero)
+
+
+def test_ocorrencia_de_outro_periodo_nao_e_tocada():
+    """O download cobre uma janela: chave fora do arquivo fica como está."""
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    fora, dentro = "9900004", "9900005"
+    try:
+        _servico(db)._inserir_linhas(
+            [_linha_minima(ocorrencia=fora, unidade="USB 99 - TESTE",
+                           data_ocorrencia="01/01/2099 08:00:00")],
+            _importacao(db, "janela antiga"))
+        assert len(_vivos(db, fora)) == 1
+
+        _servico(db)._inserir_linhas(
+            [_linha_minima(ocorrencia=dentro, unidade="USB 99 - TESTE",
+                           data_ocorrencia="02/01/2099 08:00:00")],
+            _importacao(db, "janela nova"))
+        assert len(_vivos(db, fora)) == 1, "registro fora da janela foi mexido"
+        assert len(_vivos(db, dentro)) == 1
+    finally:
+        _limpar_teste(db, fora)
+        _limpar_teste(db, dentro)
+
+
+def test_linha_sem_numero_de_ocorrencia_nao_e_reconciliada():
+    """Sem número não há identidade — reconciliar apagaria linhas boas."""
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        item = _importacao(db, "sem número")
+        novas, _, superadas, _ = _servico(db)._inserir_linhas([
+            _linha_minima(ocorrencia="", unidade="USB 99 - TESTE",
+                          paciente="SEM NUMERO 1",
+                          data_ocorrencia="03/01/2099 08:00:00"),
+        ], item)
+        assert (novas, superadas) == (1, 0)
+
+        novas, _, superadas, _ = _servico(db)._inserir_linhas([
+            _linha_minima(ocorrencia="", unidade="USB 99 - TESTE",
+                          paciente="SEM NUMERO 2",
+                          data_ocorrencia="03/01/2099 09:00:00"),
+        ], _importacao(db, "sem número 2"))
+        assert superadas == 0, "linha sem número foi aposentada indevidamente"
+    finally:
+        _limpar_sem_numero(db)
+
+
+def _limpar_teste(db, ocorrencia: str) -> None:
+    from sqlalchemy import delete
+
+    from app.modules.download_vsky.models import VskyRegistroAnalitico as R
+
+    db.execute(delete(R).where(R.ocorrencia == ocorrencia))
+    db.commit()
+    _limpar_importacoes_de_teste(db)
+
+
+def _limpar_sem_numero(db) -> None:
+    from sqlalchemy import delete
+
+    from app.modules.download_vsky.models import VskyRegistroAnalitico as R
+
+    db.execute(delete(R).where(R.paciente.like("SEM NUMERO%")))
+    db.commit()
+    _limpar_importacoes_de_teste(db)

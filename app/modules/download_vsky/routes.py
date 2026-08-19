@@ -54,7 +54,8 @@ def _iniciar_download_automatico() -> None:
             "Falha ao iniciar o download automático")
 
 FIELDS = ["data_inicial", "data_final", "status", "total_linhas",
-          "linhas_novas", "linhas_duplicadas", "tamanho", "erro"]
+          "linhas_novas", "linhas_superadas", "linhas_duplicadas",
+          "tamanho", "erro"]
 
 
 def _credenciais(db: Session, empresa_id: int) -> dict | None:
@@ -122,7 +123,9 @@ def importar(
         return RedirectResponse(
             "/download_vsky/?msg=" + quote(
                 f"Importação concluída: {item.linhas_novas} novas, "
-                f"{item.linhas_duplicadas} duplicadas de {item.total_linhas} linhas."),
+                f"{item.linhas_superadas} atualizadas, "
+                f"{item.linhas_duplicadas} duplicadas de "
+                f"{item.total_linhas} linhas."),
             status_code=303)
     return RedirectResponse(
         "/download_vsky/?erro=" + quote(f"Falha na importação: {item.erro}"),

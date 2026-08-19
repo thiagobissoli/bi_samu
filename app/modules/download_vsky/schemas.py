@@ -16,6 +16,7 @@ class ImportacaoRead(BaseModel):
     status: str
     total_linhas: int = 0
     linhas_novas: int = 0
+    linhas_superadas: int = 0
     linhas_duplicadas: int = 0
     tamanho: int = 0
     erro: str | None = None

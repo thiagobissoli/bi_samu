@@ -81,6 +81,7 @@ def executar_download_automatico(empresa_id: int = 1) -> None:
         if item.status == STATUS_CONCLUIDO:
             set_config(db, CONFIG_AUTO_STATUS,
                        f"sucesso — {item.linhas_novas} novas, "
+                       f"{item.linhas_superadas} atualizadas, "
                        f"{item.linhas_duplicadas} duplicadas", empresa_id)
             try:  # dados novos: dashboards recarregam na próxima consulta
                 from app.modules.indicadores import nucleo

@@ -28,6 +28,8 @@ class VskyImportacao(BaseModel):
     total_linhas: Mapped[int] = mapped_column(default=0)
     linhas_novas: Mapped[int] = mapped_column(default=0)
     linhas_duplicadas: Mapped[int] = mapped_column(default=0)
+    # versões antigas aposentadas por uma correção vinda do vSky
+    linhas_superadas: Mapped[int] = mapped_column(default=0)
     tamanho: Mapped[int] = mapped_column(default=0)  # bytes do XLS
     caminho: Mapped[str | None] = mapped_column(String(500), nullable=True)  # XLS no disco
     erro: Mapped[str | None] = mapped_column(String(1000), nullable=True)

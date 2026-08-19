@@ -139,11 +139,12 @@ class DownloadVskyService:
             item.caminho = _salvar_xls(content, self.empresa_id,
                                        data_inicial, data_final)
             item.tamanho = len(content)
-            novas, duplicadas, total = self._inserir_linhas(
+            novas, duplicadas, superadas, total = self._inserir_linhas(
                 parse_xls(content), item)
             item.total_linhas = total
             item.linhas_novas = novas
             item.linhas_duplicadas = duplicadas
+            item.linhas_superadas = superadas
             item.status = STATUS_CONCLUIDO
             item.erro = None
         except (VskyError, httpx.HTTPError, ValueError, OSError) as exc:
@@ -154,8 +155,25 @@ class DownloadVskyService:
 
     def _inserir_linhas(
         self, linhas: list[dict[str, str]], item: VskyImportacao,
-    ) -> tuple[int, int, int]:
-        """Insere linhas inéditas; devolve (novas, duplicadas, total)."""
+    ) -> tuple[int, int, int, int]:
+        """Sincroniza o arquivo com a base.
+
+        Devolve (novas, duplicadas, superadas, total).
+
+        O vSky corrige registro depois de exportado: a mesma ocorrência volta
+        num download seguinte com o status mudado de "Em Atendimento" para
+        "Encerrada" e com horários que ainda não existiam. Como o dedupe é
+        por hash da linha inteira, a versão corrigida entrava como registro
+        NOVO e a antiga ficava — o mesmo empenho passava a contar duas vezes
+        nos painéis.
+
+        A identidade de uma linha é (ocorrência, unidade). Ela não é única
+        dentro de um arquivo — uma ocorrência com duas vítimas traz duas
+        linhas iguais nesse par —, mas aí as duas vêm no MESMO arquivo. É
+        essa a distinção usada aqui: o arquivo é a verdade do momento para as
+        chaves que ele traz; versões dessas chaves que sobraram de downloads
+        anteriores são marcadas como excluídas (§36.7), sem perder o dado.
+        """
         candidatos: dict[str, dict[str, str]] = {}
         duplicadas_no_arquivo = 0
         for valores in linhas:
@@ -164,6 +182,26 @@ class DownloadVskyService:
                 duplicadas_no_arquivo += 1
             else:
                 candidatos[h] = valores
+
+        # Chaves que este arquivo traz (só elas são reconciliadas: o download
+        # cobre um período, e o que está fora dele não pode ser tocado).
+        por_chave: dict[tuple[str, str], list[str]] = {}
+        for h, valores in candidatos.items():
+            chave = (valores.get("ocorrencia") or "", valores.get("unidade") or "")
+            if chave[0]:                      # sem número não há identidade
+                por_chave.setdefault(chave, []).append(h)
+
+        vivos = self.registros.versoes_por_chave(list(por_chave))
+        superados, mantidos = [], set()
+        for chave, hashes in por_chave.items():
+            do_arquivo = set(hashes)
+            for registro in vivos.get(chave, []):
+                if registro.linha_hash in do_arquivo:
+                    mantidos.add(registro.linha_hash)   # inalterado
+                else:
+                    superados.append(registro)          # versão velha
+        if superados:
+            self.registros.soft_delete(superados, item.created_by)
 
         existentes = self.registros.hashes_existentes(list(candidatos))
         novos = []
@@ -181,7 +219,7 @@ class DownloadVskyService:
             self.registros.bulk_insert(novos)
         total = len(linhas)
         duplicadas = duplicadas_no_arquivo + len(existentes)
-        return len(novos), duplicadas, total
+        return len(novos), duplicadas, len(superados), total
 
 
 logger = logging.getLogger("download_vsky")

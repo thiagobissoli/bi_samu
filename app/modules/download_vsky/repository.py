@@ -118,3 +118,33 @@ class VskyRegistroRepository:
         self.session.add_all(
             VskyRegistroAnalitico(empresa_id=self.empresa_id, **r) for r in registros)
         self.session.commit()
+
+    def versoes_por_chave(self, chaves: list[tuple[str, str]],
+                          chunk: int = 300) -> dict[tuple[str, str], list]:
+        """Registros vivos de cada (ocorrência, unidade), em lotes."""
+        from sqlalchemy import tuple_ as sa_tuple
+
+        achados: dict[tuple[str, str], list] = {}
+        for i in range(0, len(chaves), chunk):
+            lote = chaves[i:i + chunk]
+            rows = self.session.scalars(
+                select(VskyRegistroAnalitico)
+                .where(VskyRegistroAnalitico.empresa_id == self.empresa_id)
+                .where(VskyRegistroAnalitico.deleted_at.is_(None))
+                .where(sa_tuple(VskyRegistroAnalitico.ocorrencia,
+                                VskyRegistroAnalitico.unidade).in_(lote)))
+            for r in rows:
+                achados.setdefault((r.ocorrencia or "", r.unidade or ""),
+                                   []).append(r)
+        return achados
+
+    def soft_delete(self, registros: list, usuario_id: int | None = None) -> int:
+        """Marca versões superadas como excluídas (§36.7), sem perder o dado."""
+        from datetime import datetime, timezone
+
+        agora = datetime.now(timezone.utc)
+        for r in registros:
+            r.deleted_at = agora
+            r.deleted_by = usuario_id
+        self.session.commit()
+        return len(registros)
