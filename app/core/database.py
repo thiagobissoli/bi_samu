@@ -11,9 +11,11 @@ do init_db() é uma conveniência de desenvolvimento.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
-from sqlalchemy import BigInteger, DateTime, Integer, create_engine
+from sqlalchemy import BigInteger, DateTime, Integer, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from app.core.config import settings
@@ -80,7 +82,6 @@ def _garantir_banco() -> None:
     url = make_url(settings.database_url)
     if not url.drivername.startswith("mysql") or not url.database:
         return
-    from sqlalchemy import text
 
     # set(database=None) seria ignorado pelo SQLAlchemy; "" conecta ao
     # servidor sem selecionar schema.
@@ -95,7 +96,68 @@ def _garantir_banco() -> None:
         servidor.dispose()
 
 
+def _config_alembic():
+    """Configuração do Alembic apontando para este projeto."""
+    from alembic.config import Config
+
+    raiz = Path(__file__).resolve().parent.parent.parent
+    config = Config(str(raiz / "alembic.ini"))
+    config.set_main_option("script_location", str(raiz / "migrations"))
+    config.set_main_option("sqlalchemy.url", settings.database_url)
+    return config
+
+
+def _versionado() -> bool:
+    """True se o banco já tem revisão do Alembic carimbada."""
+    from sqlalchemy import inspect
+
+    inspetor = inspect(engine)
+    if not inspetor.has_table("alembic_version"):
+        return False
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT COUNT(*) FROM alembic_version")).scalar() > 0
+
+
+def aplicar_migracoes() -> None:
+    """Põe o schema no head do Alembic ao subir a aplicação.
+
+    create_all() cria tabela que falta, mas nunca COLUNA que falta. Foi assim
+    que uma atualização de código derrubou a instalação em produção com
+    "Unknown column 'linhas_superadas'": o código novo subiu, o banco ficou
+    no schema velho e a página só quebrou quando alguém abriu.
+
+    Aplicando as migrações no boot, atualizar o sistema volta a ser `git pull`
+    mais reiniciar. Banco recém-criado nasce no head e é só carimbado; banco
+    anterior ao versionamento é carimbado na baseline antes de subir.
+    """
+    from alembic import command
+    from sqlalchemy import inspect
+
+    log = logging.getLogger("uvicorn.error")
+    config = _config_alembic()
+    novo = not inspect(engine).has_table("usuarios")
+    try:
+        if novo:
+            Base.metadata.create_all(engine)
+            command.stamp(config, "head")
+            log.info("Banco criado no schema atual.")
+            return
+        if not _versionado():
+            # Instalação anterior ao Alembic: o schema existe e corresponde à
+            # baseline. Sem o carimbo, o upgrade tentaria recriar tudo.
+            command.stamp(config, "0001_baseline")
+            log.info("Banco existente carimbado na baseline do Alembic.")
+        command.upgrade(config, "head")
+        # Tabela de módulo novo ainda sem migração própria
+        Base.metadata.create_all(engine)
+    except Exception:  # noqa: BLE001 — sem migração o app sobe com schema velho
+        log.exception(
+            "Falha ao aplicar as migrações. O sistema vai subir, mas telas "
+            "que dependem do schema novo podem falhar. Rode à mão: "
+            "alembic upgrade head")
+
+
 def init_db() -> None:
-    """Cria banco e tabelas registrados (desenvolvimento). Produção: Alembic."""
+    """Cria o banco se preciso e deixa o schema no head das migrações."""
     _garantir_banco()
-    Base.metadata.create_all(engine)
+    aplicar_migracoes()

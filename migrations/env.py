@@ -11,8 +11,12 @@ from app.core.database import Base
 
 import app.models  # noqa: F401  — tabelas compartilhadas (§36.6)
 
-# Modelos dos módulos instalados
-for models_file in sorted(Path("app/modules").glob("*/models.py")):
+# Modelos dos módulos instalados. O caminho sai deste arquivo, não do
+# diretório de execução: rodando a migração no boot da aplicação (ou de outra
+# pasta), um caminho relativo não acharia módulo nenhum e o autogenerate
+# enxergaria metade do schema.
+_MODULOS = Path(__file__).resolve().parent.parent / "app" / "modules"
+for models_file in sorted(_MODULOS.glob("*/models.py")):
     importlib.import_module(f"app.modules.{models_file.parent.name}.models")
 
 config = context.config

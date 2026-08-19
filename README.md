@@ -24,6 +24,26 @@ Em produção, use `./start.sh` e `./stop.sh`.
 > perdido as credenciais. As duas primeiras linhas do log mostram qual
 > código e qual banco estão em uso; confira-as em caso de dúvida.
 
+## Atualizar uma instalação
+
+```bash
+git pull
+python -m pip install -e .        # só se as dependências mudaram
+./stop.sh && ./start.sh           # no Windows: encerre e rode start.bat
+```
+
+As migrações do banco são aplicadas sozinhas no boot: o log mostra o que foi
+feito. Não existe passo manual de schema — `create_all()` cria tabela que
+falta, mas nunca **coluna** que falta, e foi assim que uma atualização já
+derrubou uma instalação com `Unknown column`.
+
+Se as migrações falharem, a aplicação sobe assim mesmo e registra o erro no
+log com a orientação; para resolver à mão:
+
+```bash
+alembic upgrade head
+```
+
 ## Novos módulos
 
 ```bash
