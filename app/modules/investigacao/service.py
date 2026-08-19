@@ -156,20 +156,30 @@ class InvestigacaoService:
 
         com_empenho = not alvos.empty
         if com_empenho:
-            # Empenho de referência: o primeiro a se deslocar
+            # Duas referências, porque são duas perguntas distintas:
+            # o primeiro a se deslocar define o INSTANTE da análise de
+            # disponibilidade ("havia viatura livre quando se decidiu?"),
+            # e o primeiro a CHEGAR é quem de fato atendeu — é dele o tempo
+            # de resposta e são dele os indicadores da ocorrência. Sem essa
+            # separação, uma ocorrência em que a 1ª viatura foi cancelada no
+            # trajeto aparecia inteira como "—", embora tenha sido atendida.
             alvo = alvos.sort_values("inicio").iloc[0]
             momento = alvo["inicio"]
+            chegaram = alvos[alvos["dt_chegada_no_local"].notna()]
+            atendeu = (chegaram.sort_values("dt_chegada_no_local").iloc[0]
+                       if not chegaram.empty else alvo)
         else:
             # Chamado sem viatura despachada (orientação médica, cancelado,
             # sem recurso...) — ainda assim há o que analisar: a cadeia do
             # atendimento e a disponibilidade de viaturas no momento.
             alvo = linhas_oc.sort_values("dt_ocorr").iloc[0]
+            atendeu = alvo
             momento = _primeiro_horario(alvo)
             if momento is None:
                 return {"erro": (f"A ocorrência {numero} não tem nenhum "
                                  "horário registrado — não há o que analisar.")}
-        cidade = _txt(alvo["cidade"])
-        base_alvo = _txt(alvo.get("municipio_base")) if com_empenho else ""
+        cidade = _txt(atendeu["cidade"])
+        base_alvo = _txt(atendeu.get("municipio_base")) if com_empenho else ""
 
         # Viaturas sediadas no município da ocorrência (histórico completo)
         norm_cidade = nucleo.norm_txt(cidade) if cidade else ""
@@ -215,7 +225,7 @@ class InvestigacaoService:
 
         ocupadas = [s for s in situacoes if s["status"] == "ocupada"]
         livres = [s for s in situacoes if s["status"] == "sem_empenho"]
-        fora = bool(_fora_do_municipio(alvo)) if com_empenho else False
+        fora = bool(_fora_do_municipio(atendeu)) if com_empenho else False
 
         if not com_empenho:
             # Sem viatura despachada: a pergunta deixa de ser "por que veio
@@ -257,12 +267,17 @@ class InvestigacaoService:
 
         return {
             "ocorrencia": numero,
-            "registro_id": int(alvo["id"]),
+            # os indicadores e a decomposição do atraso descrevem quem atendeu
+            "registro_id": int(atendeu["id"]),
             "com_empenho": com_empenho,
             "momento": momento.strftime("%d/%m/%Y %H:%M"),
             "dia": momento.strftime("%Y-%m-%d"),
             "cidade": cidade,
-            "unidade": _txt(alvo["unidade"]),
+            "unidade": _txt(atendeu["unidade"]),
+            "unidade_despachada": (_txt(alvo["unidade"])
+                                   if com_empenho
+                                   and alvo["id"] != atendeu["id"] else None),
+            "empenhos_na_ocorrencia": int(len(alvos)),
             "municipio_unidade": base_alvo,
             "fora_do_municipio": fora,
             "codigo": _txt(alvo["codigo_da_ocorrencia"]),
@@ -271,7 +286,7 @@ class InvestigacaoService:
             "risco": _txt(alvo["risco_inicial"]),
             "situacao": _txt(alvo.get("situacao_atendimento")),
             "transporte": _txt(alvo.get("transporte")),
-            "tempo_resposta": _mmss(alvo.get("tempo_resposta")),
+            "tempo_resposta": _mmss(atendeu.get("tempo_resposta")),
             "empenhos_na_ocorrencia": len(alvos),
             "linhas_na_ocorrencia": len(linhas_oc),
             "cadeia": _cadeia_do_chamado(alvo),
@@ -397,15 +412,16 @@ def _duracao(inicio, fim) -> str:
 
 
 def _mmss(segundos) -> str:
-    """Tempo de resposta em mm:ss, com o mesmo teto de validade dos
-    dashboards — valores fora da faixa são registro defeituoso e saem
-    como vazio, em vez de aparecerem como medição boa."""
-    from app.modules.indicadores.constants import CAP_TEMPO
+    """Tempo em mm:ss; vazio só quando não há medição.
 
+    Sem o teto de validade dos dashboards: ele existe para uma marcação
+    errada não estragar médias, e numa ocorrência isolada o valor extremo
+    costuma ser justamente o que se foi investigar.
+    """
     if segundos is None or pd.isna(segundos):
         return ""
     s = float(segundos)
-    if not 0 < s < CAP_TEMPO.get("tempo_resposta", 14400):
+    if s <= 0:
         return ""
     s = int(round(s))
     return f"{s // 60:02d}:{s % 60:02d}"

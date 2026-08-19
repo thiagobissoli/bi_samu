@@ -50,8 +50,8 @@ class ProntuarioClient(VskyClient):
     def __init__(self, base_url: str, usuario: str, senha: str):
         super().__init__(base_url, usuario, senha, timeout=PRONTUARIO_TIMEOUT)
 
-    def baixar_prontuario(self, numero: str) -> bytes:
-        """Devolve os bytes do PDF do prontuário da ocorrência.
+    def baixar_prontuario(self, numero: str) -> list[bytes]:
+        """Devolve o PDF de cada ficha da ocorrência, uma por viatura.
 
         Requer sessão autenticada (chame login() antes). Levanta
         ProntuarioError com mensagem clara em qualquer falha estrutural.
@@ -104,12 +104,12 @@ class ProntuarioClient(VskyClient):
         html_res = html_lib.unescape(resultado.text)
         viewstate = _viewstate_update(resultado.text) or viewstate
 
-        gatilho = None
+        gatilhos: list[str] = []
         for titulo in PRONTUARIO_GATILHOS:
-            gatilho = _botao_por_titulo(html_res, titulo)
-            if gatilho:
+            gatilhos = _botoes_por_titulo(html_res, titulo)
+            if gatilhos:
                 break
-        if gatilho is None:
+        if not gatilhos:
             if numero not in html_res or "Nenhum Registro" in html_res:
                 raise ProntuarioError(
                     f"Ocorrência {numero} não encontrada na consulta do vSky.")
@@ -118,22 +118,29 @@ class ProntuarioClient(VskyClient):
                 f"{numero} — o usuário configurado pode não ter a permissão "
                 "no vSky.")
 
-        # Clique no botão do PDF: POST completo com o estado do formulário
-        # devolvido pela pesquisa (o PDF vem como attachment).
-        campos_pdf = _campos_do_form(html_res, FORM_CONSULTA)
-        campos_pdf[CAMPO_NUMERO_OCORRENCIA] = [numero]
-        campos_pdf[FORM_CONSULTA] = FORM_CONSULTA
-        campos_pdf["javax.faces.ViewState"] = viewstate
-        campos_pdf[gatilho] = ""
+        # Clique em cada botão de PDF: POST completo com o estado do
+        # formulário devolvido pela pesquisa (o PDF vem como attachment).
+        fichas: list[bytes] = []
+        erro_ultimo = None
+        for gatilho in gatilhos:
+            campos_pdf = _campos_do_form(html_res, FORM_CONSULTA)
+            campos_pdf[CAMPO_NUMERO_OCORRENCIA] = [numero]
+            campos_pdf[FORM_CONSULTA] = FORM_CONSULTA
+            campos_pdf["javax.faces.ViewState"] = viewstate
+            campos_pdf[gatilho] = ""
 
-        pdf = self.http.post(CONSULTA_OCORRENCIA_PATH, data=campos_pdf)
-        pdf.raise_for_status()
-        tipo = pdf.headers.get("content-type", "")
-        if "pdf" in tipo or pdf.content[:5] == b"%PDF-":
-            return pdf.content
+            pdf = self.http.post(CONSULTA_OCORRENCIA_PATH, data=campos_pdf)
+            pdf.raise_for_status()
+            tipo = pdf.headers.get("content-type", "")
+            if "pdf" in tipo or pdf.content[:5] == b"%PDF-":
+                if pdf.content not in fichas:   # o portal repete a mesma
+                    fichas.append(pdf.content)  # ficha em algumas telas
+                continue
+            erro_ultimo = _mensagem_erro(pdf.text)
+        if fichas:
+            return fichas
         raise ProntuarioError(
-            _mensagem_erro(pdf.text)
-            or "O vSky não devolveu o PDF do prontuário.")
+            erro_ultimo or "O vSky não devolveu o PDF do prontuário.")
 
 
 def _campos_do_form(html: str, form_id: str) -> dict[str, list[str] | str]:
@@ -193,15 +200,29 @@ def _botao_por_label(html: str, labels: tuple[str, ...]) -> str | None:
 
 
 def _botao_por_titulo(html: str, titulo: str) -> str | None:
-    """Nome/id do elemento cujo atributo title casa com `titulo`."""
+    """Nome/id do primeiro elemento cujo title casa com `titulo`."""
+    achados = _botoes_por_titulo(html, titulo)
+    return achados[0] if achados else None
+
+
+def _botoes_por_titulo(html: str, titulo: str) -> list[str]:
+    """Ids de TODOS os elementos cujo title casa, na ordem da tela.
+
+    Uma ocorrência com duas viaturas devolve duas linhas na consulta, cada
+    uma com o seu botão de ficha — parar no primeiro deixaria de fora a
+    outra equipe que atendeu o mesmo paciente.
+    """
     decoded = html_lib.unescape(html)
     alvo = titulo.casefold()
-    for m in re.finditer(
-            r'<[^>]*\btitle="([^"]+)"[^>]*\bid="([^"]+)"', decoded, re.IGNORECASE):
-        if alvo in m.group(1).casefold():
-            return m.group(2)
-    for m in re.finditer(
-            r'<[^>]*\bid="([^"]+)"[^>]*\btitle="([^"]+)"', decoded, re.IGNORECASE):
-        if alvo in m.group(2).casefold():
-            return m.group(1)
-    return None
+    ids: list[str] = []
+    # Uma varredura só, tag a tag: title e id aparecem em qualquer ordem, e
+    # duas varreduras (uma por ordem de atributo) embaralhariam as linhas.
+    for tag in re.finditer(r'<[^>]+>', decoded):
+        texto = tag.group(0)
+        rotulo = _first(r'\btitle="([^"]*)"', texto)
+        if not rotulo or alvo not in rotulo.casefold():
+            continue
+        identificador = _first(r'\bid="([^"]*)"', texto)
+        if identificador and identificador not in ids:
+            ids.append(identificador)
+    return ids

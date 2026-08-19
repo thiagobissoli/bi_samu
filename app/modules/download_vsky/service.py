@@ -11,6 +11,7 @@ Fluxo obrigatório: View -> Service -> Repository -> Database (§35.3).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -183,6 +184,9 @@ class DownloadVskyService:
         return len(novos), duplicadas, total
 
 
+logger = logging.getLogger("download_vsky")
+
+
 def prontuario_path(empresa_id: int, numero: str) -> Path:
     """Caminho do PDF do prontuário em cache no disco."""
     seguro = "".join(c for c in str(numero) if c.isalnum()) or "sem_numero"
@@ -221,16 +225,41 @@ def obter_prontuario(db: Session, empresa_id: int, numero: str) -> Path:
     try:
         with ProntuarioClient(base_url, usuario, senha) as client:
             client.login()
-            conteudo = client.baixar_prontuario(numero)
+            fichas = client.baixar_prontuario(numero)
     except ProntuarioError as exc:
         raise ValueError(str(exc)) from exc
     except (httpx.HTTPError, OSError) as exc:
         raise ValueError(f"Falha ao baixar o prontuário: {exc}") from exc
 
     destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_bytes(conteudo)
+    destino.write_bytes(_juntar_fichas(fichas))
     registrar_prontuario(db, empresa_id, numero, destino, forcar=True)
     return destino
+
+
+def _juntar_fichas(fichas: list[bytes]) -> bytes:
+    """Uma ocorrência com várias viaturas tem uma ficha por equipe.
+
+    Vira um PDF só, na ordem em que o portal listou: o investigador lê o
+    atendimento inteiro num arquivo, e o visualizador embutido, a extração
+    de texto e o registro no banco continuam valendo para a ocorrência.
+    """
+    if len(fichas) <= 1:
+        return fichas[0] if fichas else b""
+    from io import BytesIO
+
+    from pypdf import PdfWriter
+
+    escritor = PdfWriter()
+    try:
+        for ficha in fichas:
+            escritor.append(BytesIO(ficha))
+    except Exception:  # noqa: BLE001 — ficha corrompida não pode perder o resto
+        logger.exception("Falha ao juntar as fichas; fica só a primeira")
+        return fichas[0]
+    saida = BytesIO()
+    escritor.write(saida)
+    return saida.getvalue()
 
 
 def _extrair_texto_pdf(caminho: Path) -> tuple[str, int]:

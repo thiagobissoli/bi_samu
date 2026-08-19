@@ -2,6 +2,7 @@
 
 import re
 
+import pandas as pd
 import pytest
 
 from fastapi.testclient import TestClient
@@ -1613,3 +1614,41 @@ def test_etapa_extrema_entra_na_decomposicao_do_atraso():
         assert "P3" not in atraso["cobertura"]["faltando"]
     # e ela é apontada como contribuinte do atraso
     assert any(c["col"] == "t_p3" for c in atraso["contribuintes"])
+
+
+def test_ocorrencia_com_dois_empenhos_usa_quem_atendeu():
+    """A 1ª viatura despachada pode não ser a que chegou. O tempo de resposta
+    e os indicadores são de quem atendeu; a análise de disponibilidade
+    continua ancorada no instante do primeiro despacho."""
+    from app.modules.indicadores import nucleo
+    from app.modules.investigacao.service import InvestigacaoService
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+
+    # ocorrência com 2+ empenhos em que o primeiro a se deslocar não chegou
+    com_unidade = df[df["unidade"].notna() & df["ocorrencia"].notna()]
+    alvo = None
+    for numero, grupo in com_unidade.groupby("ocorrencia"):
+        if len(grupo) < 2 or grupo["dt_chegada_no_local"].notna().sum() == 0:
+            continue
+        primeiro = grupo.sort_values("dt_inicio_deslocamento").iloc[0]
+        if pd.isna(primeiro["dt_chegada_no_local"]):
+            alvo = numero
+            break
+    if alvo is None:
+        pytest.skip("nenhuma ocorrência com esse padrão na base")
+
+    inv = InvestigacaoService(1).investigar(alvo)
+    assert inv["empenhos_na_ocorrencia"] >= 2
+    assert inv["unidade_despachada"], "deveria registrar quem saiu primeiro"
+    assert inv["unidade"] != inv["unidade_despachada"]
+    # o tempo de resposta existe: alguém chegou
+    assert inv["tempo_resposta"], "o tempo de resposta de quem atendeu sumiu"
+
+    # e o registro de referência é o da viatura que chegou primeiro
+    grupo = com_unidade[com_unidade["ocorrencia"] == alvo]
+    chegaram = grupo[grupo["dt_chegada_no_local"].notna()]
+    esperado = chegaram.sort_values("dt_chegada_no_local").iloc[0]
+    assert inv["registro_id"] == int(esperado["id"])

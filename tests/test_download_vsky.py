@@ -359,3 +359,70 @@ def test_download_automatico_usa_formato_de_data_aceito(monkeypatch):
     finally:
         db.close()
     assert status.startswith("sucesso"), status
+
+
+def _pdf_de_teste(texto: str, paginas: int = 1) -> bytes:
+    """PDF mínimo em memória, para exercitar a junção das fichas."""
+    from io import BytesIO
+
+    from reportlab.pdfgen import canvas
+
+    buf = BytesIO()
+    c = canvas.Canvas(buf)
+    for n in range(paginas):
+        c.drawString(72, 720, f"{texto} — página {n + 1}")
+        c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def test_consulta_encontra_o_botao_de_pdf_de_cada_viatura():
+    """Ocorrência com duas viaturas devolve duas linhas, cada uma com a sua
+    ficha; parar na primeira deixaria a outra equipe de fora."""
+    from app.modules.download_vsky.prontuario_client import _botoes_por_titulo
+
+    html = """
+    <table><tbody>
+      <tr><td>2731303</td>
+          <td><a id="frm:tbl:0:pdfCompleta" title="Ficha de Atendimento Completa"></a></td></tr>
+      <tr><td>2731303</td>
+          <td><a title="Ficha de Atendimento Completa" id="frm:tbl:1:pdfCompleta"></a></td></tr>
+    </tbody></table>"""
+    achados = _botoes_por_titulo(html, "Ficha de Atendimento Completa")
+    assert achados == ["frm:tbl:0:pdfCompleta", "frm:tbl:1:pdfCompleta"]
+    # e não repete o mesmo id quando os dois padrões de atributo casam
+    assert len(achados) == len(set(achados))
+
+
+def test_fichas_de_varias_viaturas_viram_um_pdf_so():
+    from pypdf import PdfReader
+
+    from app.modules.download_vsky.service import _juntar_fichas
+
+    usa = _pdf_de_teste("USA 100", paginas=3)
+    usb = _pdf_de_teste("USB 46", paginas=2)
+    juntas = _juntar_fichas([usa, usb])
+
+    from io import BytesIO
+    leitor = PdfReader(BytesIO(juntas))
+    assert len(leitor.pages) == 5
+    texto = "\n".join(p.extract_text() or "" for p in leitor.pages)
+    assert "USA 100" in texto and "USB 46" in texto
+    # a ordem é a da consulta
+    assert texto.index("USA 100") < texto.index("USB 46")
+
+
+def test_ficha_unica_nao_e_reprocessada():
+    from app.modules.download_vsky.service import _juntar_fichas
+
+    unica = _pdf_de_teste("USB 46")
+    assert _juntar_fichas([unica]) == unica
+    assert _juntar_fichas([]) == b""
+
+
+def test_ficha_corrompida_nao_derruba_o_download():
+    """Melhor entregar a ficha que veio inteira do que falhar o download."""
+    from app.modules.download_vsky.service import _juntar_fichas
+
+    boa = _pdf_de_teste("USA 100")
+    assert _juntar_fichas([boa, b"nao sou um pdf"]) == boa

@@ -121,7 +121,8 @@ def test_prontuario_pdf(monkeypatch):
             def login(self): chamadas["login"] = True
             def baixar_prontuario(self, num):
                 chamadas["numero"] = num
-                return b"%PDF-1.4\nfake prontuario\n%%EOF"
+                # o contrato é uma ficha por viatura envolvida
+                return [b"%PDF-1.4\nfake prontuario\n%%EOF"]
         return _Fake()
 
     import app.modules.download_vsky.prontuario_client as pc
