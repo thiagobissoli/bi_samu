@@ -1,5 +1,6 @@
 """Testes do módulo Reunião de Indicadores."""
 
+import pandas as pd
 from fastapi.testclient import TestClient
 
 from app.core.seeds import ADMIN_EMAIL, ADMIN_SENHA
@@ -258,3 +259,50 @@ def test_investigar_com_id_invalido():
     resp = client.get("/reuniao_indicadores/investigar?id=99999999")
     assert resp.status_code == 404
     assert resp.json()["success"] is False
+
+
+def test_drill_mostra_tempo_acima_do_teto_de_validade():
+    """O teto tira o valor das médias, não da lista: quem abre o drill quer
+    justamente enxergar a linha extrema."""
+    from app.modules.indicadores import nucleo
+    from app.modules.indicadores.constants import CAP_TEMPO
+
+    _login()
+    df = nucleo.carregar(1)
+    if df.empty:
+        return
+    acima = df[(df["t_p3"] >= CAP_TEMPO["t_p3"]) & df["dt_ocorr"].notna()]
+    if acima.empty:
+        return
+
+    deck = client.get("/reuniao_indicadores/api").json()["data"]
+    ultimo = len(deck["slides"][1]["chart"]["labels"]) - 1
+    corpo = client.get(f"/reuniao_indicadores/drill?chave=1:0:{ultimo}").json()
+    linhas = {o["ocorrencia"]: o for o in corpo["data"]["ocorrencias"]}
+
+    numeros = set(acima["ocorrencia"].dropna()) & set(linhas)
+    if not numeros:
+        return          # nenhum caso extremo neste recorte do drill
+    alvo = linhas[sorted(numeros)[0]]
+    assert alvo["p3"] is not None, "P3 medido sumiu da lista"
+
+
+def test_drill_omite_apenas_o_que_nao_tem_marcacao():
+    """None na lista significa ausência de marcação, não valor descartado."""
+    from app.modules.indicadores import nucleo
+
+    _login()
+    deck = client.get("/reuniao_indicadores/api").json()["data"]
+    ultimo = len(deck["slides"][1]["chart"]["labels"]) - 1
+    corpo = client.get(f"/reuniao_indicadores/drill?chave=1:0:{ultimo}").json()
+    linhas = corpo["data"]["ocorrencias"]
+    if not linhas:
+        return
+
+    df = nucleo.carregar(1).set_index("id")
+    for linha in linhas[:40]:
+        bruto = df.loc[linha["id"], "t_p3"]
+        if linha["p3"] is None:
+            assert pd.isna(bruto) or float(bruto) <= 0, linha["ocorrencia"]
+        else:
+            assert float(bruto) > 0, linha["ocorrencia"]

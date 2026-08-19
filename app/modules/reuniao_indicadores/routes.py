@@ -62,7 +62,6 @@ def drill(
     db: Session = Depends(get_session),
 ):
     from app.modules.indicadores import nucleo
-    from app.modules.indicadores.constants import CAP_TEMPO
 
     ids = ReuniaoIndicadoresService(usuario.empresa_id).ids_drill(chave)
     linhas = []
@@ -72,9 +71,14 @@ def drill(
         df = nucleo.carregar(usuario.empresa_id)
         sel = df[df["id"].isin(ids[:DRILL_LIMITE])].sort_values("dt_ocorr")
 
-        def mm(valor, col):
-            cap = CAP_TEMPO.get(col, 14400)
-            if valor is None or pd.isna(valor) or not (0 < float(valor) < cap):
+        def mm(valor):
+            """mm:ss do valor medido; None só quando não há marcação.
+
+            Sem teto de validade: ele tira o valor das médias dos painéis,
+            mas o tempo continua sendo o que aconteceu — e é justamente a
+            linha extrema que interessa a quem abre a lista para investigar.
+            """
+            if valor is None or pd.isna(valor) or float(valor) <= 0:
                 return None
             return _mmss(valor)
 
@@ -89,11 +93,11 @@ def drill(
                 "motivo": _texto(r["motivo"]),
                 "unidade": _texto(r["unidade_curta"]) or _texto(r["unidade"]),
                 "codigo": _texto(r["codigo_da_ocorrencia"]),
-                "tr": mm(r["tempo_resposta"], "tempo_resposta"),
-                "p2": mm(r["t_p2"], "t_p2"),
-                "p3": mm(r["t_p3"], "t_p3"),
-                "p4_1": mm(r["t_p4_1"], "t_p4_1"),
-                "p4_2": mm(r["t_p4_2"], "t_p4_2"),
+                "tr": mm(r["tempo_resposta"]),
+                "p2": mm(r["t_p2"]),
+                "p3": mm(r["t_p3"]),
+                "p4_1": mm(r["t_p4_1"]),
+                "p4_2": mm(r["t_p4_2"]),
             })
     return {"success": True, "message": "",
             "data": {"total": len(ids), "exibidos": len(linhas),

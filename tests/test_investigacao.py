@@ -1545,3 +1545,71 @@ def test_investigacao_usa_o_municipio_base_do_nucleo():
     df = nucleo.carregar(1)
     esperado = df.loc[base.index, "municipio_base"]
     assert base["municipio_base"].equals(esperado)
+
+
+def _linha_com_etapa_extrema(col: str):
+    """Um empenho cuja etapa passou do teto de validade dos painéis."""
+    from app.modules.indicadores import nucleo
+    from app.modules.indicadores.constants import CAP_TEMPO
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        return None
+    acima = df[df[col] >= CAP_TEMPO[col]]
+    return None if acima.empty else acima.iloc[0]
+
+
+def test_etapa_acima_do_teto_aparece_com_valor_e_nao_como_ausente():
+    """O teto protege as médias dos painéis; numa ocorrência sob investigação
+    esconder o valor esconde justamente o atraso que motivou olhar para ela."""
+    from app.modules.indicadores.constants import CAP_TEMPO
+    from app.modules.indicadores.ocorrencia import indicadores_da_ocorrencia
+
+    linha = _linha_com_etapa_extrema("t_p3")
+    if linha is None:
+        pytest.skip("nenhum despacho acima do teto na base")
+
+    item = next(i for i in indicadores_da_ocorrencia(1, int(linha["id"]))
+                if i["rotulo"].startswith("P3"))
+    assert item["valor"] != "—", "o valor medido sumiu da ficha"
+    assert item["situacao"] == "ruim"
+    assert "faixa de validade" in item["sub"]
+    # e o valor exibido é o medido, não o teto
+    minutos = int(item["valor"].split(":")[0])
+    assert minutos * 60 >= CAP_TEMPO["t_p3"] - 60
+
+
+def test_marcacao_ausente_continua_sem_valor():
+    """A distinção que importa: ausente é "—"; extremo é medido e sinalizado."""
+    from app.modules.indicadores import nucleo
+    from app.modules.indicadores.ocorrencia import indicadores_da_ocorrencia
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    sem_p3 = df[df["t_p3"].isna() & df["unidade"].notna()]
+    if sem_p3.empty:
+        pytest.skip("sem empenho sem marcação de despacho")
+    item = next(i for i in indicadores_da_ocorrencia(1, int(sem_p3.iloc[0]["id"]))
+                if i["rotulo"].startswith("P3"))
+    assert item["valor"] == "—"
+    assert "sem marcação" in item["sub"]
+
+
+def test_etapa_extrema_entra_na_decomposicao_do_atraso():
+    """Antes o resumo dizia "sem marcação" da etapa que consumiu quase todo o
+    tempo de resposta, e a cobertura despencava."""
+    from app.modules.investigacao.analise import decompor_atraso
+
+    linha = _linha_com_etapa_extrema("t_p3")
+    if linha is None:
+        pytest.skip("nenhum despacho acima do teto na base")
+
+    atraso = decompor_atraso(1, int(linha["id"]))
+    etapa = next(e for e in atraso["etapas"] if e["col"] == "t_p3")
+    assert etapa["valor"] is not None
+    assert etapa["situacao"] == "ruim" and etapa["extremo"] is True
+    if atraso.get("cobertura"):
+        assert "P3" not in atraso["cobertura"]["faltando"]
+    # e ela é apontada como contribuinte do atraso
+    assert any(c["col"] == "t_p3" for c in atraso["contribuintes"])

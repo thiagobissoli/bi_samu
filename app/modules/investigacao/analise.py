@@ -86,21 +86,25 @@ def decompor_atraso(empresa_id: int, registro_id: int) -> dict:
     cor = r.get("codigo_cor")
 
     tr = r.get("tempo_resposta")
-    tr_valido = (not pd.isna(tr)
-                 and 0 < float(tr) < CAP_TEMPO.get("tempo_resposta", 14400))
+    tr_valido = not pd.isna(tr) and float(tr) > 0
     total = float(tr) if tr_valido else None
 
     etapas, contribuintes = [], []
     for col, rotulo, papel in ETAPAS_RESPOSTA + ETAPAS_POSTERIORES:
         v = r.get(col)
         cap = CAP_TEMPO.get(col, 14400)
-        if pd.isna(v) or not (0 < float(v) < cap):
+        if pd.isna(v) or float(v) <= 0:
             etapas.append({"col": col, "rotulo": rotulo, "papel": papel,
                            "valor": None, "situacao": "sem_dado",
                            "resposta": col in dict(
                                (c, 1) for c, _, _ in ETAPAS_RESPOSTA)})
             continue
         v = float(v)
+        # Acima do teto o valor sai das médias dos painéis, mas continua sendo
+        # uma medição — e numa investigação costuma ser O achado. Tratá-lo
+        # como ausente fazia o resumo dizer "sem marcação" justamente da etapa
+        # que consumiu a maior parte do tempo de resposta.
+        extremo = v >= cap
         meta = _meta(col, cor)
         ref, amostra = _referencia(df, col, r)
         excesso_ref = (v - ref) if ref else None
@@ -108,7 +112,7 @@ def decompor_atraso(empresa_id: int, registro_id: int) -> dict:
         acima_ref = bool(ref and v > ref * FATOR_ALERTA
                          and excesso_ref >= MINIMO_RELEVANTE)
 
-        situacao = "ruim" if (estourou_meta or acima_ref) else "ok"
+        situacao = "ruim" if (estourou_meta or acima_ref or extremo) else "ok"
         item = {
             "col": col, "rotulo": rotulo, "papel": papel,
             "valor": mmss(v), "segundos": round(v),
@@ -122,7 +126,7 @@ def decompor_atraso(empresa_id: int, registro_id: int) -> dict:
             "vezes_referencia": round(v / ref, 1) if ref else None,
             "pct_do_total": (round(v / total * 100, 1)
                              if total and col != "t_p4" else None),
-            "situacao": situacao,
+            "situacao": situacao, "extremo": extremo,
             "resposta": any(col == c for c, _, _ in ETAPAS_RESPOSTA),
         }
         etapas.append(item)

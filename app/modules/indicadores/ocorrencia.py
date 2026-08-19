@@ -30,6 +30,11 @@ def mmss(segundos) -> str | None:
     return f"{s // 60:02d}:{s % 60:02d}"
 
 
+def _fora_da_faixa(cap: float) -> str:
+    return (f"acima da faixa de validade ({mmss(cap)}) — medido, mas fora "
+            "das médias dos painéis")
+
+
 def linha_da_ocorrencia(empresa_id: int, registro_id: int):
     """Linha do núcleo correspondente ao empenho (None se não achar)."""
     df = nucleo.carregar(empresa_id)
@@ -58,13 +63,22 @@ def indicadores_da_linha(r) -> list[dict]:
     def tempo(col, rotulo, sub="", limite=None):
         v = r.get(col)
         cap = CAP_TEMPO.get(col, 14400)
-        if pd.isna(v) or not (0 < float(v) < cap):
-            add(rotulo, None, sub or "sem registro válido")
+        if pd.isna(v) or float(v) <= 0:
+            # "—" sozinho não diz se falta a marcação ou se a etapa não se
+            # aplica; numa investigação essa diferença muda a conclusão.
+            add(rotulo, None, (sub + " · " if sub else "") + "sem marcação")
             return
+        v = float(v)
         situacao = "neutro"
         if limite:
-            situacao = "ok" if float(v) <= limite else "ruim"
+            situacao = "ok" if v <= limite else "ruim"
             sub = (sub + " · " if sub else "") + f"meta {mmss(limite)}"
+        if v >= cap:
+            # O teto existe para uma marcação errada não destruir a média dos
+            # painéis. Aqui é uma ocorrência só: esconder o valor esconde
+            # justamente o atraso que motivou olhar para ela.
+            situacao = "ruim"
+            sub = (sub + " · " if sub else "") + _fora_da_faixa(cap)
         add(rotulo, mmss(v), sub, situacao)
 
     # --- tempos do fluxo (mesmas definições dos dashboards) ---
@@ -85,13 +99,17 @@ def indicadores_da_linha(r) -> list[dict]:
     tempo("t_p9", "P9 · Transf. de cuidados", "encerrado − chegada hospital")
 
     tr = r.get("tempo_resposta")
+    cap_tr = CAP_TEMPO.get("tempo_resposta", 14400)
     if pd.isna(tr):
         add("Tempo de Resposta", None,
             "outra viatura chegou antes nesta ocorrência")
-    elif not (0 < float(tr) < CAP_TEMPO.get("tempo_resposta", 14400)):
-        add("Tempo de Resposta", None, "fora da faixa de validade")
+    elif float(tr) <= 0:
+        add("Tempo de Resposta", None, "sem marcação válida")
     else:
-        add("Tempo de Resposta", mmss(tr), "chegada − abertura · 1ª unidade")
+        sub, situacao = "chegada − abertura · 1ª unidade", "neutro"
+        if float(tr) >= cap_tr:
+            sub, situacao = f"{sub} · {_fora_da_faixa(cap_tr)}", "ruim"
+        add("Tempo de Resposta", mmss(tr), sub, situacao)
 
     # --- classificações ---
     risco = r.get("risco_cor")
