@@ -132,9 +132,11 @@ SITUACOES_DESPERDICIO = {
     "SOLITANTE/PACIENTE NAO LOCALIZADO",  # grafia exata da base vSky
     "DESISTENCIA DO SOLICITANTE",
 }
-# Motivos excluídos do universo: hipoglicemia revertida e PCR/óbito —
-# desfechos clínicos legítimos, não desperdício.
-MOTIVOS_EXCLUIDOS_DESPERDICIO = {"PCG3", "PCC3"}
+# Causas clínicas que não são desperdício, quaisquer que sejam o desfecho e a
+# remoção: PCR e óbito (PCC3), diabetes e hipoglicemia (PCG3 e a cetoacidose
+# diabética SCG2). Confirmado na base que não há outro motivo dessas famílias
+# — e que PCR1..PCR9 são problema RESPIRATÓRIO, não parada cardíaca.
+MOTIVOS_EXCLUIDOS_DESPERDICIO = {"PCC3", "PCG3", "SCG2"}
 
 # Escala NEWS modificada (proposta local: FR, FC, PAS, Glasgow + Glicemia).
 # Cada parâmetro pontua 0–3; total = soma. Núcleo obrigatório: FR, FC, PAS

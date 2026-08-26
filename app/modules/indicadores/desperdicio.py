@@ -4,8 +4,8 @@ Desperdício REAL: a viatura saiu, CHEGOU no local e NÃO removeu o paciente.
 Desperdício EVITADO: a viatura saiu e NÃO chegou ao local.
 
 Em ambos ficam de fora as causas clínicas que não são desperdício: PCR,
-óbito e hipoglicemia (motivos PCC3 e PCG3, mais a situação "óbito
-informado", que é o mesmo desfecho registrado do outro lado).
+óbito, diabetes e hipoglicemia (motivos PCC3, PCG3 e SCG2, mais a situação
+"óbito informado", que é o mesmo desfecho registrado do outro lado).
 
 Este módulo existe porque a Reunião de Indicadores e o Painel de Gestão
 calculavam o mesmo indicador cada um por si, e as duas telas chegaram a

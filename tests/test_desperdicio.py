@@ -40,8 +40,9 @@ def test_remocao_do_paciente_nao_e_desperdicio():
         assert not bool(real.iloc[0]), situacao
 
 
-def test_pcr_obito_e_hipoglicemia_ficam_de_fora():
-    for motivo in ("PCC3 PCR/ÓBITO", "PCG3 DIABETES/HIPOGLICEMIA"):
+def test_pcr_obito_diabetes_e_hipoglicemia_ficam_de_fora():
+    for motivo in ("PCC3 PCR/ÓBITO", "PCG3 DIABETES/HIPOGLICEMIA",
+                   "SCG2 CETOACIDOSE DIABÉTICA"):
         base, real, evitado = _mascaras([_linha(motivo=motivo)])
         assert base.empty, motivo          # nem entra no universo
         # nem chegando, nem sem chegar
@@ -138,3 +139,27 @@ def test_as_duas_telas_usam_a_mesma_definicao():
     real_deck = int(next(k["valor"] for k in slide["kpis"]
                          if k["label"].startswith("Desperdício REAL ·")))
     assert real_painel == real_deck
+
+
+def test_nenhuma_causa_dessas_familias_escapa_da_exclusao():
+    """Varre a base atrás de motivo de PCR, óbito, diabetes ou hipoglicemia
+    que tenha ficado fora da lista — foi assim que a cetoacidose diabética
+    apareceu depois de a regra já estar escrita."""
+    from app.modules.indicadores.constants import MOTIVOS_EXCLUIDOS_DESPERDICIO
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    escaparam = set()
+    for motivo in df["motivo"].dropna().unique():
+        texto = nucleo.norm_txt(motivo)
+        familia = any(p in texto for p in ("DIABET", "HIPOGLIC", "GLICEM",
+                                           "OBITO"))
+        # "PCR" só conta como parada quando é palavra, não prefixo de código:
+        # PCR1..PCR9 são problema respiratório
+        familia = familia or " PCR" in f" {texto}".replace("PCR1", "").replace(
+            "PCR2", "").replace("PCR3", "").replace("PCR4", "").replace(
+            "PCR9", "")
+        if familia and motivo.split(" ")[0].upper() not in MOTIVOS_EXCLUIDOS_DESPERDICIO:
+            escaparam.add(motivo)
+    assert not escaparam, f"causas fora da exclusão: {sorted(escaparam)}"

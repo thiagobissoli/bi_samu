@@ -467,7 +467,8 @@ class ReuniaoIndicadoresService:
             "kicker": "Desperdício operacional · Saída efetiva · Toda a frota",
             "titulo": "Desperdícios operacionais com saída efetiva",
             "subtitulo": "Saída efetiva de viatura · toda a frota · exclui "
-                         "hipoglicemia (PCG3) e PCR/Óbito (PCC3) · "
+                         "PCR/óbito (PCC3) e diabetes/hipoglicemia (PCG3, "
+                         "SCG2) · "
                          "desperdício REAL (chegou ao local e NÃO removeu o "
                          "paciente) × EVITADO (não chegou ao local) · "
                          f"números = última semana ({sem_data})",
