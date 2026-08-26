@@ -18,6 +18,7 @@ def _linha(**campos):
             "dt_inicio_deslocamento": pd.Timestamp("2026-08-01 10:00"),
             "dt_chegada_no_local": pd.Timestamp("2026-08-01 10:20"),
             "tempo_resposta": 1200.0,      # 1ª viatura a chegar
+            "obito_constatado": False,
             "situacao_atendimento": "Atendimento Pré-Hospitalar Com Atendimento No Local"}
     base.update(campos)
     return base
@@ -63,6 +64,34 @@ def test_viatura_de_apoio_que_chegou_depois_nao_e_desperdicio_real():
     _, real, evitado = _mascaras([_linha(tempo_resposta=None)])
     assert not bool(real.iloc[0])
     assert not bool(evitado.iloc[0])       # chegou, então também não é evitado
+
+
+def test_obito_nao_e_desperdicio():
+    """Chegou e não removeu porque o paciente morreu: desfecho clínico."""
+    _, real, evitado = _mascaras([_linha(obito_constatado=True)])
+    assert not bool(real.iloc[0])
+    # nem do lado do evitado, quando a viatura não chegou
+    _, _, evitado = _mascaras([_linha(obito_constatado=True,
+                                      dt_chegada_no_local=pd.NaT,
+                                      tempo_resposta=None)])
+    assert not bool(evitado.iloc[0])
+
+
+def test_sem_obito_segue_contando():
+    """O contraexemplo: "não houve óbito" não pode zerar o indicador."""
+    _, real, _ = _mascaras([_linha(obito_constatado=False)])
+    assert bool(real.iloc[0])
+
+
+def test_nenhum_desperdicio_tem_obito_na_base_real():
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    base = desperdicio.universo(df)
+    real, evitado = desperdicio.mascaras(base)
+    obito = base["obito_constatado"].fillna(False)
+    assert int((real & obito).sum()) == 0
+    assert int((evitado & obito).sum()) == 0
 
 
 def test_nao_chegar_ao_local_e_desperdicio_evitado():

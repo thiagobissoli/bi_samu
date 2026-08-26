@@ -7,8 +7,8 @@ Daí a invariante que vale como conferência: todo desperdício real tem tempo
 de resposta; nenhum evitado tem, porque não chegou.
 
 Em ambos ficam de fora as causas clínicas que não são desperdício: PCR,
-óbito, diabetes e hipoglicemia (motivos PCC3, PCG3 e SCG2, mais a situação
-"óbito informado", que é o mesmo desfecho registrado do outro lado).
+óbito, diabetes e hipoglicemia — pelos motivos PCC3, PCG3 e SCG2, pelo campo
+Óbito da ficha e pela situação "óbito informado".
 
 Este módulo existe porque a Reunião de Indicadores e o Painel de Gestão
 calculavam o mesmo indicador cada um por si, e as duas telas chegaram a
@@ -45,13 +45,18 @@ def mascaras(base: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     situacao = base["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
     chegou = base["dt_chegada_no_local"].notna()
 
-    # Fora dos dois lados: o paciente foi removido (houve transporte) e o
-    # óbito, que é a mesma exclusão clínica dos motivos PCC3/PCG3 registrada
-    # como situação. Há 498 registros que dizem "com remoção" sem marcação de
-    # chegada: falta a marcação, não é desperdício — o paciente foi removido,
-    # logo a viatura chegou.
+    # Fora dos dois lados:
+    #
+    # - o paciente foi removido (houve transporte). Há 498 registros que dizem
+    #   "com remoção" sem marcação de chegada: falta a marcação, não é
+    #   desperdício — se o paciente foi removido, a viatura chegou;
+    # - houve óbito. A viatura chegou e não removeu porque o paciente estava
+    #   morto: desfecho clínico, a mesma exclusão dos motivos PCC3/PCG3. Vale
+    #   o campo Óbito da ficha e também a situação "óbito informado", que é o
+    #   mesmo fato registrado do outro lado e às vezes vem sem o campo.
     fora = (situacao.isin(SITUACOES_COM_REMOCAO)
-            | situacao.isin(SITUACOES_EXCLUIDAS_DO_REAL))
+            | situacao.isin(SITUACOES_EXCLUIDAS_DO_REAL)
+            | base["obito_constatado"].fillna(False))
 
     # Situação em branco não sustenta a afirmação de que houve desperdício
     # depois de chegar. Do lado do evitado a condição é factual (saiu e não
