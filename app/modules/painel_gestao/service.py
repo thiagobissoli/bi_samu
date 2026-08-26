@@ -352,7 +352,7 @@ class PainelGestaoService:
             # duas telas precisam mostrar o mesmo número para a mesma semana.
             "nota": "toda a frota · exclui PCR/óbito (PCC3) e hipoglicemia "
                     "(PCG3) — real: chegou ao local e não removeu o paciente · "
-                    "evitado: cancelada no trajeto",
+                    "evitado: não chegou ao local",
             "blocos": [
                 {"kpis": [
                     {"label": "Real — última semana",

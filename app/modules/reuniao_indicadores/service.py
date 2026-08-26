@@ -469,7 +469,7 @@ class ReuniaoIndicadoresService:
             "subtitulo": "Saída efetiva de viatura · toda a frota · exclui "
                          "hipoglicemia (PCG3) e PCR/Óbito (PCC3) · "
                          "desperdício REAL (chegou ao local e NÃO removeu o "
-                         "paciente) × EVITADO (mitigado no trajeto) · "
+                         "paciente) × EVITADO (não chegou ao local) · "
                          f"números = última semana ({sem_data})",
             "kpis": [
                 {"valor": str(n_real_sem),
@@ -479,7 +479,7 @@ class ReuniaoIndicadoresService:
                         "efetivas".replace(".", ","), "cor": VERMELHO},
                 {"valor": str(n_evit_sem),
                  "label": f"Desperdício EVITADO · última semana ({sem_data})",
-                 "sub": "mitigado no trajeto (sem chegada no local)",
+                 "sub": "saiu e não chegou ao local",
                  "cor": VERDE},
                 {"valor": f"{n_saidas_sem:,}".replace(",", "."),
                  "label": "Saídas efetivas",
@@ -496,7 +496,7 @@ class ReuniaoIndicadoresService:
             "chart": linha("", [
                 {"label": "Real (chegou ao local)", "color": VERMELHO,
                  "data": serie_mask(real)},
-                {"label": "Evitado (mitigado no trajeto)", "color": VERDE,
+                {"label": "Evitado (não chegou ao local)", "color": VERDE,
                  "data": serie_mask(evitado)},
             ]),
         })
