@@ -307,3 +307,143 @@ def test_drill_omite_apenas_o_que_nao_tem_marcacao():
             assert pd.isna(bruto) or float(bruto) <= 0, linha["ocorrencia"]
         else:
             assert float(bruto) > 0, linha["ocorrencia"]
+
+
+# ------------------------------------- slides de desperdício (10 a 13)
+
+def _universo_desperdicio():
+    """Mesmo recorte do deck, calculado por fora para servir de referência."""
+    from app.modules.indicadores import nucleo
+    from app.modules.indicadores.constants import (
+        MOTIVOS_EXCLUIDOS_DESPERDICIO, SITUACOES_DESPERDICIO)
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        return None
+    cod = df["motivo"].fillna("").str.split(" ").str[0].str.upper()
+    uni = df[df["dt_inicio_deslocamento"].notna()
+             & ~cod.isin(MOTIVOS_EXCLUIDOS_DESPERDICIO)]
+    sit = uni["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
+    cand = sit.isin(SITUACOES_DESPERDICIO)
+    return {
+        "universo": uni,
+        "real": cand & uni["dt_chegada_no_local"].notna(),
+        "evitado": cand & uni["dt_chegada_no_local"].isna(),
+    }
+
+
+def _slide(deck, inicio_do_titulo):
+    return next(s for s in deck["slides"]
+                if s["titulo"].startswith(inicio_do_titulo))
+
+
+def test_slide_10_real_e_evitado_batem_com_o_calculo_direto():
+    from app.modules.reuniao_indicadores.service import (
+        ReuniaoIndicadoresService)
+
+    dados = _universo_desperdicio()
+    if dados is None:
+        return
+    deck = ReuniaoIndicadoresService(1).montar()
+    semana = deck["semana"]
+    na_semana = dados["universo"]["semana_iso"] == semana
+
+    slide = _slide(deck, "Desperdícios operacionais")
+    kpis = {k["label"].split(" ·")[0]: k["valor"] for k in slide["kpis"]}
+    assert int(kpis["Desperdício REAL"]) == int((dados["real"] & na_semana).sum())
+    assert int(kpis["Desperdício EVITADO"]) == int(
+        (dados["evitado"] & na_semana).sum())
+    assert int(kpis["Saídas efetivas"].replace(".", "")) == int(na_semana.sum())
+
+    # real e evitado são recortes disjuntos do mesmo universo
+    assert not (dados["real"] & dados["evitado"]).any()
+
+
+def test_slide_10_kpi_do_periodo_fecha_com_o_proprio_grafico():
+    """O KPI contava a semana corrente, ainda pela metade, enquanto o gráfico
+    parava na última semana completa: 6.283 "em 34 semanas" ao lado de um
+    gráfico de 34 semanas somando 6.235."""
+    from app.modules.reuniao_indicadores.service import (
+        ReuniaoIndicadoresService)
+
+    deck = ReuniaoIndicadoresService(1).montar()
+    slide = _slide(deck, "Desperdícios operacionais")
+    periodo = next(k for k in slide["kpis"]
+                   if k["label"] == "Desperdício REAL no período")
+    total_kpi = int(periodo["valor"].replace(".", ""))
+
+    series = {d["label"]: [x for x in d["data"] if x is not None]
+              for d in slide["chart"]["datasets"]}
+    real = next(v for k, v in series.items() if k.startswith("Real"))
+    evitado = next(v for k, v in series.items() if k.startswith("Evitado"))
+
+    assert total_kpi == sum(real), "KPI do período não fecha com o gráfico"
+    assert f"evitado {sum(evitado)}" in periodo["sub"]
+    assert f"{len(real)} semanas" in periodo["sub"]
+
+
+def test_slide_11_usa_mais_usb_nao_passa_do_total_real():
+    from app.modules.reuniao_indicadores.service import (
+        ReuniaoIndicadoresService)
+
+    deck = ReuniaoIndicadoresService(1).montar()
+    slide = _slide(deck, "Distribuição de desperdício por tipo")
+    kpis = {k["label"]: int(k["valor"]) for k in slide["kpis"]}
+    usa = kpis["USA · real · últ. sem."]
+    usb = kpis["USB · real · últ. sem."]
+    total = kpis["Total real · última semana"]
+    assert usa + usb <= total          # VIR/outros podem existir
+    # e o total bate com o slide 10
+    dez = _slide(deck, "Desperdícios operacionais")
+    assert total == int(next(k["valor"] for k in dez["kpis"]
+                             if k["label"].startswith("Desperdício REAL ·")))
+
+
+def test_slide_12_motivos_sao_do_real_da_ultima_semana():
+    """O gráfico mostra o top N; a soma não pode passar do total real."""
+    from app.modules.reuniao_indicadores.service import (
+        ReuniaoIndicadoresService)
+
+    deck = ReuniaoIndicadoresService(1).montar()
+    slide = _slide(deck, "Motivos para o desperdício")
+    assert "REAL" in slide["subtitulo"]
+    dados = slide["chart"]["datasets"][0]["data"]
+    total_real = int(next(k["valor"] for k in
+                          _slide(deck, "Desperdícios operacionais")["kpis"]
+                          if k["label"].startswith("Desperdício REAL ·")))
+    assert 0 < sum(dados) <= total_real
+    assert dados == sorted(dados, reverse=True), "top N fora de ordem"
+
+
+def test_slide_13_tipos_somam_exatamente_o_total_real():
+    """Aqui não há corte de top N: toda situação do real entra na rosca."""
+    from app.modules.reuniao_indicadores.service import (
+        ReuniaoIndicadoresService)
+
+    deck = ReuniaoIndicadoresService(1).montar()
+    slide = _slide(deck, "Distribuição de tipos de desperdício")
+    dados = slide["chart"]["datasets"][0]["data"]
+    total_real = int(next(k["valor"] for k in
+                          _slide(deck, "Desperdícios operacionais")["kpis"]
+                          if k["label"].startswith("Desperdício REAL ·")))
+    assert sum(dados) == total_real
+    assert slide["chart"]["centro"]["valor"] == str(total_real)
+
+
+def test_drill_dos_slides_de_desperdicio_traz_as_ocorrencias_certas():
+    """Cada ponto clicado deve listar exatamente as ocorrências que o formam."""
+    from app.modules.reuniao_indicadores.service import (
+        ReuniaoIndicadoresService)
+
+    _login()
+    deck = client.get("/reuniao_indicadores/api").json()["data"]
+    servico = ReuniaoIndicadoresService(1)
+    indice = next(i for i, s in enumerate(deck["slides"])
+                  if s["titulo"].startswith("Desperdícios operacionais"))
+    slide = deck["slides"][indice]
+    ultimo = len(slide["chart"]["labels"]) - 1
+
+    for dsi, serie in enumerate(slide["chart"]["datasets"]):
+        esperado = serie["data"][ultimo]
+        ids = servico.ids_drill(f"{indice}:{dsi}:{ultimo}")
+        assert len(ids) == esperado, (serie["label"], len(ids), esperado)

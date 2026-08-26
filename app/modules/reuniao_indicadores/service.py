@@ -445,7 +445,14 @@ class ReuniaoIndicadoresService:
         n_saidas_sem = int(u_sem.sum()) or 1
         n_real_sem = int((real & u_sem).sum())
         n_evit_sem = int((evitado & u_sem).sum())
-        reais_periodo = int(real.sum())
+        # O período é o mesmo do gráfico: até a última semana COMPLETA. Sem
+        # este recorte o total incluía a semana corrente, ainda pela metade —
+        # o KPI dizia 6.283 "em 34 semanas" ao lado de um gráfico de 34
+        # semanas somando 6.235, e os dois números não fechavam.
+        u_periodo = universo["semana_iso"].isin(semanas)
+        n_saidas_periodo = int(u_periodo.sum()) or 1
+        reais_periodo = int((real & u_periodo).sum())
+        evitados_periodo = int((evitado & u_periodo).sum())
 
         def serie_mask(mask):
             g = universo[mask].groupby("semana_iso").size()
@@ -478,8 +485,9 @@ class ReuniaoIndicadoresService:
                  "cor": LARANJA},
                 {"valor": f"{reais_periodo:,}".replace(",", "."),
                  "label": "Desperdício REAL no período",
-                 "sub": f"{len(semanas)} semanas · evitado {int(evitado.sum())}"
-                        f" · taxa real {real.sum() / (len(universo) or 1) * 100:.1f}%"
+                 "sub": f"{len(semanas)} semanas · evitado {evitados_periodo}"
+                        f" · taxa real "
+                        f"{reais_periodo / n_saidas_periodo * 100:.1f}%"
                         .replace(".", ","), "cor": LARANJA},
             ],
             "chart_titulo": "Desperdício por semana · real × evitado",
