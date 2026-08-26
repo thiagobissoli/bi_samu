@@ -312,24 +312,17 @@ def test_drill_omite_apenas_o_que_nao_tem_marcacao():
 # ------------------------------------- slides de desperdício (10 a 13)
 
 def _universo_desperdicio():
-    """Mesmo recorte do deck, calculado por fora para servir de referência."""
-    from app.modules.indicadores import nucleo
-    from app.modules.indicadores.constants import (
-        MOTIVOS_EXCLUIDOS_DESPERDICIO, SITUACOES_DESPERDICIO)
+    """Recorte de referência: a definição única (app/modules/indicadores/
+    desperdicio.py). A regra em si é testada em tests/test_desperdicio.py;
+    aqui o que se confere é o deck refletir fielmente esse recorte."""
+    from app.modules.indicadores import desperdicio, nucleo
 
     df = nucleo.carregar(1)
     if df.empty:
         return None
-    cod = df["motivo"].fillna("").str.split(" ").str[0].str.upper()
-    uni = df[df["dt_inicio_deslocamento"].notna()
-             & ~cod.isin(MOTIVOS_EXCLUIDOS_DESPERDICIO)]
-    sit = uni["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
-    cand = sit.isin(SITUACOES_DESPERDICIO)
-    return {
-        "universo": uni,
-        "real": cand & uni["dt_chegada_no_local"].notna(),
-        "evitado": cand & uni["dt_chegada_no_local"].isna(),
-    }
+    uni = desperdicio.universo(df)
+    real, evitado = desperdicio.mascaras(uni)
+    return {"universo": uni, "real": real, "evitado": evitado}
 
 
 def _slide(deck, inicio_do_titulo):

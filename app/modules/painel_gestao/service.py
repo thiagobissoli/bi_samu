@@ -11,12 +11,10 @@ from datetime import date
 
 import pandas as pd
 
-from app.modules.indicadores import nucleo
+from app.modules.indicadores import desperdicio, nucleo
 from app.modules.indicadores.constants import (
     ADEQUACAO,
     CAP_TEMPO,
-    MOTIVOS_EXCLUIDOS_DESPERDICIO,
-    SITUACOES_DESPERDICIO,
 )
 from app.modules.indicadores.service import _json_safe
 
@@ -327,13 +325,11 @@ class PainelGestaoService:
             ]})
 
         # ---------------- Desperdício (todas as saídas) ---------------------
-        motivo_cod = df["motivo"].fillna("").str.split(" ").str[0].str.upper()
-        universo = df[df["dt_inicio_deslocamento"].notna()
-                      & ~motivo_cod.isin(MOTIVOS_EXCLUIDOS_DESPERDICIO)]
-        sit = universo["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
-        cand = sit.isin(SITUACOES_DESPERDICIO)
-        real = cand & universo["dt_chegada_no_local"].notna()
-        evitado = cand & universo["dt_chegada_no_local"].isna()
+        # Mesma definição da Reunião de Indicadores (app/modules/indicadores/
+        # desperdicio.py): real = chegou e não removeu; evitado = mitigado no
+        # trajeto. Duplicar a regra já fez as duas telas divergirem.
+        universo = desperdicio.universo(df)
+        real, evitado = desperdicio.mascaras(universo)
         sem_u = universo["semana_iso"] == sem_ult
         n_sem = int(sem_u.sum()) or 1
         uni12 = universo[universo["dt_ocorr"].dt.to_period("M").isin(meses)]
@@ -354,7 +350,8 @@ class PainelGestaoService:
             "icone": "fa-recycle", "cor": "danger",
             # Mesmo universo da Reunião de Indicadores (toda a frota): as
             # duas telas precisam mostrar o mesmo número para a mesma semana.
-            "nota": "toda a frota · sem necessidade — real: chegou ao local · "
+            "nota": "toda a frota · exclui PCR/óbito (PCC3) e hipoglicemia "
+                    "(PCG3) — real: chegou ao local e não removeu o paciente · "
                     "evitado: cancelada no trajeto",
             "blocos": [
                 {"kpis": [

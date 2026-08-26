@@ -12,12 +12,10 @@ from datetime import date
 
 import pandas as pd
 
-from app.modules.indicadores import nucleo
+from app.modules.indicadores import desperdicio, nucleo
 from app.modules.indicadores.constants import (
     ADEQUACAO,
     CAP_TEMPO,
-    MOTIVOS_EXCLUIDOS_DESPERDICIO,
-    SITUACOES_DESPERDICIO,
 )
 from app.modules.indicadores.service import _json_safe
 
@@ -35,6 +33,14 @@ ROTULO_SITUACAO = {
     "RECUSA AO ATENDIMENTO PELA VITIMA OU EVASAO": "Recusa/evasão da vítima",
     "DESISTENCIA DO SOLICITANTE": "Desistência do solicitante",
     "OCORRENCIA ENVIADA POR ENGANO": "Enviada por engano",
+    # desfechos que passaram a contar com a regra "chegou e não removeu"
+    "ATENDIMENTO PRE-HOSPITALAR COM ATENDIMENTO NO LOCAL": "Atendimento no local",
+    "OUTRO PACIENTE COM MAIOR GRAVIDADE": "Redirecionada a caso mais grave",
+    "EQUIPE EM SITUACAO DE RISCO": "Equipe em risco",
+    "OCORRENCIA EM DUPLICIDADE": "Ocorrência em duplicidade",
+    "INDISPONIBILIDADE DE RECURSO": "Sem recurso disponível",
+    "RECUSA REMOCAO": "Recusa de remoção",
+    "PACIENTE INSTAVEL": "Paciente instável",
 }
 
 _cache_deck: dict[tuple, dict] = {}
@@ -431,16 +437,12 @@ class ReuniaoIndicadoresService:
         })
 
         # ---- 9/10/11/12. desperdício ----------------------------------------
-        motivo_cod = df["motivo"].fillna("").str.split(" ").str[0].str.upper()
-        # Toda a frota, não só o núcleo ISCMV: é o mesmo universo do card de
-        # Desperdício no Painel de Gestão. Enquanto os dois recortes conviviam,
-        # a mesma semana aparecia com números diferentes nas duas telas.
-        universo = df[df["dt_inicio_deslocamento"].notna()
-                      & ~motivo_cod.isin(MOTIVOS_EXCLUIDOS_DESPERDICIO)]
+        # Definição única, compartilhada com o Painel de Gestão: real =
+        # chegou ao local e não removeu o paciente; evitado = mitigado no
+        # trajeto. Toda a frota, não só o núcleo ISCMV.
+        universo = desperdicio.universo(df)
         sit = universo["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
-        cand = sit.isin(SITUACOES_DESPERDICIO)
-        real = cand & universo["dt_chegada_no_local"].notna()
-        evitado = cand & universo["dt_chegada_no_local"].isna()
+        real, evitado = desperdicio.mascaras(universo)
         u_sem = universo["semana_iso"] == sem_ult
         n_saidas_sem = int(u_sem.sum()) or 1
         n_real_sem = int((real & u_sem).sum())
@@ -465,14 +467,14 @@ class ReuniaoIndicadoresService:
             "kicker": "Desperdício operacional · Saída efetiva · Toda a frota",
             "titulo": "Desperdícios operacionais com saída efetiva",
             "subtitulo": "Saída efetiva de viatura · toda a frota · exclui "
-                         "hipoglicemia revertida (PCG3) e PCR/Óbito (PCC3) · "
-                         "desperdício REAL (chegou ao local) × EVITADO "
-                         "(mitigado no trajeto) · números = última semana "
-                         f"({sem_data})",
+                         "hipoglicemia (PCG3) e PCR/Óbito (PCC3) · "
+                         "desperdício REAL (chegou ao local e NÃO removeu o "
+                         "paciente) × EVITADO (mitigado no trajeto) · "
+                         f"números = última semana ({sem_data})",
             "kpis": [
                 {"valor": str(n_real_sem),
                  "label": f"Desperdício REAL · última semana ({sem_data})",
-                 "sub": f"chegou ao local · taxa "
+                 "sub": f"chegou e não removeu · taxa "
                         f"{n_real_sem / n_saidas_sem * 100:.1f}% das saídas "
                         "efetivas".replace(".", ","), "cor": VERMELHO},
                 {"valor": str(n_evit_sem),
@@ -527,7 +529,7 @@ class ReuniaoIndicadoresService:
             "kicker": "Desperdício · Por tipo de unidade",
             "titulo": "Distribuição de desperdício por tipo de unidade",
             "subtitulo": "toda a frota · USA × USB · desperdício REAL "
-                         "(chegou ao local) · evolução semanal · números = "
+                         "(chegou e não removeu) · evolução semanal · números = "
                          f"última semana ({sem_data})",
             "kpis": kpis10,
             "chart_titulo": "Desperdício real por semana · USA × USB",
@@ -544,7 +546,7 @@ class ReuniaoIndicadoresService:
         slides.append({
             "kicker": "Desperdício · Motivos · Real · Última semana",
             "titulo": "Motivos para o desperdício",
-            "subtitulo": "desperdício REAL (chegou ao local) · motivo da "
+            "subtitulo": "desperdício REAL (chegou e não removeu) · motivo da "
                          f"ocorrência · última semana ({sem_data}) · top "
                          f"{len(top)} de {len(motivos)} motivos",
             "kpis": [],
@@ -567,7 +569,7 @@ class ReuniaoIndicadoresService:
         slides.append({
             "kicker": "Desperdício · Tipos · Real · Última semana",
             "titulo": "Distribuição de tipos de desperdício",
-            "subtitulo": "desperdício REAL (chegou ao local) · tipo (situação "
+            "subtitulo": "desperdício REAL (chegou e não removeu) · tipo (situação "
                          f"da ocorrência) · última semana ({sem_data}) · "
                          f"{n_real_sem} desperdícios reais",
             "kpis": [],

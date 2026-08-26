@@ -242,35 +242,24 @@ def test_desperdicio_do_painel_mostra_o_denominador():
         assert abs(pct - casos / saidas * 100) < 0.06, kpi
 
 
-def test_painel_e_reuniao_diferem_apenas_pelo_iscmv():
-    """A diferença entre as duas telas é o filtro ISCMV, nada mais."""
-    from app.modules.indicadores import nucleo
-    from app.modules.indicadores.constants import (
-        MOTIVOS_EXCLUIDOS_DESPERDICIO, SITUACOES_DESPERDICIO)
+def test_painel_publica_o_desperdicio_da_frota_inteira():
+    """O card mede toda a frota, com a definição única do sistema."""
+    from app.modules.indicadores import desperdicio, nucleo
     from app.modules.painel_gestao.service import PainelGestaoService
 
     painel = PainelGestaoService(1).montar()
+    if not painel["secoes"]:
+        pytest.skip("sem dados importados")
     sec = next(s for s in painel["secoes"] if s["id"] == "desperdicio")
     semana = painel["semana"]
 
     df = nucleo.carregar(1)
-    if df.empty:
-        pytest.skip("sem dados importados")
-    cod = df["motivo"].fillna("").str.split(" ").str[0].str.upper()
-    comum = (df["dt_inicio_deslocamento"].notna()
-             & ~cod.isin(MOTIVOS_EXCLUIDOS_DESPERDICIO))
+    universo = desperdicio.universo(df)
+    real, _ = desperdicio.mascaras(universo)
+    na_semana = universo["semana_iso"] == semana
+    esperado, saidas = int((real & na_semana).sum()), int(na_semana.sum())
 
-    def conta(universo):
-        sit = universo["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
-        cand = sit.isin(SITUACOES_DESPERDICIO)
-        real = cand & universo["dt_chegada_no_local"].notna()
-        na_semana = universo["semana_iso"] == semana
-        return int((real & na_semana).sum()), int(na_semana.sum())
-
-    todos, saidas_todos = conta(df[comum])
-    iscmv, saidas_iscmv = conta(df[comum & df["iscmv"]])
-
-    # o painel publica o número da frota inteira
-    assert f"{todos} de {saidas_todos} saídas" in sec["blocos"][0]["kpis"][0]["sub"]
-    # e o recorte ISCMV é de fato menor — é o que a Reunião mostra
-    assert iscmv <= todos and saidas_iscmv <= saidas_todos
+    assert f"{esperado} de {saidas} saídas" in sec["blocos"][0]["kpis"][0]["sub"]
+    # e o recorte ISCMV seria menor — o painel não usa esse filtro
+    iscmv = int((real & na_semana & df.loc[universo.index, "iscmv"]).sum())
+    assert iscmv <= esperado

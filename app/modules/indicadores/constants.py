@@ -109,10 +109,21 @@ PERIODOS = [
     ("t_p9", "P9 — Transf. cuidados", "Atendimento encerrado − Chegada no hospital"),
 ]
 
-# Desperdício operacional — definição curada (projeto Desperdicio, validada
-# com a coordenação): saída efetiva cuja situação final indica que o recurso
-# foi mobilizado sem necessidade. "Atendimento no local" NÃO é desperdício
-# (houve cuidado efetivo). Valores normalizados (maiúsculas, sem acento).
+# Situações em que o paciente FOI removido: houve transporte, logo não é
+# desperdício. O desperdício REAL é o complemento disto entre as saídas que
+# chegaram ao local — lista de exclusão, não de inclusão, para que um
+# desfecho novo no vSky apareça em vez de sumir.
+SITUACOES_COM_REMOCAO = {
+    "ATENDIMENTO PRE-HOSPITALAR COM REMOCAO PARA UNID.",
+    "OCORRENCIA INTER-HOSPITALAR",
+}
+# Desfecho clínico que a regra exclui junto com PCR/óbito/hipoglicemia: é o
+# mesmo óbito dos motivos excluídos, registrado como situação.
+SITUACOES_EXCLUIDAS_DO_REAL = {"OBITO INFORMADO"}
+
+# Desperdício EVITADO — saída interrompida no trajeto. Lista curada (projeto
+# Desperdicio, validada com a coordenação): sem chegada não há remoção para
+# servir de critério, e nem toda saída interrompida é desperdício.
 SITUACOES_DESPERDICIO = {
     "ATENDIMENTO PRE-HOSPITALAR COM RECUSA DE ENCAMINHAMENTO",
     "VITIMA SOCORRIDA POR TERCEIROS",
