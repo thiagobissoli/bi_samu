@@ -3,6 +3,9 @@
 Desperdício REAL: a viatura saiu, CHEGOU no local e NÃO removeu o paciente.
 Desperdício EVITADO: a viatura saiu e NÃO chegou ao local.
 
+Daí a invariante que vale como conferência: todo desperdício real tem tempo
+de resposta; nenhum evitado tem, porque não chegou.
+
 Em ambos ficam de fora as causas clínicas que não são desperdício: PCR,
 óbito, diabetes e hipoglicemia (motivos PCC3, PCG3 e SCG2, mais a situação
 "óbito informado", que é o mesmo desfecho registrado do outro lado).
@@ -53,6 +56,12 @@ def mascaras(base: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     # Situação em branco não sustenta a afirmação de que houve desperdício
     # depois de chegar. Do lado do evitado a condição é factual (saiu e não
     # chegou), independente do desfecho registrado.
-    real = chegou & situacao.ne("") & ~fora
+    #
+    # O real exige tempo de resposta, que o núcleo atribui só à PRIMEIRA
+    # viatura a chegar na ocorrência. É o que mantém o desperdício sendo da
+    # ocorrência e não do empenho: sem isso, uma viatura de apoio que chegou
+    # depois e não removeu contava como desperdício mesmo quando a primeira
+    # havia removido o paciente (495 casos, 338 deles com remoção).
+    real = chegou & situacao.ne("") & ~fora & base["tempo_resposta"].notna()
     evitado = ~chegou & ~fora
     return real, evitado

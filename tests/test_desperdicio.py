@@ -14,8 +14,10 @@ from app.modules.indicadores.constants import (SITUACOES_COM_REMOCAO,
 
 
 def _linha(**campos):
-    base = {"motivo": "PCC1 DOR TORACICA", "dt_inicio_deslocamento": pd.Timestamp("2026-08-01 10:00"),
+    base = {"motivo": "PCC1 DOR TORACICA",
+            "dt_inicio_deslocamento": pd.Timestamp("2026-08-01 10:00"),
             "dt_chegada_no_local": pd.Timestamp("2026-08-01 10:20"),
+            "tempo_resposta": 1200.0,      # 1ª viatura a chegar
             "situacao_atendimento": "Atendimento Pré-Hospitalar Com Atendimento No Local"}
     base.update(campos)
     return base
@@ -54,9 +56,18 @@ def test_pcr_obito_diabetes_e_hipoglicemia_ficam_de_fora():
         assert not bool(real.iloc[0]), situacao
 
 
+def test_viatura_de_apoio_que_chegou_depois_nao_e_desperdicio_real():
+    """Sem tempo de resposta, o empenho não é o da ocorrência: é apoio que
+    chegou depois. Contá-lo marcava como desperdício a ocorrência em que a
+    primeira viatura removeu o paciente."""
+    _, real, evitado = _mascaras([_linha(tempo_resposta=None)])
+    assert not bool(real.iloc[0])
+    assert not bool(evitado.iloc[0])       # chegou, então também não é evitado
+
+
 def test_nao_chegar_ao_local_e_desperdicio_evitado():
     """A regra do evitado é factual: saiu e não chegou."""
-    _, real, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT,
+    _, real, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT, tempo_resposta=None,
                                          situacao_atendimento="Desistência do Solicitante")])
     assert not bool(real.iloc[0])
     assert bool(evitado.iloc[0])
@@ -66,7 +77,7 @@ def test_evitado_nao_depende_de_lista_de_situacoes():
     """Qualquer desfecho sem chegada conta, inclusive um inédito no vSky."""
     for situacao in ("Situação Inédita No Vsky", "Trote",
                      "Indisponibilidade De Recurso"):
-        _, _, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT,
+        _, _, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT, tempo_resposta=None,
                                           situacao_atendimento=situacao)])
         assert bool(evitado.iloc[0]), situacao
 
@@ -76,7 +87,7 @@ def test_remocao_sem_marcacao_de_chegada_nao_e_evitado():
     marcação. O paciente foi removido, logo a viatura chegou — contar isso
     como desperdício evitado afirmaria o contrário do desfecho."""
     for situacao in SITUACOES_COM_REMOCAO:
-        _, real, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT,
+        _, real, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT, tempo_resposta=None,
                                              situacao_atendimento=situacao.title())])
         assert not bool(evitado.iloc[0]), situacao
         assert not bool(real.iloc[0]), situacao
@@ -84,7 +95,7 @@ def test_remocao_sem_marcacao_de_chegada_nao_e_evitado():
 
 def test_obito_sem_chegada_tambem_fica_de_fora():
     for situacao in SITUACOES_EXCLUIDAS_DO_REAL:
-        _, _, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT,
+        _, _, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT, tempo_resposta=None,
                                           situacao_atendimento=situacao.title())])
         assert not bool(evitado.iloc[0]), situacao
 
@@ -105,6 +116,18 @@ def test_desfecho_novo_do_vsky_entra_como_desperdicio():
     sumir por não estar numa lista de permitidos."""
     _, real, _ = _mascaras([_linha(situacao_atendimento="Situação Inédita No Vsky")])
     assert bool(real.iloc[0])
+
+
+def test_invariante_do_tempo_de_resposta_na_base_real():
+    """Todo desperdício real tem tempo de resposta; nenhum evitado tem."""
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    base = desperdicio.universo(df)
+    real, evitado = desperdicio.mascaras(base)
+    tr = base["tempo_resposta"]
+    assert int((real & tr.isna()).sum()) == 0, "real sem tempo de resposta"
+    assert int((evitado & tr.notna()).sum()) == 0, "evitado com tempo de resposta"
 
 
 def test_real_e_evitado_sao_disjuntos_na_base_real():
