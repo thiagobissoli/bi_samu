@@ -41,9 +41,9 @@ def test_api_payload():
     assert ids == ["tr", "assertividade", "transferencia", "plantao",
                    "desperdicio"]
     assert dados["semana"]
-    # período (segunda a domingo) da última semana completa
+    # semana OPERACIONAL: domingo 07:00 ao domingo seguinte 06:59
     import re
-    assert re.fullmatch(r"\d{2}/\d{2}/\d{4} a \d{2}/\d{2}/\d{4}",
+    assert re.fullmatch(r"\d{2}/\d{2}/\d{4} 07:00 a \d{2}/\d{2}/\d{4} 06:59",
                         dados["semana_periodo"])
     # a semana escolhida tem dados em todos os 7 dias (ou ao menos 6)
     from app.modules.indicadores import nucleo
@@ -263,3 +263,24 @@ def test_painel_publica_o_desperdicio_da_frota_inteira():
     # e o recorte ISCMV seria menor — o painel não usa esse filtro
     iscmv = int((real & na_semana & df.loc[universo.index, "iscmv"]).sum())
     assert iscmv <= esperado
+
+
+def test_painel_avisa_quando_a_semana_tem_falha_de_dado():
+    """Semana encerrada com marcação faltando é exibida com aviso, não
+    escondida: o gestor precisa da última semana fechada."""
+    from app.modules.indicadores import nucleo
+    from app.modules.painel_gestao.service import PainelGestaoService
+
+    painel = PainelGestaoService(1).montar()
+    if not painel["semana"]:
+        pytest.skip("sem dados importados")
+    esperado = nucleo.cobertura_saidas(nucleo.carregar(1), painel["semana"])
+    assert painel["cobertura"] == esperado
+
+    _login()
+    html = client.get("/painel_gestao/", headers={"accept": "text/html"}).text
+    if esperado["completa"]:
+        assert "Falha de dado nesta semana" not in html
+    else:
+        assert "Falha de dado nesta semana" in html
+        assert f"{esperado['com_saida']} dos {esperado['plantoes']}" in html

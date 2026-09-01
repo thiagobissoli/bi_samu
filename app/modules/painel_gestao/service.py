@@ -7,7 +7,7 @@ KPIs = última semana ISO completa (≥6 dias com dados); gráficos de linha =
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -61,11 +61,13 @@ class PainelGestaoService:
         sem_ult = completas[-1] if completas else (semanas[-1] if semanas else None)
         semana_periodo = None
         if sem_ult:
+            # Semana operacional: domingo 07:00 ao domingo seguinte 06:59.
             ano_iso, num_iso = sem_ult.split("-S")
-            segunda = date.fromisocalendar(int(ano_iso), int(num_iso), 1)
-            domingo = date.fromisocalendar(int(ano_iso), int(num_iso), 7)
-            semana_periodo = (f"{segunda.strftime('%d/%m/%Y')} a "
-                              f"{domingo.strftime('%d/%m/%Y')}")
+            inicio = date.fromisocalendar(int(ano_iso), int(num_iso), 1) \
+                - timedelta(days=1)
+            fim = inicio + timedelta(days=7)
+            semana_periodo = (f"{inicio.strftime('%d/%m/%Y')} 07:00 a "
+                              f"{fim.strftime('%d/%m/%Y')} 06:59")
         meses = sorted(df[df["dt_ocorr"].notna()]["dt_ocorr"]
                        .dt.to_period("M").unique())[-12:]
         rot_meses = [m.strftime("%m/%Y") for m in meses]
@@ -373,5 +375,9 @@ class PainelGestaoService:
             ]})
 
         charts_flat = [b["chart"] for s in secoes for b in s["blocos"]]
+        # Semana encerrada pode ter falha de dado dentro: avisa em vez de
+        # apresentar número furado como se fosse desempenho.
+        cobertura = nucleo.cobertura_saidas(df, sem_ult) if sem_ult else {}
         return {"semana": sem_ult, "semana_periodo": semana_periodo,
+                "cobertura": cobertura,
                 "secoes": secoes, "charts_flat": charts_flat}

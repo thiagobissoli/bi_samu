@@ -1076,38 +1076,46 @@ def test_escala_de_impressao_deixa_todas_as_combinacoes_na_folha():
 
 # ------------------------------------------- última semana completa
 
-def test_semana_completa_exige_saida_de_viatura_em_todos_os_dias():
-    """Contar só dias com algum registro não basta: em 26/08/2026 o vSky
-    parou de entregar o início de deslocamento e a semana seguia "completa"
-    com os indicadores de saída zerados."""
+def test_semana_completa_e_a_semana_encerrada():
+    """Completa = os 7 plantões aconteceram. Falha de dado dentro dela não a
+    esconde — é sinalizada por cobertura_saidas()."""
     import pandas as pd
 
     from app.modules.indicadores import nucleo
 
     def _semana(dias_com_saida: int) -> pd.DataFrame:
+        # plantao_data: são 7 plantões por semana operacional
         linhas = []
         for dia in range(1, 8):
-            linhas.append({"semana_iso": "2099-S01", "dia": f"2099-01-0{dia}",
+            linhas.append({"semana_iso": "2099-S01",
+                           "plantao_data": f"2099-01-0{dia}",
                            "dt_inicio_deslocamento":
                                pd.Timestamp("2099-01-01") if dia <= dias_com_saida
                                else pd.NaT})
         return pd.DataFrame(linhas)
 
     assert nucleo.semanas_completas(_semana(7)) == ["2099-S01"]
-    assert nucleo.semanas_completas(_semana(3)) == []
-    assert nucleo.semanas_completas(_semana(6)) == ["2099-S01"]   # tolera 6
+    assert nucleo.semanas_completas(_semana(3)) == ["2099-S01"]
+    # e a falha aparece na cobertura
+    assert nucleo.cobertura_saidas(_semana(3), "2099-S01") == {
+        "plantoes": 7, "com_saida": 3, "completa": False}
+    assert nucleo.cobertura_saidas(_semana(7), "2099-S01")["completa"]
 
 
-def test_a_semana_quebrada_de_agosto_nao_e_completa():
-    """O caso real: S35/2026 tem os 7 dias, mas saída de viatura em 3."""
+def test_semana_com_falha_de_dado_aparece_com_aviso():
+    """S35/2026 encerrou e deve ser exibida, mas com a falha do "Início
+    deslocamento" sinalizada — esconder a semana tirava do gestor a última
+    semana fechada."""
     from app.modules.indicadores import nucleo
 
     df = nucleo.carregar(1)
     if df.empty or "2026-S35" not in set(df["semana_iso"].dropna()):
         pytest.skip("sem a semana de referência na base")
-    completas = nucleo.semanas_completas(df)
-    assert "2026-S35" not in completas
-    assert "2026-S34" in completas
+    assert "2026-S35" in nucleo.semanas_completas(df)
+    cobertura = nucleo.cobertura_saidas(df, "2026-S35")
+    assert not cobertura["completa"]
+    assert cobertura["com_saida"] < cobertura["plantoes"]
+    assert nucleo.cobertura_saidas(df, "2026-S34")["completa"]
 
 
 def test_painel_e_reuniao_na_mesma_semana_completa():
@@ -1142,3 +1150,95 @@ def test_series_semanais_param_na_ultima_completa():
         if cheias and str(cheias[0]).startswith("20"):   # série semanal
             assert cheias[-1] == deck["semana"], slide["titulo"]
             assert len(cheias) == esperado, slide["titulo"]
+
+
+# --------------------------------------------- semana operacional do SAMU
+
+def _derivar_momentos(momentos):
+    """Deriva o núcleo para uma lista de datas/horas, sem tocar o banco."""
+    import pandas as pd
+
+    from app.modules.indicadores import nucleo
+
+    df = pd.DataFrame({"data_ocorrencia_dt": pd.to_datetime(momentos)})
+    colunas = ["ocorrencia", "codigo_da_ocorrencia", "situacao_atendimento",
+               "atendimento", "transporte", "unidade", "cidade", "micro_regiao",
+               "sexo", "idade", "faixa", "tipo", "motivo", "risco_inicial",
+               "frq_respiratoria", "frq_cardiaca", "pressao_arterial",
+               "escala_glasgow", "glicemia", "obito", "hospital_destino",
+               "apoio_policia_militar", "apoio_bombeiros", "apoio_usa", "tarm",
+               "regulador", "controlador", "medico", "enfermeiro",
+               "tec_enfermagem", "condutor", "id", *nucleo.COLS_DATA]
+    for c in colunas:
+        df[c] = None
+    return nucleo._derivar(df, 45)
+
+
+def test_semana_abre_no_domingo_as_sete_da_manha():
+    """A semana do serviço vai de domingo 07:00 a domingo 06:59, não é a ISO
+    (segunda a domingo à meia-noite)."""
+    d = _derivar_momentos([
+        "2026-08-16 06:59:00",   # domingo, antes da abertura
+        "2026-08-16 07:00:00",   # abre a semana
+        "2026-08-19 14:00:00",   # meio da semana
+        "2026-08-23 02:00:00",   # madrugada de domingo, ainda dentro
+        "2026-08-23 06:59:00",   # último minuto
+        "2026-08-23 07:00:00",   # abre a seguinte
+    ])
+    semanas = list(d["semana_iso"])
+    assert semanas[0] != semanas[1], "06:59 de domingo caiu na semana nova"
+    assert semanas[1] == semanas[2] == semanas[3] == semanas[4]
+    assert semanas[5] != semanas[4], "07:00 de domingo não abriu a semana"
+
+    inicios = list(d["semana_inicio"])
+    import datetime
+    assert inicios[1] == datetime.date(2026, 8, 16)
+    assert inicios[4] == datetime.date(2026, 8, 16), "domingo 06:59 mudou de semana"
+    assert inicios[5] == datetime.date(2026, 8, 23)
+
+
+def test_semana_operacional_tem_sete_plantoes_e_oito_datas():
+    """A semana toca 8 datas de calendário — a primeira e a última são meias —
+    mas são 7 plantões. Contar datas faria a semana parecer completa a menos."""
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    completas = nucleo.semanas_completas(df)
+    if not completas:
+        pytest.skip("sem semana completa")
+    alvo = df[df["semana_iso"] == completas[-1]]
+    assert alvo["plantao_data"].nunique() == 7
+    assert alvo["dia"].nunique() == 8
+
+
+def test_periodo_da_semana_mostra_o_domingo_de_abertura():
+    from app.modules.painel_gestao.service import PainelGestaoService
+
+    painel = PainelGestaoService(1).montar()
+    if not painel["semana"]:
+        pytest.skip("sem dados importados")
+    assert "07:00 a" in painel["semana_periodo"]
+    assert painel["semana_periodo"].endswith("06:59")
+
+
+def test_registros_da_semana_ficam_dentro_da_janela_operacional():
+    """O primeiro e o último registro da semana respeitam 07:00 / 06:59."""
+    from datetime import date, timedelta
+
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    completas = nucleo.semanas_completas(df)
+    if not completas:
+        pytest.skip("sem semana completa")
+    alvo = df[df["semana_iso"] == completas[-1]]
+    ano, num = completas[-1].split("-S")
+    inicio = date.fromisocalendar(int(ano), int(num), 1) - timedelta(days=1)
+
+    primeiro, ultimo = alvo["dt_ocorr"].min(), alvo["dt_ocorr"].max()
+    assert primeiro.date() == inicio and primeiro.hour >= 7
+    assert ultimo.date() == inicio + timedelta(days=7) and ultimo.hour < 7

@@ -251,7 +251,6 @@ def _derivar(df: pd.DataFrame,
     df["dt_data_ocorrencia"] = df["data_ocorrencia_dt"]
     df["dia"] = df["dt_ocorr"].dt.date
     df["hora"] = df["dt_ocorr"].dt.hour
-    df["semana_iso"] = df["dt_ocorr"].dt.strftime("%G-S%V")
     # Plantão diurno: 07:00–18:59 · noturno: 19:00–06:59 (do dia seguinte).
     df["turno"] = np.where(df["hora"].between(7, 18), "Diurno", "Noturno")
     # O plantão noturno pertence ao dia em que COMEÇOU: deslocando 7h,
@@ -260,6 +259,19 @@ def _derivar(df: pd.DataFrame,
     df["plantao_data"] = plantao_ref.dt.date
     df["plantao_dia_semana"] = plantao_ref.dt.weekday.map(DIAS_SEMANA)
     df["plantao"] = df["plantao_dia_semana"] + " " + df["turno"]
+
+    # Semana OPERACIONAL do serviço: começa no domingo às 07:00 (plantão
+    # diurno) e termina no domingo seguinte às 06:59. Não é a semana ISO,
+    # que vai de segunda a domingo à meia-noite.
+    #
+    # Sai da referência de plantão: somando um dia, o domingo vira segunda e
+    # a numeração ISO passa a contar de domingo a sábado. O rótulo continua
+    # "AAAA-Snn" e ordenável; semana_inicio guarda o domingo de abertura.
+    semana_ref = plantao_ref + pd.Timedelta(days=1)
+    df["semana_iso"] = semana_ref.dt.strftime("%G-S%V")
+    df["semana_inicio"] = (
+        plantao_ref.dt.normalize()
+        - pd.to_timedelta((plantao_ref.dt.weekday + 1) % 7, unit="D")).dt.date
 
     # --- períodos P1–P9 e tempos consolidados (segundos) ------------------
     def _seg(fim: str, inicio: str) -> pd.Series:
@@ -423,23 +435,40 @@ def _derivar_news(df: pd.DataFrame) -> None:
 
 
 def semanas_completas(df) -> list[str]:
-    """Semanas ISO com os 7 dias E com saída de viatura em todos eles.
+    """Semanas operacionais encerradas — com os 7 plantões (domingo a sábado).
 
-    Contar apenas dias com algum registro não basta. Em 26/08/2026 o vSky
-    parou de entregar o "Início deslocamento": a semana seguia com os 7 dias
-    preenchidos e era escolhida como a última completa, mas os indicadores
-    que dependem de saída efetiva vinham quase zerados. Um dia inteiro de
-    operação sem nenhuma saída de ambulância é falha de dado, não realidade.
+    Conta o dia de PLANTÃO, não a data de calendário: a semana vai de domingo
+    07:00 a domingo 06:59 e por isso toca 8 datas, das quais a primeira e a
+    última são meias. São 7 plantões.
 
-    Devolve em ordem crescente. Se nenhuma semana tem os 7 dias (base curta
-    ou importação parcial), afrouxa para 6 — como antes.
+    Completa quer dizer ENCERRADA. Falha de dado dentro da semana — como o
+    "Início deslocamento" que o vSky deixou de entregar em 26/08/2026 — não
+    a torna incompleta; é sinalizada por `cobertura_saidas()`, para aparecer
+    na tela em vez de a semana sumir.
+
+    Devolve em ordem crescente. Se nenhuma tem os 7 plantões (base curta ou
+    importação parcial), afrouxa para 6.
     """
-    dias = df.groupby("semana_iso")["dia"].nunique()
-    com_saida = (df[df["dt_inicio_deslocamento"].notna()]
-                 .groupby("semana_iso")["dia"].nunique())
+    plantoes = df.groupby("semana_iso")["plantao_data"].nunique()
     for minimo in (7, 6):
-        completas = sorted(s for s in dias.index
-                           if dias[s] >= minimo and com_saida.get(s, 0) >= minimo)
+        completas = sorted(s for s in plantoes.index if plantoes[s] >= minimo)
         if completas:
             return completas
     return []
+
+
+def cobertura_saidas(df, semana: str) -> dict:
+    """Quanto da semana tem saída de viatura registrada.
+
+    Serve para a tela avisar quando o indicador está apoiado em dado furado:
+    em 26/08/2026 o vSky parou de entregar o "Início deslocamento" e a semana
+    aparecia com um terço das saídas de sempre, sem nada indicar.
+    """
+    da_semana = df[df["semana_iso"] == semana]
+    if da_semana.empty:
+        return {"plantoes": 0, "com_saida": 0, "completa": True}
+    plantoes = int(da_semana["plantao_data"].nunique())
+    com_saida = int(da_semana[da_semana["dt_inicio_deslocamento"].notna()]
+                    ["plantao_data"].nunique())
+    return {"plantoes": plantoes, "com_saida": com_saida,
+            "completa": com_saida >= plantoes}

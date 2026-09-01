@@ -8,7 +8,7 @@ cacheado por versão dos dados.
 from __future__ import annotations
 
 import math
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -96,8 +96,18 @@ class ReuniaoIndicadoresService:
         semanas = [s for s in semanas if s <= sem_ult]
         rot_sem = [str(i + 1) for i in range(len(semanas))]
 
+        # A semana operacional abre no domingo às 07:00. O rótulo vem da
+        # numeração deslocada em um dia, então a "segunda" da ISO é o
+        # domingo de abertura.
+        cobertura = nucleo.cobertura_saidas(df, sem_ult)
+        aviso_semana = "" if cobertura["completa"] else (
+            f" ATENÇÃO: só {cobertura['com_saida']} dos "
+            f"{cobertura['plantoes']} plantões da semana têm saída de viatura "
+            "registrada — os indicadores de saída estão subestimados.")
+
         ano_iso, num_iso = sem_ult.split("-S")
-        seg_ult = date.fromisocalendar(int(ano_iso), int(num_iso), 1)
+        seg_ult = date.fromisocalendar(int(ano_iso), int(num_iso), 1) \
+            - timedelta(days=1)
         sem_data = seg_ult.strftime("%d/%m")
 
         dt_min, dt_max = df["dt_ocorr"].min(), df["dt_ocorr"].max()
@@ -138,7 +148,7 @@ class ReuniaoIndicadoresService:
                       "Desperdício do SAMU 192/ES",
             "subtitulo": f"Período: {periodo} · última semana completa em "
                          f"{sem_data}. Indicadores recalculados ao vivo do "
-                         "banco de dados operacional.",
+                         "banco de dados operacional." + aviso_semana,
         })
 
         # ---- 2/3. ocorrências despachadas (ISCMV, por transporte) -----------

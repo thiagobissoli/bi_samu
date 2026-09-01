@@ -5,6 +5,15 @@
 {% endblock %}
 
 {% block content %}
+{% if dados.cobertura and not dados.cobertura.completa %}
+<div class="alert alert-warning py-2">
+    <i class="fa-solid fa-triangle-exclamation me-1"></i>
+    <strong>Falha de dado nesta semana:</strong> só
+    {{ dados.cobertura.com_saida }} dos {{ dados.cobertura.plantoes }} plantões
+    têm saída de viatura registrada. Os indicadores que dependem de saída
+    efetiva estão subestimados.
+</div>
+{% endif %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
         <span class="badge text-bg-dark fs-6 me-1">
