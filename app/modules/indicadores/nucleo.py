@@ -420,3 +420,26 @@ def _derivar_news(df: pd.DataFrame) -> None:
         [df["news_total"] >= 7, df["news_total"] >= 5,
          completo & tem3, completo],
         ["Alto", "Médio", "Baixo-Médio", "Baixo"], default=None)
+
+
+def semanas_completas(df) -> list[str]:
+    """Semanas ISO com os 7 dias E com saída de viatura em todos eles.
+
+    Contar apenas dias com algum registro não basta. Em 26/08/2026 o vSky
+    parou de entregar o "Início deslocamento": a semana seguia com os 7 dias
+    preenchidos e era escolhida como a última completa, mas os indicadores
+    que dependem de saída efetiva vinham quase zerados. Um dia inteiro de
+    operação sem nenhuma saída de ambulância é falha de dado, não realidade.
+
+    Devolve em ordem crescente. Se nenhuma semana tem os 7 dias (base curta
+    ou importação parcial), afrouxa para 6 — como antes.
+    """
+    dias = df.groupby("semana_iso")["dia"].nunique()
+    com_saida = (df[df["dt_inicio_deslocamento"].notna()]
+                 .groupby("semana_iso")["dia"].nunique())
+    for minimo in (7, 6):
+        completas = sorted(s for s in dias.index
+                           if dias[s] >= minimo and com_saida.get(s, 0) >= minimo)
+        if completas:
+            return completas
+    return []

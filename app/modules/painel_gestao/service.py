@@ -54,12 +54,9 @@ class PainelGestaoService:
         cores3 = ["vermelho", "amarelo", "verde"]
 
         # --- janelas ------------------------------------------------------
-        # Última semana COMPLETA: 7 dias com dados (tolera 6 se nenhuma
-        # semana tiver os 7 — ex.: falha de importação em um dia).
-        dias_por_semana = df.groupby("semana_iso")["dia"].nunique()
-        completas = sorted(dias_por_semana[dias_por_semana >= 7].index)
-        if not completas:
-            completas = sorted(dias_por_semana[dias_por_semana >= 6].index)
+        # Última semana COMPLETA: 7 dias com dados e com saída de viatura em
+        # todos eles (nucleo.semanas_completas). Mesma regra da Reunião.
+        completas = nucleo.semanas_completas(df)
         semanas = sorted(df["semana_iso"].dropna().unique())
         sem_ult = completas[-1] if completas else (semanas[-1] if semanas else None)
         semana_periodo = None

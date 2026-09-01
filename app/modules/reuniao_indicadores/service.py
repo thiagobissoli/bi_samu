@@ -87,9 +87,9 @@ class ReuniaoIndicadoresService:
         cap_tr = CAP_TEMPO["tempo_resposta"]
 
         # ---- janelas -----------------------------------------------------
-        dias_sem = df.groupby("semana_iso")["dia"].nunique()
-        completas = sorted(dias_sem[dias_sem >= 7].index) or \
-            sorted(dias_sem[dias_sem >= 6].index)
+        # Última semana completa: 7 dias com dados e com saída de viatura em
+        # todos eles (nucleo.semanas_completas). Mesma regra do Painel.
+        completas = nucleo.semanas_completas(df)
         semanas = sorted(df["semana_iso"].dropna().unique())
         sem_ult = completas[-1] if completas else semanas[-1]
         # séries semanais só até a última completa (sem cauda parcial)

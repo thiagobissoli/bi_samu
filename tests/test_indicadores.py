@@ -1072,3 +1072,73 @@ def test_escala_de_impressao_deixa_todas_as_combinacoes_na_folha():
     for (n, oc), medida in CALENDARIO_ALTURA_MEDIDA.items():
         escala = IndicadoresService._escala_impressao(ids[:n], oc)
         assert medida * escala <= CALENDARIO_FOLHA_PX + 1, (n, oc, escala)
+
+
+# ------------------------------------------- última semana completa
+
+def test_semana_completa_exige_saida_de_viatura_em_todos_os_dias():
+    """Contar só dias com algum registro não basta: em 26/08/2026 o vSky
+    parou de entregar o início de deslocamento e a semana seguia "completa"
+    com os indicadores de saída zerados."""
+    import pandas as pd
+
+    from app.modules.indicadores import nucleo
+
+    def _semana(dias_com_saida: int) -> pd.DataFrame:
+        linhas = []
+        for dia in range(1, 8):
+            linhas.append({"semana_iso": "2099-S01", "dia": f"2099-01-0{dia}",
+                           "dt_inicio_deslocamento":
+                               pd.Timestamp("2099-01-01") if dia <= dias_com_saida
+                               else pd.NaT})
+        return pd.DataFrame(linhas)
+
+    assert nucleo.semanas_completas(_semana(7)) == ["2099-S01"]
+    assert nucleo.semanas_completas(_semana(3)) == []
+    assert nucleo.semanas_completas(_semana(6)) == ["2099-S01"]   # tolera 6
+
+
+def test_a_semana_quebrada_de_agosto_nao_e_completa():
+    """O caso real: S35/2026 tem os 7 dias, mas saída de viatura em 3."""
+    from app.modules.indicadores import nucleo
+
+    df = nucleo.carregar(1)
+    if df.empty or "2026-S35" not in set(df["semana_iso"].dropna()):
+        pytest.skip("sem a semana de referência na base")
+    completas = nucleo.semanas_completas(df)
+    assert "2026-S35" not in completas
+    assert "2026-S34" in completas
+
+
+def test_painel_e_reuniao_na_mesma_semana_completa():
+    from app.modules.indicadores import nucleo
+    from app.modules.painel_gestao.service import PainelGestaoService
+    from app.modules.reuniao_indicadores.service import (
+        ReuniaoIndicadoresService)
+
+    painel = PainelGestaoService(1).montar()
+    deck = ReuniaoIndicadoresService(1).montar()
+    if not painel["secoes"]:
+        pytest.skip("sem dados importados")
+    completas = nucleo.semanas_completas(nucleo.carregar(1))
+    assert painel["semana"] == deck["semana"] == completas[-1]
+
+
+def test_series_semanais_param_na_ultima_completa():
+    """Nenhum gráfico da Reunião pode ter cauda de semana parcial."""
+    from app.modules.indicadores import nucleo
+    from app.modules.reuniao_indicadores.service import (
+        ReuniaoIndicadoresService)
+
+    deck = ReuniaoIndicadoresService(1).montar()
+    if not deck["slides"]:
+        pytest.skip("sem dados importados")
+    esperado = len([s for s in sorted(nucleo.carregar(1)["semana_iso"]
+                                      .dropna().unique())
+                    if s <= deck["semana"]])
+    for slide in deck["slides"]:
+        chart = slide.get("chart") or {}
+        cheias = chart.get("labels_full")
+        if cheias and str(cheias[0]).startswith("20"):   # série semanal
+            assert cheias[-1] == deck["semana"], slide["titulo"]
+            assert len(cheias) == esperado, slide["titulo"]
