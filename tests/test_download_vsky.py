@@ -787,3 +787,66 @@ def test_botao_de_substituir_esta_na_tela_com_confirmacao():
     assert "Atualizar todo o período" in html
     assert 'formaction="/download_vsky/substituir"' in html
     assert "onclick=\"return confirm(" in html
+
+
+def test_substituir_com_arquivo_identico_nao_esvazia_o_periodo(monkeypatch):
+    """O bug da importação #830: apagar e reinserir deixava o período quase
+    vazio, porque o hash sobrevive à exclusão lógica e a inserção pulava as
+    linhas como duplicadas. Arquivo igual ao que está na base tem de manter
+    tudo de pé."""
+    from app.core.database import SessionLocal
+    from app.modules.download_vsky import service as mod
+
+    db = SessionLocal()
+    ini, fim = "01/01/2099", "02/01/2099"
+    try:
+        linhas = [_linha_minima(ocorrencia=f"991010{n}",
+                                unidade="USB 99 - TESTE",
+                                data_ocorrencia="01/01/2099 08:00:00")
+                  for n in range(1, 4)]
+        _servico(db)._inserir_linhas(linhas, _importacao(db, "inicial"))
+        assert _vivos_no_periodo(db, ini, fim) == 3
+
+        monkeypatch.setattr(mod, "parse_xls", lambda _c: linhas)
+        monkeypatch.setattr(mod, "VskyClient", _fake_client(b"xls"))
+        monkeypatch.setattr(mod, "_salvar_xls", lambda *a, **k: None)
+        item = _servico(db).substituir_periodo(ini, fim, "u", "us", "se")
+
+        assert item.status == "concluido", item.erro
+        assert item.linhas_superadas == 0
+        assert _vivos_no_periodo(db, ini, fim) == 3, "o período foi esvaziado"
+    finally:
+        for n in range(1, 4):
+            _limpar_teste(db, f"991010{n}")
+
+
+def test_substituir_revive_registro_que_voltou_ao_vsky(monkeypatch):
+    """Linha excluída antes e que reaparece no arquivo volta a valer — a
+    restrição única é por hash e ignora deleted_at, então reinserir daria
+    erro."""
+    from sqlalchemy import select
+
+    from app.core.database import SessionLocal
+    from app.modules.download_vsky import service as mod
+    from app.modules.download_vsky.models import VskyRegistroAnalitico as R
+
+    db = SessionLocal()
+    ini, fim = "01/01/2099", "02/01/2099"
+    try:
+        linha = _linha_minima(ocorrencia="9910200", unidade="USB 99 - TESTE",
+                              data_ocorrencia="01/01/2099 08:00:00")
+        _servico(db)._inserir_linhas([linha], _importacao(db, "inicial"))
+        registro = db.scalar(select(R).where(R.ocorrencia == "9910200"))
+        _servico(db).registros.soft_delete([registro])
+        assert _vivos_no_periodo(db, ini, fim) == 0
+
+        monkeypatch.setattr(mod, "parse_xls", lambda _c: [linha])
+        monkeypatch.setattr(mod, "VskyClient", _fake_client(b"xls"))
+        monkeypatch.setattr(mod, "_salvar_xls", lambda *a, **k: None)
+        item = _servico(db).substituir_periodo(ini, fim, "u", "us", "se")
+
+        assert item.status == "concluido", item.erro
+        assert _vivos_no_periodo(db, ini, fim) == 1, "não reviveu"
+        assert item.linhas_novas == 1
+    finally:
+        _limpar_teste(db, "9910200")

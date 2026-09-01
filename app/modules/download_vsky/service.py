@@ -194,13 +194,22 @@ class DownloadVskyService:
                                        data_inicial, data_final)
             item.tamanho = len(content)
 
-            # Só agora, com o arquivo em mãos e validado.
-            removidos = self.registros.soft_delete_periodo(
-                data_inicial, data_final, created_by)
+            # Só agora, com o arquivo em mãos e validado: o que está vivo no
+            # período e não veio no arquivo sai; o resto segue pelo caminho
+            # normal de inserção.
+            #
+            # Apagar tudo e reinserir NÃO funciona: o hash sobrevive à
+            # exclusão lógica e a inserção pularia as linhas como duplicadas,
+            # deixando o período praticamente vazio. Foi o que aconteceu na
+            # importação #830 — 51.342 excluídos, 210 inseridos.
+            do_arquivo = {linha_hash(v) for v in linhas}
+            removidos = self.registros.soft_delete_fora_do_arquivo(
+                data_inicial, data_final, do_arquivo, created_by)
+            revividos = self.registros.reviver(do_arquivo)
             novas, duplicadas, _, total = self._inserir_linhas(linhas, item)
             item.total_linhas = total
-            item.linhas_novas = novas
-            item.linhas_duplicadas = duplicadas
+            item.linhas_novas = novas + revividos
+            item.linhas_duplicadas = duplicadas - revividos
             item.linhas_superadas = removidos
             item.status = STATUS_CONCLUIDO
             item.erro = None

@@ -172,3 +172,61 @@ class VskyRegistroRepository:
                     deleted_by=usuario_id))
         self.session.commit()
         return int(resultado.rowcount or 0)
+
+    def soft_delete_fora_do_arquivo(self, data_inicial: str, data_final: str,
+                                    hashes: set[str],
+                                    usuario_id: int | None = None) -> int:
+        """Exclui os registros vivos do período que o arquivo não traz.
+
+        É a operação que remove do sistema a ocorrência que o vSky apagou.
+        Em lotes no IN(): a lista de hashes de um mês passa de 50 mil e o
+        MySQL recusa a consulta inteira.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from sqlalchemy import select, update
+
+        inicio = datetime.strptime(data_inicial, "%d/%m/%Y")
+        fim = datetime.strptime(data_final, "%d/%m/%Y") + timedelta(days=1)
+        vivos = set(self.session.scalars(
+            select(VskyRegistroAnalitico.linha_hash)
+            .where(VskyRegistroAnalitico.empresa_id == self.empresa_id,
+                   VskyRegistroAnalitico.deleted_at.is_(None),
+                   VskyRegistroAnalitico.data_ocorrencia_dt >= inicio,
+                   VskyRegistroAnalitico.data_ocorrencia_dt < fim)))
+        sobrando = sorted(vivos - hashes)
+        if not sobrando:
+            return 0
+        agora = datetime.now(timezone.utc)
+        total = 0
+        for i in range(0, len(sobrando), 500):
+            resultado = self.session.execute(
+                update(VskyRegistroAnalitico)
+                .where(VskyRegistroAnalitico.empresa_id == self.empresa_id,
+                       VskyRegistroAnalitico.deleted_at.is_(None),
+                       VskyRegistroAnalitico.linha_hash.in_(sobrando[i:i + 500]))
+                .values(deleted_at=agora, deleted_by=usuario_id))
+            total += int(resultado.rowcount or 0)
+        self.session.commit()
+        return total
+
+    def reviver(self, hashes: set[str]) -> int:
+        """Traz de volta registros excluídos cujo hash voltou no arquivo.
+
+        A restrição única é por (empresa, hash) e ignora deleted_at, então
+        reinserir daria erro: o caminho é limpar o deleted_at.
+        """
+        from sqlalchemy import update
+
+        lista = sorted(hashes)
+        total = 0
+        for i in range(0, len(lista), 500):
+            resultado = self.session.execute(
+                update(VskyRegistroAnalitico)
+                .where(VskyRegistroAnalitico.empresa_id == self.empresa_id,
+                       VskyRegistroAnalitico.deleted_at.is_not(None),
+                       VskyRegistroAnalitico.linha_hash.in_(lista[i:i + 500]))
+                .values(deleted_at=None, deleted_by=None))
+            total += int(resultado.rowcount or 0)
+        self.session.commit()
+        return total
