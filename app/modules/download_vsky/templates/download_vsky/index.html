@@ -75,9 +75,22 @@
                 </button>
             </div>
             <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-outline-danger w-100"
+                        formaction="/download_vsky/substituir"
+                        {% if not configurado %}disabled{% endif %}
+                        title="Apaga o período e reinsere o que o vSky tem agora"
+                        onclick="return confirm('Substituir TODO o período selecionado?\n\nOs registros do período são apagados e reinseridos com o que o vSky tem agora. Use quando o portal removeu ocorrências que continuam no sistema.\n\nO download é feito antes de apagar: se o vSky falhar, nada é removido.');">
+                    <i class="fa-solid fa-rotate"></i> Atualizar todo o período
+                </button>
+            </div>
+            <div class="col-12">
                 <span class="text-muted small">
-                    O vSky gera o XLS e as linhas são importadas sem duplicar
-                    (registros no banco: <strong>{{ total_registros }}</strong>).
+                    <strong>Gerar e importar</strong> acrescenta o que falta e
+                    atualiza o que o vSky corrigiu (registros no banco:
+                    <strong>{{ total_registros }}</strong>).
+                    <strong>Atualizar todo o período</strong> apaga e reinsere
+                    tudo do intervalo — é o único jeito de remover do sistema
+                    uma ocorrência que o portal excluiu.
                 </span>
             </div>
         </form>

@@ -132,6 +132,52 @@ def importar(
         status_code=303)
 
 
+@router.post("/substituir", include_in_schema=False)
+def substituir(
+    request: Request,
+    data_inicial: str = Form(...),
+    data_final: str = Form(...),
+    usuario: Usuario = Depends(require_permission("download_vsky.baixar")),
+    db: Session = Depends(get_session),
+):
+    """Apaga o período e o reinsere com o que o vSky tem agora.
+
+    Serve para o que a importação normal não alcança: registro que o portal
+    apagou continuaria na base, porque a reconciliação só toca as chaves que
+    o arquivo traz.
+    """
+    credenciais = _credenciais(db, usuario.empresa_id)
+    if credenciais is None:
+        return RedirectResponse(
+            "/download_vsky/?erro=" + quote(
+                "Configure usuário e senha do vSky antes de importar."),
+            status_code=303)
+
+    service = DownloadVskyService(db, usuario.empresa_id)
+    try:
+        item = service.substituir_periodo(
+            data_iso_para_br(data_inicial), data_iso_para_br(data_final),
+            created_by=usuario.id, **credenciais)
+    except ValueError as exc:
+        return RedirectResponse("/download_vsky/?erro=" + quote(str(exc)),
+                                status_code=303)
+
+    record_audit(db, tabela="vsky_importacoes", acao="REPLACE",
+                 registro_id=item.id, valor_novo=snapshot(item, FIELDS),
+                 usuario=usuario, request=request)
+    if item.status == STATUS_CONCLUIDO:
+        return RedirectResponse(
+            "/download_vsky/?msg=" + quote(
+                f"Período substituído: {item.linhas_superadas} registros "
+                f"apagados e {item.linhas_novas} inseridos de "
+                f"{item.total_linhas} linhas do vSky."),
+            status_code=303)
+    return RedirectResponse(
+        "/download_vsky/?erro=" + quote(
+            f"Falha ao substituir (nada foi apagado): {item.erro}"),
+        status_code=303)
+
+
 @router.get("/registros", include_in_schema=False)
 def registros(
     request: Request,

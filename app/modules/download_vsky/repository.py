@@ -148,3 +148,27 @@ class VskyRegistroRepository:
             r.deleted_by = usuario_id
         self.session.commit()
         return len(registros)
+
+    def soft_delete_periodo(self, data_inicial: str, data_final: str,
+                            usuario_id: int | None = None) -> int:
+        """Exclui logicamente os registros do período (datas dd/mm/aaaa).
+
+        O filtro é o mesmo do relatório do vSky: data da ocorrência, do
+        primeiro instante do dia inicial ao último do dia final.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from sqlalchemy import update
+
+        inicio = datetime.strptime(data_inicial, "%d/%m/%Y")
+        fim = datetime.strptime(data_final, "%d/%m/%Y") + timedelta(days=1)
+        resultado = self.session.execute(
+            update(VskyRegistroAnalitico)
+            .where(VskyRegistroAnalitico.empresa_id == self.empresa_id,
+                   VskyRegistroAnalitico.deleted_at.is_(None),
+                   VskyRegistroAnalitico.data_ocorrencia_dt >= inicio,
+                   VskyRegistroAnalitico.data_ocorrencia_dt < fim)
+            .values(deleted_at=datetime.now(timezone.utc),
+                    deleted_by=usuario_id))
+        self.session.commit()
+        return int(resultado.rowcount or 0)

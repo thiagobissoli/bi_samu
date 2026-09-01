@@ -632,3 +632,158 @@ def _limpar_sem_numero(db) -> None:
     db.execute(delete(R).where(R.paciente.like("SEM NUMERO%")))
     db.commit()
     _limpar_importacoes_de_teste(db)
+
+
+# ------------------- substituir todo o período (apaga e reinsere)
+
+def _vivos_no_periodo(db, inicio: str, fim: str) -> int:
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import func, select
+
+    from app.modules.download_vsky.models import VskyRegistroAnalitico as R
+
+    ini = datetime.strptime(inicio, "%d/%m/%Y")
+    f = datetime.strptime(fim, "%d/%m/%Y") + timedelta(days=1)
+    return db.scalar(select(func.count()).select_from(R).where(
+        R.deleted_at.is_(None), R.data_ocorrencia_dt >= ini,
+        R.data_ocorrencia_dt < f)) or 0
+
+
+def _fake_client(conteudo: bytes | None, erro: Exception | None = None):
+    class _Fake:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def login(self): pass
+        def gerar_total_registros_analitico(self, *a, **k):
+            if erro is not None:
+                raise erro
+            return conteudo
+    return lambda *a, **k: _Fake()
+
+
+def test_substituir_periodo_apaga_e_reinsere(monkeypatch):
+    """O caso de uso: ocorrência que o portal removeu some do sistema."""
+    from app.core.database import SessionLocal
+    from app.modules.download_vsky import service as mod
+
+    db = SessionLocal()
+    ini, fim = "01/01/2099", "02/01/2099"
+    try:
+        # estado inicial: duas ocorrências no período
+        antigas = [_linha_minima(ocorrencia="9910001", unidade="USB 99 - TESTE",
+                                 data_ocorrencia="01/01/2099 08:00:00"),
+                   _linha_minima(ocorrencia="9910002", unidade="USB 99 - TESTE",
+                                 data_ocorrencia="01/01/2099 09:00:00")]
+        _servico(db)._inserir_linhas(antigas, _importacao(db, "inicial"))
+        assert _vivos_no_periodo(db, ini, fim) == 2
+
+        # o vSky agora só tem a primeira, e com o status corrigido
+        atual = [_linha_minima(ocorrencia="9910001", unidade="USB 99 - TESTE",
+                               data_ocorrencia="01/01/2099 08:00:00",
+                               status_da_ocorrencia="Encerrada")]
+        monkeypatch.setattr(mod, "parse_xls", lambda _c: atual)
+        monkeypatch.setattr(mod, "VskyClient", _fake_client(b"xls"))
+        monkeypatch.setattr(mod, "_salvar_xls", lambda *a, **k: None)
+
+        item = _servico(db).substituir_periodo(ini, fim, "u", "us", "se")
+        assert item.status == "concluido", item.erro
+        assert item.linhas_superadas == 2      # as duas antigas saíram
+        assert item.linhas_novas == 1
+        assert _vivos_no_periodo(db, ini, fim) == 1
+
+        vivos = _vivos(db, "9910001")
+        assert len(vivos) == 1 and vivos[0].status_da_ocorrencia == "Encerrada"
+        assert _vivos(db, "9910002") == []     # removida do vSky, sumiu daqui
+    finally:
+        _limpar_teste(db, "9910001")
+        _limpar_teste(db, "9910002")
+
+
+def test_falha_do_portal_nao_apaga_nada(monkeypatch):
+    """A ordem é o que torna a operação segura: baixa antes de apagar."""
+    from app.core.database import SessionLocal
+    from app.modules.download_vsky import service as mod
+    from app.modules.download_vsky.vsky_client import VskyError
+
+    db = SessionLocal()
+    ini, fim = "01/01/2099", "02/01/2099"
+    try:
+        _servico(db)._inserir_linhas(
+            [_linha_minima(ocorrencia="9910003", unidade="USB 99 - TESTE",
+                           data_ocorrencia="01/01/2099 08:00:00")],
+            _importacao(db, "inicial"))
+        assert _vivos_no_periodo(db, ini, fim) == 1
+
+        monkeypatch.setattr(mod, "VskyClient",
+                            _fake_client(None, VskyError("portal fora do ar")))
+        item = _servico(db).substituir_periodo(ini, fim, "u", "us", "se")
+
+        assert item.status == "erro"
+        assert "portal fora do ar" in item.erro
+        assert _vivos_no_periodo(db, ini, fim) == 1, "apagou mesmo falhando"
+    finally:
+        _limpar_teste(db, "9910003")
+
+
+def test_arquivo_vazio_nao_apaga_o_periodo(monkeypatch):
+    """Relatório sem linhas seria a forma silenciosa de zerar um período."""
+    from app.core.database import SessionLocal
+    from app.modules.download_vsky import service as mod
+
+    db = SessionLocal()
+    ini, fim = "01/01/2099", "02/01/2099"
+    try:
+        _servico(db)._inserir_linhas(
+            [_linha_minima(ocorrencia="9910004", unidade="USB 99 - TESTE",
+                           data_ocorrencia="01/01/2099 08:00:00")],
+            _importacao(db, "inicial"))
+
+        monkeypatch.setattr(mod, "parse_xls", lambda _c: [])
+        monkeypatch.setattr(mod, "VskyClient", _fake_client(b"xls"))
+        item = _servico(db).substituir_periodo(ini, fim, "u", "us", "se")
+
+        assert item.status == "erro"
+        assert "sem linhas" in item.erro
+        assert _vivos_no_periodo(db, ini, fim) == 1
+    finally:
+        _limpar_teste(db, "9910004")
+
+
+def test_substituicao_nao_toca_fora_do_periodo(monkeypatch):
+    from app.core.database import SessionLocal
+    from app.modules.download_vsky import service as mod
+
+    db = SessionLocal()
+    try:
+        _servico(db)._inserir_linhas([
+            _linha_minima(ocorrencia="9910005", unidade="USB 99 - TESTE",
+                          data_ocorrencia="05/01/2099 08:00:00")],   # fora
+            _importacao(db, "fora"))
+        _servico(db)._inserir_linhas([
+            _linha_minima(ocorrencia="9910006", unidade="USB 99 - TESTE",
+                          data_ocorrencia="01/01/2099 08:00:00")],   # dentro
+            _importacao(db, "dentro"))
+
+        monkeypatch.setattr(mod, "parse_xls", lambda _c: [
+            _linha_minima(ocorrencia="9910007", unidade="USB 99 - TESTE",
+                          data_ocorrencia="01/01/2099 10:00:00")])
+        monkeypatch.setattr(mod, "VskyClient", _fake_client(b"xls"))
+        monkeypatch.setattr(mod, "_salvar_xls", lambda *a, **k: None)
+        _servico(db).substituir_periodo("01/01/2099", "02/01/2099",
+                                        "u", "us", "se")
+
+        assert len(_vivos(db, "9910005")) == 1, "registro fora do período sumiu"
+        assert _vivos(db, "9910006") == []
+        assert len(_vivos(db, "9910007")) == 1
+    finally:
+        for n in ("9910005", "9910006", "9910007"):
+            _limpar_teste(db, n)
+
+
+def test_botao_de_substituir_esta_na_tela_com_confirmacao():
+    _login()
+    html = client.get("/download_vsky/", headers={"accept": "text/html"}).text
+    assert "Atualizar todo o período" in html
+    assert 'formaction="/download_vsky/substituir"' in html
+    assert "onclick=\"return confirm(" in html

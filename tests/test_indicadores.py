@@ -1103,19 +1103,46 @@ def test_semana_completa_e_a_semana_encerrada():
 
 
 def test_semana_com_falha_de_dado_aparece_com_aviso():
-    """S35/2026 encerrou e deve ser exibida, mas com a falha do "Início
-    deslocamento" sinalizada — esconder a semana tirava do gestor a última
-    semana fechada."""
+    """Semana encerrada com marcação faltando continua sendo exibida, com a
+    falha sinalizada — esconder a semana tirava do gestor a última fechada.
+
+    Hermético de propósito: quando isto aconteceu de verdade (o vSky parou de
+    entregar o "Início deslocamento" em 26/08/2026), o portal preencheu os
+    horários dias depois e a base deixou de reproduzir o caso.
+    """
+    import pandas as pd
+
+    from app.modules.indicadores import nucleo
+
+    linhas = []
+    for dia in range(1, 8):
+        linhas.append({"semana_iso": "2099-S01",
+                       "plantao_data": f"2099-01-0{dia}",
+                       "dt_inicio_deslocamento":
+                           pd.Timestamp("2099-01-01") if dia <= 4 else pd.NaT})
+    furada = pd.DataFrame(linhas)
+
+    assert nucleo.semanas_completas(furada) == ["2099-S01"], \
+        "a semana encerrada sumiu por causa da falha de dado"
+    cobertura = nucleo.cobertura_saidas(furada, "2099-S01")
+    assert cobertura == {"plantoes": 7, "com_saida": 4, "completa": False}
+
+
+def test_cobertura_da_semana_exibida_confere_com_a_base():
     from app.modules.indicadores import nucleo
 
     df = nucleo.carregar(1)
-    if df.empty or "2026-S35" not in set(df["semana_iso"].dropna()):
-        pytest.skip("sem a semana de referência na base")
-    assert "2026-S35" in nucleo.semanas_completas(df)
-    cobertura = nucleo.cobertura_saidas(df, "2026-S35")
-    assert not cobertura["completa"]
-    assert cobertura["com_saida"] < cobertura["plantoes"]
-    assert nucleo.cobertura_saidas(df, "2026-S34")["completa"]
+    if df.empty:
+        pytest.skip("sem dados importados")
+    semana = nucleo.semanas_completas(df)[-1]
+    cobertura = nucleo.cobertura_saidas(df, semana)
+    da_semana = df[df["semana_iso"] == semana]
+    assert cobertura["plantoes"] == da_semana["plantao_data"].nunique()
+    assert cobertura["com_saida"] == (
+        da_semana[da_semana["dt_inicio_deslocamento"].notna()]
+        ["plantao_data"].nunique())
+    assert cobertura["completa"] == (
+        cobertura["com_saida"] >= cobertura["plantoes"])
 
 
 def test_painel_e_reuniao_na_mesma_semana_completa():

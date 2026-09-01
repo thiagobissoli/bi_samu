@@ -153,6 +153,63 @@ class DownloadVskyService:
         self.session.commit()
         return item
 
+    def substituir_periodo(
+        self,
+        data_inicial: str,
+        data_final: str,
+        base_url: str,
+        usuario_vsky: str,
+        senha_vsky: str,
+        cliente_id: str | None = None,
+        created_by: int | None = None,
+    ) -> VskyImportacao:
+        """Troca TODO o período pelo que o vSky tem agora.
+
+        A importação normal reconcilia só as chaves que o arquivo traz, então
+        registro que o portal apagou (ocorrência cancelada, empenho removido)
+        fica na base para sempre. Aqui o período inteiro é substituído.
+
+        A ordem é o que torna isto seguro: baixa e valida o arquivo primeiro,
+        e só então apaga. Apagar antes deixaria o período vazio se o portal
+        estivesse fora do ar. Os registros antigos saem por exclusão lógica
+        (§36.7) — nada é perdido de fato.
+        """
+        data_inicial, data_final = validar_periodo(data_inicial, data_final)
+        item = self.importacoes.create({
+            "data_inicial": data_inicial,
+            "data_final": data_final,
+            "created_by": created_by,
+        })
+        try:
+            with VskyClient(base_url, usuario_vsky, senha_vsky) as client:
+                client.login()
+                content = client.gerar_total_registros_analitico(
+                    data_inicial, data_final, cliente_id)
+            linhas = parse_xls(content)
+            if not linhas:
+                raise ValueError(
+                    "O vSky devolveu um arquivo sem linhas para o período — "
+                    "nada foi apagado.")
+            item.caminho = _salvar_xls(content, self.empresa_id,
+                                       data_inicial, data_final)
+            item.tamanho = len(content)
+
+            # Só agora, com o arquivo em mãos e validado.
+            removidos = self.registros.soft_delete_periodo(
+                data_inicial, data_final, created_by)
+            novas, duplicadas, _, total = self._inserir_linhas(linhas, item)
+            item.total_linhas = total
+            item.linhas_novas = novas
+            item.linhas_duplicadas = duplicadas
+            item.linhas_superadas = removidos
+            item.status = STATUS_CONCLUIDO
+            item.erro = None
+        except (VskyError, httpx.HTTPError, ValueError, OSError) as exc:
+            item.status = STATUS_ERRO
+            item.erro = str(exc)[:1000]
+        self.session.commit()
+        return item
+
     def _inserir_linhas(
         self, linhas: list[dict[str, str]], item: VskyImportacao,
     ) -> tuple[int, int, int, int]:
