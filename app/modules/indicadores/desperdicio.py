@@ -1,72 +1,61 @@
 """Definição única de desperdício operacional (§35.16).
 
-Desperdício REAL: a viatura saiu, CHEGOU no local e NÃO removeu o paciente.
-Desperdício EVITADO: a viatura saiu e NÃO chegou ao local.
+Universo: saída efetiva de viatura (há início de deslocamento).
 
-Daí a invariante que vale como conferência: todo desperdício real tem tempo
-de resposta; nenhum evitado tem, porque não chegou.
+ÓBITO e HIPOGLICEMIA nunca são desperdício:
+  - óbito  = a coluna Óbito da ficha traz um dos desfechos de morte;
+  - hipoglicemia = motivo PCG3/SCG2 (diabetes) OU glicemia medida < 80.
 
-Em ambos ficam de fora as causas clínicas que não são desperdício: PCR,
-óbito, diabetes e hipoglicemia — pelos motivos PCC3, PCG3 e SCG2, pelo campo
-Óbito da ficha e pela situação "óbito informado".
+REAL     = chegou ao local (Chegada no local) e não removeu o paciente
+           (sem Saída para hospital).
+EVITADO  = não chegou ao local.
 
-Este módulo existe porque a Reunião de Indicadores e o Painel de Gestão
-calculavam o mesmo indicador cada um por si, e as duas telas chegaram a
-mostrar números diferentes para a mesma semana.
+Duas regras que a especificação não fixa e vieram de decisão do serviço:
+  - o real exige tempo de resposta, que o núcleo atribui só à PRIMEIRA
+    viatura a chegar. Sem isso, uma viatura de apoio que chegou depois e não
+    removeu contava como desperdício mesmo quando a primeira havia removido
+    o paciente;
+  - PCC3 (PCR/óbito) não é exclusão por si: vale o que a coluna Óbito diz.
+
+Este módulo existe porque as três telas — Indicadores, Painel de Gestão e
+Reunião de Indicadores — calculavam o mesmo indicador cada uma por si, e
+chegaram a mostrar números diferentes para a mesma semana.
 """
 
 from __future__ import annotations
 
 import pandas as pd
 
-from app.modules.indicadores import nucleo
-from app.modules.indicadores.constants import (MOTIVOS_EXCLUIDOS_DESPERDICIO,
-                                               SITUACOES_COM_REMOCAO,
-                                               SITUACOES_EXCLUIDAS_DO_REAL)
+from app.modules.indicadores.constants import (LIMITE_HIPOGLICEMIA,
+                                               MOTIVOS_HIPOGLICEMIA)
 
 
 def universo(df: pd.DataFrame) -> pd.DataFrame:
-    """Saídas efetivas que podem ser desperdício (exclui PCR/óbito/hipoglicemia)."""
-    codigo = df["motivo"].fillna("").str.split(" ").str[0].str.upper()
-    return df[df["dt_inicio_deslocamento"].notna()
-              & ~codigo.isin(MOTIVOS_EXCLUIDOS_DESPERDICIO)]
+    """Saídas efetivas de viatura — o denominador das taxas."""
+    return df[df["dt_inicio_deslocamento"].notna()]
+
+
+def obito(base: pd.DataFrame) -> pd.Series:
+    """Coluna Óbito com desfecho de morte (qualquer momento)."""
+    return base["obito_constatado"].fillna(False)
+
+
+def hipoglicemia(base: pd.DataFrame) -> pd.Series:
+    """Motivo de diabetes/hipoglicemia ou glicemia medida abaixo do limite.
+
+    Glicemia não medida (0 na ficha, nula aqui) não afirma hipoglicemia.
+    """
+    codigo = base["motivo"].fillna("").str.split(" ").str[0].str.upper()
+    glicemia = pd.to_numeric(base["glicemia"], errors="coerce")
+    return codigo.isin(MOTIVOS_HIPOGLICEMIA) | (glicemia < LIMITE_HIPOGLICEMIA)
 
 
 def mascaras(base: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
-    """(real, evitado) para um universo já filtrado por `universo()`.
-
-    REAL = chegou ao local e não removeu o paciente.
-    EVITADO = não chegou ao local.
-
-    As duas usam a mesma lista de EXCLUSÃO, não uma lista de permitidos:
-    desfecho novo no vSky passa a aparecer como desperdício, em vez de sumir
-    por não constar de uma lista.
-    """
-    situacao = base["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
+    """(real, evitado) para um universo já filtrado por `universo()`."""
+    fora = obito(base) | hipoglicemia(base)
     chegou = base["dt_chegada_no_local"].notna()
+    removeu = base["dt_saida_para_hospital"].notna()
 
-    # Fora dos dois lados:
-    #
-    # - o paciente foi removido (houve transporte). Há 498 registros que dizem
-    #   "com remoção" sem marcação de chegada: falta a marcação, não é
-    #   desperdício — se o paciente foi removido, a viatura chegou;
-    # - houve óbito. A viatura chegou e não removeu porque o paciente estava
-    #   morto: desfecho clínico, a mesma exclusão dos motivos PCC3/PCG3. Vale
-    #   o campo Óbito da ficha e também a situação "óbito informado", que é o
-    #   mesmo fato registrado do outro lado e às vezes vem sem o campo.
-    fora = (situacao.isin(SITUACOES_COM_REMOCAO)
-            | situacao.isin(SITUACOES_EXCLUIDAS_DO_REAL)
-            | base["obito_constatado"].fillna(False))
-
-    # Situação em branco não sustenta a afirmação de que houve desperdício
-    # depois de chegar. Do lado do evitado a condição é factual (saiu e não
-    # chegou), independente do desfecho registrado.
-    #
-    # O real exige tempo de resposta, que o núcleo atribui só à PRIMEIRA
-    # viatura a chegar na ocorrência. É o que mantém o desperdício sendo da
-    # ocorrência e não do empenho: sem isso, uma viatura de apoio que chegou
-    # depois e não removeu contava como desperdício mesmo quando a primeira
-    # havia removido o paciente (495 casos, 338 deles com remoção).
-    real = chegou & situacao.ne("") & ~fora & base["tempo_resposta"].notna()
+    real = chegou & ~removeu & ~fora & base["tempo_resposta"].notna()
     evitado = ~chegou & ~fora
     return real, evitado

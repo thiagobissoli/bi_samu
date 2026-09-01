@@ -109,34 +109,13 @@ PERIODOS = [
     ("t_p9", "P9 — Transf. cuidados", "Atendimento encerrado − Chegada no hospital"),
 ]
 
-# Situações em que o paciente FOI removido: houve transporte, logo não é
-# desperdício. O desperdício REAL é o complemento disto entre as saídas que
-# chegaram ao local — lista de exclusão, não de inclusão, para que um
-# desfecho novo no vSky apareça em vez de sumir.
-SITUACOES_COM_REMOCAO = {
-    "ATENDIMENTO PRE-HOSPITALAR COM REMOCAO PARA UNID.",
-    "OCORRENCIA INTER-HOSPITALAR",
-}
-# Desfecho clínico que a regra exclui junto com PCR/óbito/hipoglicemia: é o
-# mesmo óbito dos motivos excluídos, registrado como situação.
-SITUACOES_EXCLUIDAS_DO_REAL = {"OBITO INFORMADO"}
-
-# Desperdício EVITADO — saída interrompida no trajeto. Lista curada (projeto
-# Desperdicio, validada com a coordenação): sem chegada não há remoção para
-# servir de critério, e nem toda saída interrompida é desperdício.
-SITUACOES_DESPERDICIO = {
-    "ATENDIMENTO PRE-HOSPITALAR COM RECUSA DE ENCAMINHAMENTO",
-    "VITIMA SOCORRIDA POR TERCEIROS",
-    "OCORRENCIA ENVIADA POR ENGANO",
-    "RECUSA AO ATENDIMENTO PELA VITIMA OU EVASAO",
-    "SOLITANTE/PACIENTE NAO LOCALIZADO",  # grafia exata da base vSky
-    "DESISTENCIA DO SOLICITANTE",
-}
-# Causas clínicas que não são desperdício, quaisquer que sejam o desfecho e a
-# remoção: PCR e óbito (PCC3), diabetes e hipoglicemia (PCG3 e a cetoacidose
-# diabética SCG2). Confirmado na base que não há outro motivo dessas famílias
-# — e que PCR1..PCR9 são problema RESPIRATÓRIO, não parada cardíaca.
-MOTIVOS_EXCLUIDOS_DESPERDICIO = {"PCC3", "PCG3", "SCG2"}
+# Desperdício operacional — ver app/modules/indicadores/desperdicio.py.
+# Nunca é desperdício quando há óbito (coluna Óbito) ou hipoglicemia. Esta
+# última vale pelo motivo de diabetes/hipoglicemia ou pela glicemia medida
+# abaixo do limite. PCR (PCC3) não é exclusão por si: vale o que a coluna
+# Óbito disser. E PCR1..PCR9 são problema RESPIRATÓRIO, não parada cardíaca.
+MOTIVOS_HIPOGLICEMIA = {"PCG3", "SCG2"}
+LIMITE_HIPOGLICEMIA = 80          # mg/dL; glicemia não medida não conta
 
 # Escala NEWS modificada (proposta local: FR, FC, PAS, Glasgow + Glicemia).
 # Cada parâmetro pontua 0–3; total = soma. Núcleo obrigatório: FR, FC, PAS

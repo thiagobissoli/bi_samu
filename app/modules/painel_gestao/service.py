@@ -350,10 +350,10 @@ class PainelGestaoService:
             "icone": "fa-recycle", "cor": "danger",
             # Mesmo universo da Reunião de Indicadores (toda a frota): as
             # duas telas precisam mostrar o mesmo número para a mesma semana.
-            "nota": "toda a frota · exclui PCR/óbito (PCC3) e "
-                    "diabetes/hipoglicemia (PCG3, SCG2) — real: chegou ao "
-                    "local e não removeu o paciente · evitado: não chegou "
-                    "ao local",
+            "nota": "toda a frota · nunca conta com óbito ou hipoglicemia "
+                    "(motivo PCG3/SCG2 ou glicemia < 80) — real: chegou ao "
+                    "local e não removeu (sem saída p/ hospital) · evitado: "
+                    "não chegou ao local",
             "blocos": [
                 {"kpis": [
                     {"label": "Real — última semana",

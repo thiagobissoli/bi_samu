@@ -31,13 +31,12 @@ from app.modules.indicadores.constants import (
     METAS_TEMPO,
     METRICAS_DESEMPENHO,
     PREFIXO_CONFIG_META,
-    MOTIVOS_EXCLUIDOS_DESPERDICIO,
+    LIMITE_HIPOGLICEMIA,
     NEWS_BANDAS,
     NEWS_CRITERIOS,
     PAPEIS,
     PERIODOS,
     PROFISSIONAIS_SPEC,
-    SITUACOES_DESPERDICIO,
     SLA_P1,
     SLA_P2_POR_COR,
     TEMAS,
@@ -2315,28 +2314,24 @@ class IndicadoresService:
         }
 
     def tema_desperdicio(self, df: pd.DataFrame) -> dict:
-        """Desperdício operacional (definição curada do projeto Desperdicio):
-        universo = saídas efetivas (início de deslocamento), excluindo
-        motivos PCG3/PCC3; candidato = situação em SITUACOES_DESPERDICIO;
-        REAL = chegou ao local · EVITADO = cancelada no trajeto."""
-        motivo_cod = df["motivo"].fillna("").str.split(" ").str[0].str.upper()
-        universo = df[df["dt_inicio_deslocamento"].notna()
-                      & ~motivo_cod.isin(MOTIVOS_EXCLUIDOS_DESPERDICIO)]
+        """Desperdício operacional — definição única em indicadores/
+        desperdicio.py, a mesma do Painel de Gestão e da Reunião."""
+        from app.modules.indicadores import desperdicio as regra
+
+        universo = regra.universo(df)
         sit = universo["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
-        cand = sit.isin(SITUACOES_DESPERDICIO)
-        chegou = universo["dt_chegada_no_local"].notna()
-        real = cand & chegou
-        evitado = cand & ~chegou
+        real, evitado = regra.mascaras(universo)
+        cand = real | evitado
         n_u = len(universo) or 1
 
         kpis = [
             {"label": "Saídas no universo", "valor": str(len(universo)),
-             "sub": "com deslocamento, sem PCG3/PCC3"},
+             "sub": "saída efetiva de viatura"},
             {"label": "Desperdício real", "valor": str(int(real.sum())),
-             "sub": f"{real.sum() / n_u * 100:.1f}% das saídas — chegou ao local"},
+             "sub": f"{real.sum() / n_u * 100:.1f}% — chegou e não removeu"},
             {"label": "Desperdício evitado", "valor": str(int(evitado.sum())),
-             "sub": f"{evitado.sum() / n_u * 100:.1f}% — cancelada no trajeto"},
-            {"label": "Total candidatos", "valor": str(int(cand.sum())),
+             "sub": f"{evitado.sum() / n_u * 100:.1f}% — não chegou ao local"},
+            {"label": "Total", "valor": str(int(cand.sum())),
              "sub": f"{cand.sum() / n_u * 100:.1f}% (real + evitado)"},
         ]
 
@@ -2438,14 +2433,21 @@ class IndicadoresService:
             n_evit = int((sit.eq(s) & evitado).sum())
             linhas_sit.append([s.title(), n_real, n_evit, n_real + n_evit,
                                f"{(n_real + n_evit) / n_u * 100:.2f}%"])
-        criterio = [[s.title()] for s in sorted(SITUACOES_DESPERDICIO)]
+        criterio = [
+            ["Universo", "saída efetiva de viatura (há início de deslocamento)"],
+            ["Nunca é desperdício",
+             "óbito (coluna Óbito) ou hipoglicemia (motivo PCG3/SCG2 ou "
+             f"glicemia medida < {LIMITE_HIPOGLICEMIA})"],
+            ["Real", "chegou ao local e não removeu o paciente (sem Saída "
+                     "para hospital), pela viatura que chegou primeiro"],
+            ["Evitado", "não chegou ao local"],
+        ]
         return {"kpis": kpis, "charts": charts, "tables": [
             {"titulo": "Real × evitado por situação",
              "colunas": ["Situação", "Real", "Evitado", "Total", "% das saídas"],
              "linhas": linhas_sit},
-            {"titulo": "Critério — situações consideradas desperdício "
-                       "(exclui 'Atendimento no local'; motivos PCG3/PCC3 fora do universo)",
-             "colunas": ["Situação"], "linhas": criterio},
+            {"titulo": "Critério do indicador",
+             "colunas": ["Regra", "Definição"], "linhas": criterio},
         ]}
 
     def tema_apoio(self, df: pd.DataFrame) -> dict:
@@ -2575,24 +2577,28 @@ class IndicadoresService:
                          if len(p1) else "--",
                          "sub": f"{int((p1 <= SLA_P1).sum())}/{len(p1)} dentro do SLA"})
 
-        # --- desperdício (definição curada) no recorte do papel ------------
+        # --- desperdício no recorte do papel (definição única) -------------
         tem_desperdicio = spec.get("desperdicio", False)
         desp_real = desp_evitado = None
         if tem_desperdicio:
-            motivo_cod_b = base["motivo"].fillna("").str.split(" ").str[0].str.upper()
-            univ_mask = (base["dt_inicio_deslocamento"].notna()
-                         & ~motivo_cod_b.isin(MOTIVOS_EXCLUIDOS_DESPERDICIO))
+            from app.modules.indicadores import desperdicio as regra
+
+            univ_mask = base["dt_inicio_deslocamento"].notna()
+            # usada adiante no gráfico de composição por situação
             sit_b = base["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
-            cand_b = univ_mask & sit_b.isin(SITUACOES_DESPERDICIO)
-            desp_real = cand_b & base["dt_chegada_no_local"].notna()
-            desp_evitado = cand_b & base["dt_chegada_no_local"].isna()
+            # As máscaras vêm indexadas pelo universo; reindexar devolve
+            # False para as linhas de fora, que é o esperado aqui.
+            m_real, m_evit = regra.mascaras(base[univ_mask])
+            desp_real = m_real.reindex(base.index, fill_value=False)
+            desp_evitado = m_evit.reindex(base.index, fill_value=False)
             n_univ = int(univ_mask.sum()) or 1
             kpis.append({"label": "Desperdício real",
                          "valor": f"{desp_real.sum() / n_univ * 100:.1f}%",
-                         "sub": f"{int(desp_real.sum())}/{n_univ} saídas"})
+                         "sub": f"{int(desp_real.sum())}/{n_univ} saídas — "
+                                "chegou e não removeu"})
             kpis.append({"label": "Desperdício evitado",
                          "valor": f"{desp_evitado.sum() / n_univ * 100:.1f}%",
-                         "sub": f"{int(desp_evitado.sum())} canceladas no trajeto"})
+                         "sub": f"{int(desp_evitado.sum())} não chegaram ao local"})
 
         # --- assertividade geral do papel ----------------------------------
         tem_assert = spec.get("assertividade", True)

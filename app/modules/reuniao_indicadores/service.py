@@ -466,16 +466,16 @@ class ReuniaoIndicadoresService:
         slides.append({
             "kicker": "Desperdício operacional · Saída efetiva · Toda a frota",
             "titulo": "Desperdícios operacionais com saída efetiva",
-            "subtitulo": "Saída efetiva de viatura · toda a frota · exclui "
-                         "PCR/óbito (PCC3) e diabetes/hipoglicemia (PCG3, "
-                         "SCG2) · "
+            "subtitulo": "Saída efetiva de viatura · toda a frota · nunca "
+                         "conta com óbito ou hipoglicemia (motivo PCG3/SCG2 "
+                         "ou glicemia < 80) · "
                          "desperdício REAL (chegou ao local e NÃO removeu o "
                          "paciente) × EVITADO (não chegou ao local) · "
                          f"números = última semana ({sem_data})",
             "kpis": [
                 {"valor": str(n_real_sem),
                  "label": f"Desperdício REAL · última semana ({sem_data})",
-                 "sub": f"chegou e não removeu · taxa "
+                 "sub": f"chegou e não removeu (sem saída p/ hospital) · taxa "
                         f"{n_real_sem / n_saidas_sem * 100:.1f}% das saídas "
                         "efetivas".replace(".", ","), "cor": VERMELHO},
                 {"valor": str(n_evit_sem),

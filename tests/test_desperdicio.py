@@ -1,25 +1,27 @@
 """Definição de desperdício operacional.
 
-REAL: a viatura saiu, chegou no local e NÃO removeu o paciente.
-EVITADO: saiu e foi mitigada no trajeto, sem chegar.
-Fora dos dois: PCR, óbito e hipoglicemia.
+Universo: saída efetiva de viatura.
+Nunca é desperdício: óbito (coluna Óbito) ou hipoglicemia (motivo PCG3/SCG2
+ou glicemia medida < 80).
+REAL: chegou ao local e não removeu o paciente (sem Saída para hospital).
+EVITADO: não chegou ao local.
 """
 
 import pandas as pd
 import pytest
 
 from app.modules.indicadores import desperdicio, nucleo
-from app.modules.indicadores.constants import (SITUACOES_COM_REMOCAO,
-                                               SITUACOES_EXCLUIDAS_DO_REAL)
 
 
 def _linha(**campos):
+    """Saída que chegou, não removeu, sem óbito e com glicemia normal."""
     base = {"motivo": "PCC1 DOR TORACICA",
             "dt_inicio_deslocamento": pd.Timestamp("2026-08-01 10:00"),
             "dt_chegada_no_local": pd.Timestamp("2026-08-01 10:20"),
-            "tempo_resposta": 1200.0,      # 1ª viatura a chegar
+            "dt_saida_para_hospital": pd.NaT,
+            "tempo_resposta": 1200.0,      # é a 1ª viatura a chegar
             "obito_constatado": False,
-            "situacao_atendimento": "Atendimento Pré-Hospitalar Com Atendimento No Local"}
+            "glicemia": 110.0}
     base.update(campos)
     return base
 
@@ -31,135 +33,118 @@ def _mascaras(linhas):
     return base, real, evitado
 
 
-def test_chegou_e_nao_removeu_e_desperdicio_real():
-    _, real, evitado = _mascaras([_linha()])
-    assert bool(real.iloc[0]) and not bool(evitado.iloc[0])
-
-
-def test_remocao_do_paciente_nao_e_desperdicio():
-    """O contraexemplo direto da regra: houve transporte."""
-    for situacao in SITUACOES_COM_REMOCAO:
-        _, real, _ = _mascaras([_linha(situacao_atendimento=situacao.title())])
-        assert not bool(real.iloc[0]), situacao
-
-
-def test_pcr_obito_diabetes_e_hipoglicemia_ficam_de_fora():
-    for motivo in ("PCC3 PCR/ÓBITO", "PCG3 DIABETES/HIPOGLICEMIA",
-                   "SCG2 CETOACIDOSE DIABÉTICA"):
-        base, real, evitado = _mascaras([_linha(motivo=motivo)])
-        assert base.empty, motivo          # nem entra no universo
-        # nem chegando, nem sem chegar
-        base, _, _ = _mascaras([_linha(motivo=motivo, dt_chegada_no_local=pd.NaT)])
-        assert base.empty, motivo
-    # óbito registrado como situação também não conta
-    for situacao in SITUACOES_EXCLUIDAS_DO_REAL:
-        _, real, _ = _mascaras([_linha(situacao_atendimento=situacao.title())])
-        assert not bool(real.iloc[0]), situacao
-
-
-def test_viatura_de_apoio_que_chegou_depois_nao_e_desperdicio_real():
-    """Sem tempo de resposta, o empenho não é o da ocorrência: é apoio que
-    chegou depois. Contá-lo marcava como desperdício a ocorrência em que a
-    primeira viatura removeu o paciente."""
-    _, real, evitado = _mascaras([_linha(tempo_resposta=None)])
-    assert not bool(real.iloc[0])
-    assert not bool(evitado.iloc[0])       # chegou, então também não é evitado
-
-
-def test_obito_nao_e_desperdicio():
-    """Chegou e não removeu porque o paciente morreu: desfecho clínico."""
-    _, real, evitado = _mascaras([_linha(obito_constatado=True)])
-    assert not bool(real.iloc[0])
-    # nem do lado do evitado, quando a viatura não chegou
-    _, _, evitado = _mascaras([_linha(obito_constatado=True,
-                                      dt_chegada_no_local=pd.NaT,
-                                      tempo_resposta=None)])
-    assert not bool(evitado.iloc[0])
-
-
-def test_sem_obito_segue_contando():
-    """O contraexemplo: "não houve óbito" não pode zerar o indicador."""
-    _, real, _ = _mascaras([_linha(obito_constatado=False)])
-    assert bool(real.iloc[0])
-
-
-def test_nenhum_desperdicio_tem_obito_na_base_real():
-    df = nucleo.carregar(1)
-    if df.empty:
-        pytest.skip("sem dados importados")
-    base = desperdicio.universo(df)
-    real, evitado = desperdicio.mascaras(base)
-    obito = base["obito_constatado"].fillna(False)
-    assert int((real & obito).sum()) == 0
-    assert int((evitado & obito).sum()) == 0
-
-
-def test_nao_chegar_ao_local_e_desperdicio_evitado():
-    """A regra do evitado é factual: saiu e não chegou."""
-    _, real, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT, tempo_resposta=None,
-                                         situacao_atendimento="Desistência do Solicitante")])
-    assert not bool(real.iloc[0])
-    assert bool(evitado.iloc[0])
-
-
-def test_evitado_nao_depende_de_lista_de_situacoes():
-    """Qualquer desfecho sem chegada conta, inclusive um inédito no vSky."""
-    for situacao in ("Situação Inédita No Vsky", "Trote",
-                     "Indisponibilidade De Recurso"):
-        _, _, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT, tempo_resposta=None,
-                                          situacao_atendimento=situacao)])
-        assert bool(evitado.iloc[0]), situacao
-
-
-def test_remocao_sem_marcacao_de_chegada_nao_e_evitado():
-    """498 registros dizem "com remoção" sem horário de chegada: falta a
-    marcação. O paciente foi removido, logo a viatura chegou — contar isso
-    como desperdício evitado afirmaria o contrário do desfecho."""
-    for situacao in SITUACOES_COM_REMOCAO:
-        _, real, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT, tempo_resposta=None,
-                                             situacao_atendimento=situacao.title())])
-        assert not bool(evitado.iloc[0]), situacao
-        assert not bool(real.iloc[0]), situacao
-
-
-def test_obito_sem_chegada_tambem_fica_de_fora():
-    for situacao in SITUACOES_EXCLUIDAS_DO_REAL:
-        _, _, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT, tempo_resposta=None,
-                                          situacao_atendimento=situacao.title())])
-        assert not bool(evitado.iloc[0]), situacao
-
+# ------------------------------------------------------------ universo
 
 def test_sem_saida_nao_entra_no_universo():
     base, _, _ = _mascaras([_linha(dt_inicio_deslocamento=pd.NaT)])
     assert base.empty
 
 
-def test_situacao_em_branco_nao_vira_desperdicio():
-    """Desfecho desconhecido não sustenta a afirmação de que houve desperdício."""
-    _, real, _ = _mascaras([_linha(situacao_atendimento="")])
+# ------------------------------------------------------------- o real
+
+def test_chegou_e_nao_removeu_e_desperdicio_real():
+    _, real, evitado = _mascaras([_linha()])
+    assert bool(real.iloc[0]) and not bool(evitado.iloc[0])
+
+
+def test_saida_para_hospital_significa_remocao():
+    """O critério de remoção é o campo, não a situação da ocorrência."""
+    _, real, evitado = _mascaras([
+        _linha(dt_saida_para_hospital=pd.Timestamp("2026-08-01 10:40"))])
+    assert not bool(real.iloc[0]) and not bool(evitado.iloc[0])
+
+
+def test_viatura_de_apoio_que_chegou_depois_nao_e_desperdicio_real():
+    """Sem tempo de resposta o empenho é apoio, não a viatura da ocorrência."""
+    _, real, _ = _mascaras([_linha(tempo_resposta=None)])
     assert not bool(real.iloc[0])
 
 
-def test_desfecho_novo_do_vsky_entra_como_desperdicio():
-    """A regra é lista de EXCLUSÃO: situação nova sem remoção conta, em vez de
-    sumir por não estar numa lista de permitidos."""
-    _, real, _ = _mascaras([_linha(situacao_atendimento="Situação Inédita No Vsky")])
-    assert bool(real.iloc[0])
+# ---------------------------------------------------------- o evitado
+
+def test_nao_chegar_ao_local_e_desperdicio_evitado():
+    _, real, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT,
+                                         tempo_resposta=None)])
+    assert not bool(real.iloc[0]) and bool(evitado.iloc[0])
 
 
-def test_invariante_do_tempo_de_resposta_na_base_real():
-    """Todo desperdício real tem tempo de resposta; nenhum evitado tem."""
+def test_evitado_nao_depende_da_situacao_registrada():
+    for situacao in ("Trote", "Situação Inédita No Vsky",
+                     "Indisponibilidade De Recurso"):
+        _, _, evitado = _mascaras([_linha(dt_chegada_no_local=pd.NaT,
+                                          tempo_resposta=None,
+                                          situacao_atendimento=situacao)])
+        assert bool(evitado.iloc[0]), situacao
+
+
+# ------------------------------------------------------------- óbito
+
+def test_obito_nunca_e_desperdicio():
+    for lado in ({}, {"dt_chegada_no_local": pd.NaT, "tempo_resposta": None}):
+        _, real, evitado = _mascaras([_linha(obito_constatado=True, **lado)])
+        assert not bool(real.iloc[0]) and not bool(evitado.iloc[0])
+
+
+def test_todos_os_desfechos_de_morte_contam_como_obito():
+    """Os cinco valores da coluna Óbito que significam morte."""
+    valores = ("Constatado Óbito", "Antes do Atendimento",
+               "Durante Transporte Pré-Hospitalar",
+               "Óbito durante o atendimento no local",
+               "Durante Transporte Inter-Hospitalar")
     df = nucleo.carregar(1)
     if df.empty:
         pytest.skip("sem dados importados")
-    base = desperdicio.universo(df)
-    real, evitado = desperdicio.mascaras(base)
-    tr = base["tempo_resposta"]
-    assert int((real & tr.isna()).sum()) == 0, "real sem tempo de resposta"
-    assert int((evitado & tr.notna()).sum()) == 0, "evitado com tempo de resposta"
+    for valor in valores:
+        linhas = df[df["obito"] == valor]
+        if linhas.empty:
+            continue
+        assert linhas["obito_constatado"].all(), valor
+    # e o contraexemplo
+    nao = df[df["obito"] == "Não houve óbito"]
+    if not nao.empty:
+        assert not nao["obito_constatado"].any()
 
 
-def test_real_e_evitado_sao_disjuntos_na_base_real():
+# ------------------------------------------------------ hipoglicemia
+
+def test_motivo_de_diabetes_e_hipoglicemia():
+    for motivo in ("PCG3 DIABETES/HIPOGLICEMIA", "SCG2 CETOACIDOSE DIABÉTICA"):
+        _, real, _ = _mascaras([_linha(motivo=motivo)])
+        assert not bool(real.iloc[0]), motivo
+
+
+def test_glicemia_abaixo_de_80_e_hipoglicemia():
+    _, real, _ = _mascaras([_linha(glicemia=79.0)])
+    assert not bool(real.iloc[0])
+    _, real, _ = _mascaras([_linha(glicemia=80.0)])
+    assert bool(real.iloc[0]), "80 não é hipoglicemia"
+
+
+def test_glicemia_nao_medida_nao_afirma_hipoglicemia():
+    """0 na ficha vira nulo no núcleo: sem medida não há como afirmar."""
+    _, real, _ = _mascaras([_linha(glicemia=None)])
+    assert bool(real.iloc[0])
+
+
+def test_pcr_nao_e_exclusao_por_si():
+    """PCC3 sem óbito registrado conta; com óbito, não (decisão do serviço)."""
+    _, real, _ = _mascaras([_linha(motivo="PCC3 PCR/ÓBITO")])
+    assert bool(real.iloc[0])
+    _, real, _ = _mascaras([_linha(motivo="PCC3 PCR/ÓBITO",
+                                   obito_constatado=True)])
+    assert not bool(real.iloc[0])
+
+
+def test_pcr_respiratorio_nao_e_confundido_com_parada():
+    """PCR1..PCR9 são problema respiratório."""
+    for motivo in ("PCR1 ASMA/CRISE", "PCR2 DISPNEIA", "PCR3 ENGASGO / OVACE"):
+        _, real, _ = _mascaras([_linha(motivo=motivo)])
+        assert bool(real.iloc[0]), motivo
+
+
+# --------------------------------------------- invariantes na base real
+
+def test_real_e_evitado_sao_disjuntos():
     df = nucleo.carregar(1)
     if df.empty:
         pytest.skip("sem dados importados")
@@ -169,49 +154,75 @@ def test_real_e_evitado_sao_disjuntos_na_base_real():
     assert int(real.sum()) > 0 and int(evitado.sum()) > 0
 
 
-def test_as_duas_telas_usam_a_mesma_definicao():
-    """Painel de Gestão e Reunião de Indicadores já divergiram por calcular
-    isto cada um por si."""
+def test_invariante_do_tempo_de_resposta():
+    """Todo real tem tempo de resposta; nenhum evitado tem, pois não chegou."""
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    base = desperdicio.universo(df)
+    real, evitado = desperdicio.mascaras(base)
+    tr = base["tempo_resposta"]
+    assert int((real & tr.isna()).sum()) == 0
+    assert int((evitado & tr.notna()).sum()) == 0
+
+
+def test_nenhum_desperdicio_com_obito_ou_hipoglicemia():
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    base = desperdicio.universo(df)
+    real, evitado = desperdicio.mascaras(base)
+    fora = desperdicio.obito(base) | desperdicio.hipoglicemia(base)
+    assert int((real & fora).sum()) == 0
+    assert int((evitado & fora).sum()) == 0
+
+
+def test_nenhum_real_tem_saida_para_hospital():
+    df = nucleo.carregar(1)
+    if df.empty:
+        pytest.skip("sem dados importados")
+    base = desperdicio.universo(df)
+    real, _ = desperdicio.mascaras(base)
+    assert int((real & base["dt_saida_para_hospital"].notna()).sum()) == 0
+
+
+# ------------------------------------------- as três telas do sistema
+
+def test_as_tres_telas_usam_a_mesma_definicao():
+    """Indicadores, Painel de Gestão e Reunião calculavam isto cada um por si
+    e chegaram a divergir na mesma semana."""
+    from app.modules.indicadores.service import IndicadoresService
     from app.modules.painel_gestao.service import PainelGestaoService
     from app.modules.reuniao_indicadores.service import (
         ReuniaoIndicadoresService)
 
-    painel = PainelGestaoService(1).montar()
-    deck = ReuniaoIndicadoresService(1).montar()
-    if not painel["secoes"] or not deck["slides"]:
-        pytest.skip("sem dados importados")
-
-    import re
-    sec = next(s for s in painel["secoes"] if s["id"] == "desperdicio")
-    slide = next(s for s in deck["slides"]
-                 if s["titulo"].startswith("Desperdícios operacionais"))
-    achado = re.search(r"(\d+) de (\d+) saídas",
-                       sec["blocos"][0]["kpis"][0]["sub"])
-    real_painel = int(achado.group(1))
-    real_deck = int(next(k["valor"] for k in slide["kpis"]
-                         if k["label"].startswith("Desperdício REAL ·")))
-    assert real_painel == real_deck
-
-
-def test_nenhuma_causa_dessas_familias_escapa_da_exclusao():
-    """Varre a base atrás de motivo de PCR, óbito, diabetes ou hipoglicemia
-    que tenha ficado fora da lista — foi assim que a cetoacidose diabética
-    apareceu depois de a regra já estar escrita."""
-    from app.modules.indicadores.constants import MOTIVOS_EXCLUIDOS_DESPERDICIO
-
     df = nucleo.carregar(1)
     if df.empty:
         pytest.skip("sem dados importados")
-    escaparam = set()
-    for motivo in df["motivo"].dropna().unique():
-        texto = nucleo.norm_txt(motivo)
-        familia = any(p in texto for p in ("DIABET", "HIPOGLIC", "GLICEM",
-                                           "OBITO"))
-        # "PCR" só conta como parada quando é palavra, não prefixo de código:
-        # PCR1..PCR9 são problema respiratório
-        familia = familia or " PCR" in f" {texto}".replace("PCR1", "").replace(
-            "PCR2", "").replace("PCR3", "").replace("PCR4", "").replace(
-            "PCR9", "")
-        if familia and motivo.split(" ")[0].upper() not in MOTIVOS_EXCLUIDOS_DESPERDICIO:
-            escaparam.add(motivo)
-    assert not escaparam, f"causas fora da exclusão: {sorted(escaparam)}"
+    base = desperdicio.universo(df)
+    real, evitado = desperdicio.mascaras(base)
+
+    # Indicadores — página de desperdício, período inteiro
+    dados = IndicadoresService(1).dashboard("desperdicio", {})
+    kpis = {k["label"]: k["valor"] for k in dados["kpis"]}
+    assert int(kpis["Desperdício real"]) == int(real.sum())
+    assert int(kpis["Desperdício evitado"]) == int(evitado.sum())
+    assert int(kpis["Saídas no universo"]) == len(base)
+
+    # Painel e Reunião — última semana completa
+    import re
+    painel = PainelGestaoService(1).montar()
+    deck = ReuniaoIndicadoresService(1).montar()
+    assert painel["semana"] == deck["semana"]
+    na_semana = base["semana_iso"] == painel["semana"]
+    esperado = int((real & na_semana).sum())
+
+    sec = next(s for s in painel["secoes"] if s["id"] == "desperdicio")
+    achado = re.search(r"(\d+) de (\d+) saídas",
+                       sec["blocos"][0]["kpis"][0]["sub"])
+    assert int(achado.group(1)) == esperado
+
+    slide = next(s for s in deck["slides"]
+                 if s["titulo"].startswith("Desperdícios operacionais"))
+    assert int(next(k["valor"] for k in slide["kpis"]
+                    if k["label"].startswith("Desperdício REAL ·"))) == esperado
