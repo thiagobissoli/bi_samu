@@ -64,14 +64,35 @@ class VskyRegistroRepository:
             .where(VskyRegistroAnalitico.deleted_at.is_(None))
         )
 
-    def query(self, search: str | None = None):
+    def query(self, search: str | None = None,
+              data_inicial: str | None = None,
+              data_final: str | None = None):
+        """Registros para a tela e para a exportação (datas em ISO)."""
+        from datetime import datetime, timedelta
+
         query = self._query().order_by(
             VskyRegistroAnalitico.data_ocorrencia_dt.desc(),
             VskyRegistroAnalitico.id.desc())
+        if data_inicial:
+            try:
+                query = query.where(
+                    VskyRegistroAnalitico.data_ocorrencia_dt
+                    >= datetime.strptime(data_inicial, "%Y-%m-%d"))
+            except ValueError:
+                pass
+        if data_final:
+            try:   # o dia final entra inteiro
+                query = query.where(
+                    VskyRegistroAnalitico.data_ocorrencia_dt
+                    < datetime.strptime(data_final, "%Y-%m-%d")
+                    + timedelta(days=1))
+            except ValueError:
+                pass
         if search:
             query = query.where(or_(
                 VskyRegistroAnalitico.ocorrencia.ilike(f"%{search}%"),
                 VskyRegistroAnalitico.codigo_da_ocorrencia.ilike(f"%{search}%"),
+                VskyRegistroAnalitico.motivo.ilike(f"%{search}%"),
                 VskyRegistroAnalitico.paciente.ilike(f"%{search}%"),
                 VskyRegistroAnalitico.cidade.ilike(f"%{search}%"),
                 VskyRegistroAnalitico.bairro.ilike(f"%{search}%"),

@@ -51,8 +51,10 @@ class DownloadVskyService:
     def query(self, search: str | None = None):
         return self.importacoes.query(search)
 
-    def query_registros(self, search: str | None = None):
-        return self.registros.query(search)
+    def query_registros(self, search: str | None = None,
+                        data_inicial: str | None = None,
+                        data_final: str | None = None):
+        return self.registros.query(search, data_inicial, data_final)
 
     def total_registros(self) -> int:
         return self.registros.total()

@@ -4,7 +4,7 @@ Rotas protegidas por permissão (§9) e auditadas (§11).
 Nenhuma rota acessa o banco diretamente — sempre via Service (§35.3).
 """
 
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -182,15 +182,52 @@ def substituir(
 def registros(
     request: Request,
     q: str | None = None,
+    data_inicial: str | None = None,
+    data_final: str | None = None,
     page: int = 1,
     usuario: Usuario = Depends(require_permission("download_vsky.listar")),
     db: Session = Depends(get_session),
 ):
     service = DownloadVskyService(db, usuario.empresa_id)
-    pg = paginate(db, service.query_registros(q), page)
+    pg = paginate(db, service.query_registros(q, data_inicial, data_final), page)
+    filtros = {"q": q or "", "data_inicial": data_inicial or "",
+               "data_final": data_final or ""}
     return render(request, "download_vsky/registros.html", usuario,
-                  page_title="Registros vSky", pg=pg, q=q or "", qs=f"&q={q or ''}",
-                  colunas=COLUNAS)
+                  page_title="Registros vSky", pg=pg, q=q or "",
+                  qs="&" + urlencode(filtros), filtros=filtros, colunas=COLUNAS)
+
+
+@router.get("/registros/excel", include_in_schema=False)
+def registros_excel(
+    q: str | None = None,
+    data_inicial: str | None = None,
+    data_final: str | None = None,
+    usuario: Usuario = Depends(require_permission("download_vsky.listar")),
+    db: Session = Depends(get_session),
+):
+    """Baixa em xlsx os registros do filtro atual da tela."""
+    from starlette.background import BackgroundTask
+
+    from app.modules.download_vsky.exportacao import gerar_planilha
+
+    service = DownloadVskyService(db, usuario.empresa_id)
+    caminho, linhas, truncado = gerar_planilha(
+        db, service.query_registros(q, data_inicial, data_final))
+    if not linhas:
+        caminho.unlink(missing_ok=True)
+        return RedirectResponse(
+            "/download_vsky/registros?erro=" + quote(
+                "Nenhum registro no filtro atual — nada a exportar."),
+            status_code=303)
+
+    periodo = "_".join(x for x in (data_inicial, data_final) if x) or "completo"
+    nome = f"registros_vsky_{periodo}.xlsx"
+    return FileResponse(
+        caminho, filename=nome,
+        media_type=("application/vnd.openxmlformats-officedocument"
+                    ".spreadsheetml.sheet"),
+        # o arquivo é temporário: sai do disco assim que a resposta termina
+        background=BackgroundTask(caminho.unlink, missing_ok=True))
 
 
 @router.get("/{item_id}/arquivo", include_in_schema=False)

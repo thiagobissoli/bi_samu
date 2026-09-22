@@ -14,15 +14,45 @@
         </a>
     </div>
     <div class="card-body">
-        <form method="get" action="/download_vsky/registros" class="row g-2 mb-3">
+        <form method="get" action="/download_vsky/registros" class="row g-2 mb-3 align-items-end">
             <div class="col-auto">
-                <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
-                       placeholder="Ocorrência, paciente, cidade, telefone...">
+                <label class="form-label mb-0 small" for="q">Buscar</label>
+                <input type="text" id="q" name="q" value="{{ filtros.q }}"
+                       class="form-control form-control-sm" style="min-width: 15rem;"
+                       placeholder="Ocorrência, motivo, paciente, cidade, telefone...">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="data_inicial">Data inicial</label>
+                <input type="date" id="data_inicial" name="data_inicial"
+                       value="{{ filtros.data_inicial }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 small" for="data_final">Data final</label>
+                <input type="date" id="data_final" name="data_final"
+                       value="{{ filtros.data_final }}" class="form-control form-control-sm">
             </div>
             <div class="col-auto">
                 <button type="submit" class="btn btn-outline-secondary btn-sm">
-                    <i class="fa-solid fa-magnifying-glass"></i> Buscar
+                    <i class="fa-solid fa-magnifying-glass"></i> Filtrar
                 </button>
+                <a href="/download_vsky/registros" class="btn btn-outline-secondary btn-sm">
+                    Limpar
+                </a>
+            </div>
+            <div class="col-auto ms-auto">
+                {# Exporta o filtro atual, não só a página exibida. #}
+                <button type="submit" class="btn btn-success btn-sm"
+                        formaction="/download_vsky/registros/excel"
+                        title="Baixa em xlsx todos os registros do filtro atual"
+                        onclick="this.querySelector('.spinner-border').classList.remove('d-none');">
+                    <span class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
+                    <i class="fa-solid fa-file-excel"></i> Baixar Excel
+                </button>
+                <div class="form-text">
+                    {{ "{:,}".format(pg["total"]).replace(",", ".") }} registros
+                    no filtro{% if pg["total"] > 100000 %} — a planilha pode
+                    levar mais de um minuto{% endif %}
+                </div>
             </div>
         </form>
 

@@ -850,3 +850,127 @@ def test_substituir_revive_registro_que_voltou_ao_vsky(monkeypatch):
         assert item.linhas_novas == 1
     finally:
         _limpar_teste(db, "9910200")
+
+
+def _planilha(conteudo: bytes):
+    """Lê o xlsx da resposta e devolve as linhas como tuplas."""
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    wb = load_workbook(BytesIO(conteudo), read_only=True)
+    return list(wb.active.iter_rows(values_only=True))
+
+
+def _temporarios() -> set:
+    import tempfile
+    from pathlib import Path
+
+    return set(Path(tempfile.gettempdir()).glob("registros_vsky_*.xlsx"))
+
+
+def test_exportacao_excel_respeita_o_filtro(monkeypatch):
+    """A planilha traz exatamente as linhas do filtro da tela — quem exporta
+    uma busca não pode receber a base inteira (480 mil linhas)."""
+    from app.modules.download_vsky.constants import COLUNAS
+
+    _stub_client(monkeypatch, [LINHA_A, LINHA_B])
+    _limpar_registros_de_teste()
+    _configurar_credenciais()
+    _login()
+    client.post("/download_vsky/api", json={"data_inicial": "2026-08-01",
+                                            "data_final": "2026-08-06"})
+
+    antes = _temporarios()
+    resp = client.get("/download_vsky/registros/excel",
+                      params={"q": LINHA_A["ocorrencia"]})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    linhas = _planilha(resp.content)
+    assert linhas[0] == tuple(titulo for _, titulo in COLUNAS)
+    assert len(linhas) == 2, "só a ocorrência buscada deveria estar na planilha"
+    assert linhas[1][0] == LINHA_A["ocorrencia"]
+    # o texto do vSky é preservado, sem virar data do Excel
+    assert linhas[1][COLUNAS.index(("data_ocorrencia", "Data ocorrência"))] \
+        == LINHA_A["data_ocorrencia"]
+
+    # o arquivo temporário sai do disco quando a resposta termina
+    assert _temporarios() == antes
+
+
+def test_exportacao_excel_recorta_por_periodo(monkeypatch):
+    """O período da tela vale para a exportação, inclusive o dia final."""
+    _stub_client(monkeypatch, [LINHA_A, LINHA_B])
+    _limpar_registros_de_teste()
+    _configurar_credenciais()
+    _login()
+    client.post("/download_vsky/api", json={"data_inicial": "2026-08-01",
+                                            "data_final": "2026-08-06"})
+
+    # o dia da ocorrência entra inteiro, mesmo sendo o último do intervalo
+    resp = client.get("/download_vsky/registros/excel",
+                      params={"q": LINHA_A["ocorrencia"],
+                              "data_inicial": "2026-08-01",
+                              "data_final": "2026-08-06"})
+    assert resp.status_code == 200
+    assert 'filename="registros_vsky_2026-08-01_2026-08-06.xlsx"' \
+        in resp.headers["content-disposition"]
+    linhas = _planilha(resp.content)
+    assert len(linhas) == 2 and linhas[1][0] == LINHA_A["ocorrencia"]
+
+    # fora do intervalo não sobra nada para exportar
+    resp = client.get("/download_vsky/registros/excel",
+                      params={"q": LINHA_A["ocorrencia"],
+                              "data_inicial": "2026-08-07",
+                              "data_final": "2026-08-10"},
+                      follow_redirects=False)
+    assert resp.status_code == 303 and "erro=" in resp.headers["location"]
+
+
+def test_exportacao_excel_sem_resultados_avisa():
+    """Filtro vazio não gera planilha em branco: volta à tela com o aviso."""
+    _login()
+    antes = _temporarios()
+    resp = client.get("/download_vsky/registros/excel",
+                      params={"q": "ocorrencia-que-nao-existe-9999"},
+                      follow_redirects=False)
+    assert resp.status_code == 303
+    assert "erro=" in resp.headers["location"]
+    assert _temporarios() == antes
+
+
+def test_pagina_de_registros_tem_o_botao_de_excel():
+    _login()
+    resp = client.get("/download_vsky/registros", headers={"accept": "text/html"})
+    assert resp.status_code == 200
+    assert "/download_vsky/registros/excel" in resp.text
+    assert "Baixar Excel" in resp.text
+
+
+def test_busca_por_motivo():
+    """O motivo é o filtro mais usado na análise (PCG3, dor torácica...);
+    sem ele a tela só encontrava por ocorrência, paciente ou endereço."""
+    from app.core.database import SessionLocal
+    from app.modules.download_vsky.service import DownloadVskyService
+
+    db = SessionLocal()
+    try:
+        service = DownloadVskyService(db, 1)
+        exemplo = db.scalars(service.query_registros().limit(200)).all()
+        motivo = next((r.motivo for r in exemplo
+                       if r.motivo and len(r.motivo) > 6), None)
+        if motivo is None:
+            pytest.skip("base sem motivo preenchido")
+        achados = db.scalars(service.query_registros(motivo).limit(5)).all()
+        assert achados, f"busca por motivo {motivo!r} não retornou nada"
+        assert all(motivo.lower() in (r.motivo or "").lower() or
+                   motivo.lower() in (r.ocorrencia or "").lower()
+                   for r in achados)
+    finally:
+        db.close()
+
+    _login()
+    resp = client.get("/download_vsky/registros", headers={"accept": "text/html"})
+    assert "motivo" in resp.text.lower()
