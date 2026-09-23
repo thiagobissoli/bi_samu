@@ -594,6 +594,69 @@ class ReuniaoIndicadoresService:
                                                CINZA][:len(tipos)]}]},
         })
 
+        # 13. assertividade das ocorrências que viraram desperdício real
+        # O mesmo indicador do slide 3, restrito às saídas que terminaram em
+        # desperdício REAL: mostra se o despacho desperdiçado já nascia com o
+        # código errado. A série geral fica no gráfico como referência — a
+        # taxa isolada não diz se é alta ou baixa para este serviço.
+        ids_real = set(universo.index[real])
+        desp_a = base_a[base_a.index.isin(ids_real)]
+        desp_periodo = desp_a[desp_a["semana_iso"].isin(semanas)]
+        desp_sem = desp_a[desp_a["semana_iso"] == sem_ult]
+        pct_desp = desp_a.groupby("semana_iso")["adequado"].mean() * 100
+        si_ad = len(slides)
+        drill_semanal(si_ad, 0, desp_a)
+        drill_semanal(si_ad, 1, base_a)
+
+        pct_d_sem = desp_sem["adequado"].mean() * 100 if len(desp_sem) else None
+        pct_g_sem = sem_a["adequado"].mean() * 100 if len(sem_a) else None
+        dif = (None if pct_d_sem is None or pct_g_sem is None
+               else pct_d_sem - pct_g_sem)
+        slides.append({
+            "kicker": "Desperdício · Assertividade · ISCMV",
+            "titulo": "Taxa de Assertividade — ISCMV · Desperdício REAL",
+            "subtitulo": "núcleo ISCMV · APH · somente as ocorrências de "
+                         "desperdício REAL (chegou ao local e NÃO removeu o "
+                         "paciente) · adequação código × risco inicial · "
+                         f"evolução semanal · números = última semana ({sem_data})",
+            "kpis": [
+                {"valor": "--" if pct_d_sem is None
+                          else f"{pct_d_sem:.1f}".replace(".", ","),
+                 "unidade": "%",
+                 "label": f"Assertividade no desperdício REAL ({sem_data})",
+                 "sub": f"{int(desp_sem['adequado'].sum())}/{len(desp_sem)} "
+                        "desperdícios reais classificados", "cor": VERMELHO},
+                {"valor": "--" if pct_g_sem is None
+                          else f"{pct_g_sem:.1f}".replace(".", ","),
+                 "unidade": "%",
+                 "label": "Assertividade geral ISCMV (referência)",
+                 "sub": f"{int(sem_a['adequado'].sum())}/{len(sem_a)} "
+                        "ocorrências classificadas", "cor": CINZA},
+                {"valor": "--" if dif is None
+                          else f"{dif:+.1f}".replace(".", ","),
+                 "unidade": "p.p.",
+                 "label": "Diferença · desperdício × geral",
+                 "sub": "quanto a assertividade cai (ou sobe) entre as saídas "
+                        "que terminaram em desperdício", "cor": LARANJA},
+                {"valor": f"{desp_periodo['adequado'].mean() * 100:.1f}"
+                          .replace(".", ",") if len(desp_periodo) else "--",
+                 "unidade": "%", "label": "Desperdício REAL no período",
+                 "sub": f"{len(desp_periodo):,}".replace(",", ".")
+                        + f" classificados em {len(semanas)} semanas · geral "
+                        f"{base_a[base_a['semana_iso'].isin(semanas)]['adequado'].mean() * 100:.1f}%"
+                        .replace(".", ","), "cor": ROXO},
+            ],
+            "chart_titulo": "Assertividade por semana · desperdício real × geral",
+            "chart": linha("", [
+                {"label": "Desperdício REAL", "color": VERMELHO,
+                 "data": [round(float(pct_desp[s]), 1)
+                          if s in pct_desp.index else None for s in semanas]},
+                {"label": "Todas as ocorrências (ISCMV)", "color": CINZA,
+                 "data": [round(float(pct_sem[s]), 1)
+                          if s in pct_sem.index else None for s in semanas]},
+            ], max_y=100),
+        })
+
         return {"titulo": "Reunião de Indicadores",
                 "periodo": periodo, "semana": sem_ult,
                 "semana_data": sem_data, "slides": slides}

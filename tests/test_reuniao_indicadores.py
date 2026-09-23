@@ -35,7 +35,7 @@ def test_api_deck():
     corpo = client.get("/reuniao_indicadores/api").json()
     assert corpo["success"] is True
     deck = corpo["data"]
-    assert len(deck["slides"]) == 13
+    assert len(deck["slides"]) == 14
     assert deck["slides"][0]["tipo"] == "capa"
     assert deck["slides"][1]["titulo"] == "Ocorrências Despachadas — Pré-Hospitalar"
     assert deck["slides"][2]["titulo"] == "Ocorrências Despachadas — Inter-Hospitalar"
@@ -440,3 +440,56 @@ def test_drill_dos_slides_de_desperdicio_traz_as_ocorrencias_certas():
         esperado = serie["data"][ultimo]
         ids = servico.ids_drill(f"{indice}:{dsi}:{ultimo}")
         assert len(ids) == esperado, (serie["label"], len(ids), esperado)
+
+
+def test_slide_assertividade_do_desperdicio_real():
+    """O deck traz a assertividade restrita ao desperdício REAL.
+
+    O recorte é o que dá sentido ao número: se o código nasce errado, a
+    viatura sai para uma ocorrência que não era dela — e o slide só permite
+    ler isso ao lado da taxa geral, no mesmo gráfico.
+    """
+    import pandas as pd
+
+    from app.modules.indicadores import desperdicio, nucleo
+    from app.modules.indicadores.constants import ADEQUACAO
+    from app.modules.reuniao_indicadores.service import ReuniaoIndicadoresService
+
+    svc = ReuniaoIndicadoresService(1)
+    deck = svc.montar()
+    slides = [s for s in deck["slides"]
+              if "Desperdício REAL" in s.get("titulo", "")]
+    assert len(slides) == 1, "deveria haver exatamente um slide do recorte"
+    slide = slides[0]
+    indice = deck["slides"].index(slide)
+
+    # o gráfico compara os dois recortes, sempre em escala de 0 a 100%
+    rotulos = [d["label"] for d in slide["chart"]["datasets"]]
+    assert rotulos == ["Desperdício REAL", "Todas as ocorrências (ISCMV)"]
+    assert slide["chart"]["max_y"] == 100
+
+    # o KPI da última semana bate com o cálculo direto sobre o núcleo
+    df = nucleo.carregar(1)
+    sem_ult = deck["semana"]
+    universo = desperdicio.universo(df)
+    real, _ = desperdicio.mascaras(universo)
+    ids_real = set(universo.index[real])
+
+    base = df[(df["transporte"] == "Pré-hospitalar") & df["iscmv"]
+              & df["codigo_cor"].isin(ADEQUACAO) & df["risco_cor"].notna()]
+    ok = pd.Series(False, index=base.index)
+    for cor, riscos in ADEQUACAO.items():
+        ok |= (base["codigo_cor"] == cor) & base["risco_cor"].isin(riscos)
+    base = base.assign(adequado=ok)
+    desp = base[base.index.isin(ids_real) & (base["semana_iso"] == sem_ult)]
+    if desp.empty:
+        pytest.skip("última semana sem desperdício real classificado")
+
+    esperado = f"{desp['adequado'].mean() * 100:.1f}".replace(".", ",")
+    assert slide["kpis"][0]["valor"] == esperado
+    assert f"{len(desp)}" in slide["kpis"][0]["sub"]
+
+    # clicar num ponto abre exatamente essas ocorrências
+    ultima = len(slide["chart"]["labels"]) - 1
+    ids = svc.ids_drill(f"{indice}:0:{ultima}")
+    assert sorted(ids) == sorted(int(x) for x in desp["id"])
