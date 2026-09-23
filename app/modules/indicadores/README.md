@@ -2,7 +2,7 @@
 
 17 dashboards sobre os registros importados do vSky (`vsky_registros_analiticos`,
 módulo download_vsky), com filtros globais em todas as páginas: **data inicial,
-data final, convênio (Grande Vitória), ISCMV, transporte, motivo e tipo**.
+data final, convênio (Grande Vitória), ISCM, transporte, motivo e tipo**.
 
 ## Dashboards
 
@@ -20,7 +20,7 @@ Unidade · Sinais Vitais + NEWS modificada · Óbito · Apoios Externos · Equip
 - Assertividade: base APH, código da equipe × risco da triagem
   (vermelho↔Emergência/Muito Urgente, amarelo↔Urgente, verde↔Pouco Urgente);
 - Convênio = Vitória + Vila Velha + Serra + Cariacica;
-- ISCMV = 42 viaturas do núcleo (USA 10–100 e USB pares 22–98 não múltiplas de 10);
+- ISCM = 42 viaturas do núcleo (USA 10–100 e USB pares 22–98 não múltiplas de 10);
 - **NEWS modificada** (proposta local): FR, FC, PAS e Glasgow obrigatórios
   (0–3 pontos cada) + Glicemia opcional; bandas Baixo / Baixo-Médio (parâmetro
   isolado = 3) / Médio (5–6) / Alto (≥7).

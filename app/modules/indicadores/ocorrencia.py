@@ -128,7 +128,7 @@ def indicadores_da_linha(r) -> list[dict]:
     add("Plantão", r.get("plantao"), r.get("semana_iso") or "")
     add("Tipo de unidade", r.get("recurso"), r.get("unidade_curta") or "")
     perfil = [nome for chave, nome in
-              (("iscmv", "ISCMV"), ("convenio", "Convênio"))
+              (("iscm", "ISCM"), ("convenio", "Convênio"))
               if bool(r.get(chave))]
     add("Perfil", " · ".join(perfil) if perfil else "Fora do recorte", "")
     if bool(r.get("obito_constatado")):

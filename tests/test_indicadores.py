@@ -1269,3 +1269,27 @@ def test_registros_da_semana_ficam_dentro_da_janela_operacional():
     primeiro, ultimo = alvo["dt_ocorr"].min(), alvo["dt_ocorr"].max()
     assert primeiro.date() == inicio and primeiro.hour >= 7
     assert ultimo.date() == inicio + timedelta(days=7) and ultimo.hour < 7
+
+
+def test_filtro_iscm_aceita_o_nome_antigo():
+    """Links salvos com ?iscmv=1 continuam filtrando o núcleo.
+
+    O filtro foi renomeado para ISCM; sem o apelido antigo a tela abriria
+    com a frota inteira sem avisar ninguém, e os números pareceriam ter
+    mudado sozinhos.
+    """
+    _login()
+    novo = client.get("/indicadores/?iscm=1", headers={"accept": "text/html"})
+    antigo = client.get("/indicadores/?iscmv=1", headers={"accept": "text/html"})
+    assert novo.status_code == antigo.status_code == 200
+
+    from app.modules.indicadores.routes import _filtros
+
+    class _Req:
+        def __init__(self, qs):
+            from starlette.datastructures import QueryParams
+            self.query_params = QueryParams(qs)
+
+    assert _filtros(_Req("iscmv=1"))["iscm"] == "1"
+    assert _filtros(_Req("iscm=1"))["iscm"] == "1"
+    assert _filtros(_Req(""))["iscm"] == ""

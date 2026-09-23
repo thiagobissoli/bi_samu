@@ -27,7 +27,7 @@ def test_pagina_renderiza():
     assert "Painel de Gestão" in resp.text
     # formato próprio: seções coloridas, sem a barra de filtros dos dashboards
     assert 'name="transporte"' not in resp.text
-    for secao in ["Tempo Resposta", "Assertividade ISCMV",
+    for secao in ["Tempo Resposta", "Assertividade ISCM",
                   "Transferência Inter-hospitalar", "Plantão", "Desperdício"]:
         assert secao in resp.text, secao
 
@@ -189,7 +189,7 @@ def test_desperdicio_do_painel_cobre_toda_a_frota():
 def test_desperdicio_bate_entre_painel_e_reuniao():
     """Mesma semana, mesmo número nas duas telas.
 
-    Enquanto a Reunião media só o núcleo ISCMV e o Painel a frota inteira,
+    Enquanto a Reunião media só o núcleo ISCM e o Painel a frota inteira,
     a mesma semana aparecia como 96 desperdícios num lugar e 168 no outro.
     """
     import re
@@ -260,9 +260,9 @@ def test_painel_publica_o_desperdicio_da_frota_inteira():
     esperado, saidas = int((real & na_semana).sum()), int(na_semana.sum())
 
     assert f"{esperado} de {saidas} saídas" in sec["blocos"][0]["kpis"][0]["sub"]
-    # e o recorte ISCMV seria menor — o painel não usa esse filtro
-    iscmv = int((real & na_semana & df.loc[universo.index, "iscmv"]).sum())
-    assert iscmv <= esperado
+    # e o recorte ISCM seria menor — o painel não usa esse filtro
+    iscm = int((real & na_semana & df.loc[universo.index, "iscm"]).sum())
+    assert iscm <= esperado
 
 
 def test_painel_avisa_quando_a_semana_tem_falha_de_dado():

@@ -465,7 +465,7 @@ def test_slide_assertividade_do_desperdicio_real():
 
     # o gráfico compara os dois recortes, sempre em escala de 0 a 100%
     rotulos = [d["label"] for d in slide["chart"]["datasets"]]
-    assert rotulos == ["Desperdício REAL", "Todas as ocorrências (ISCMV)"]
+    assert rotulos == ["Desperdício REAL", "Todas as ocorrências (ISCM)"]
     assert slide["chart"]["max_y"] == 100
 
     # o KPI da última semana bate com o cálculo direto sobre o núcleo
@@ -475,7 +475,7 @@ def test_slide_assertividade_do_desperdicio_real():
     real, _ = desperdicio.mascaras(universo)
     ids_real = set(universo.index[real])
 
-    base = df[(df["transporte"] == "Pré-hospitalar") & df["iscmv"]
+    base = df[(df["transporte"] == "Pré-hospitalar") & df["iscm"]
               & df["codigo_cor"].isin(ADEQUACAO) & df["risco_cor"].notna()]
     ok = pd.Series(False, index=base.index)
     for cor, riscos in ADEQUACAO.items():

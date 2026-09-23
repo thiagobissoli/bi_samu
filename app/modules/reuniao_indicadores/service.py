@@ -151,12 +151,12 @@ class ReuniaoIndicadoresService:
                          "banco de dados operacional." + aviso_semana,
         })
 
-        # ---- 2/3. ocorrências despachadas (ISCMV, por transporte) -----------
+        # ---- 2/3. ocorrências despachadas (ISCM, por transporte) -----------
         def slide_despachos(rotulo_transporte: str, transporte: str,
                             unidades_extra: set | None = None,
                             si: int = 0) -> dict:
-            frota = df["iscmv"]
-            nota_frota = "viaturas ISCMV"
+            frota = df["iscm"]
+            nota_frota = "viaturas ISCM"
             if unidades_extra:
                 frota = frota | df["unidade_curta"].isin(unidades_extra)
                 nota_frota += " + " + "/".join(sorted(unidades_extra))
@@ -170,7 +170,7 @@ class ReuniaoIndicadoresService:
             n_usb = int((emp_ub["recurso"] == "USB").sum())
             n_usa = int((emp_ub["recurso"] == "USA").sum())
             return {
-                "kicker": "Indicadores operacionais · Despachos · ISCMV",
+                "kicker": "Indicadores operacionais · Despachos · ISCM",
                 "titulo": f"Ocorrências Despachadas — {rotulo_transporte}",
                 "subtitulo": f"{nota_frota} · transporte {transporte} · "
                              "evolução semanal · números = última semana "
@@ -201,8 +201,8 @@ class ReuniaoIndicadoresService:
                                       {"USA TF001", "USA TF002"},
                                       si=len(slides)))
 
-        # ---- 3. assertividade ISCMV ----------------------------------------
-        base_a = df[(df["transporte"] == "Pré-hospitalar") & df["iscmv"]
+        # ---- 3. assertividade ISCM ----------------------------------------
+        base_a = df[(df["transporte"] == "Pré-hospitalar") & df["iscm"]
                     & df["codigo_cor"].isin(ADEQUACAO)
                     & df["risco_cor"].notna()]
         ok = pd.Series(False, index=base_a.index)
@@ -213,17 +213,17 @@ class ReuniaoIndicadoresService:
         pct_sem = base_a.groupby("semana_iso")["adequado"].mean() * 100
         drill_semanal(len(slides), 0, base_a)
         slides.append({
-            "kicker": "Assertividade · ISCMV",
-            "titulo": "Taxa de Assertividade — ISCMV",
-            "subtitulo": "núcleo ISCMV · adequação código × risco inicial "
+            "kicker": "Assertividade · ISCM",
+            "titulo": "Taxa de Assertividade — ISCM",
+            "subtitulo": "núcleo ISCM · adequação código × risco inicial "
                          "(APH) · evolução semanal · destaque = última "
                          f"semana ({sem_data})",
             "kpis": [{"valor": f"{sem_a['adequado'].mean() * 100:.1f}"
                       .replace(".", ","), "unidade": "%",
-                      "label": "Assertividade · ISCMV (última sem.)",
+                      "label": "Assertividade · ISCM (última sem.)",
                       "sub": f"{int(sem_a['adequado'].sum())}/{len(sem_a)} "
                              "classificados", "cor": LARANJA}],
-            "chart": linha("", [{"label": "ISCMV", "color": VERDE,
+            "chart": linha("", [{"label": "ISCM", "color": VERDE,
                                  "data": [round(float(pct_sem[s]), 1)
                                           if s in pct_sem.index else None
                                           for s in semanas]}]),
@@ -449,7 +449,7 @@ class ReuniaoIndicadoresService:
         # ---- 9/10/11/12. desperdício ----------------------------------------
         # Definição única, compartilhada com o Painel de Gestão: real =
         # chegou ao local e não removeu o paciente; evitado = mitigado no
-        # trajeto. Toda a frota, não só o núcleo ISCMV.
+        # trajeto. Toda a frota, não só o núcleo ISCM.
         universo = desperdicio.universo(df)
         sit = universo["situacao_atendimento"].fillna("").map(nucleo.norm_txt)
         real, evitado = desperdicio.mascaras(universo)
@@ -613,9 +613,9 @@ class ReuniaoIndicadoresService:
         dif = (None if pct_d_sem is None or pct_g_sem is None
                else pct_d_sem - pct_g_sem)
         slides.append({
-            "kicker": "Desperdício · Assertividade · ISCMV",
-            "titulo": "Taxa de Assertividade — ISCMV · Desperdício REAL",
-            "subtitulo": "núcleo ISCMV · APH · somente as ocorrências de "
+            "kicker": "Desperdício · Assertividade · ISCM",
+            "titulo": "Taxa de Assertividade — ISCM · Desperdício REAL",
+            "subtitulo": "núcleo ISCM · APH · somente as ocorrências de "
                          "desperdício REAL (chegou ao local e NÃO removeu o "
                          "paciente) · adequação código × risco inicial · "
                          f"evolução semanal · números = última semana ({sem_data})",
@@ -629,7 +629,7 @@ class ReuniaoIndicadoresService:
                 {"valor": "--" if pct_g_sem is None
                           else f"{pct_g_sem:.1f}".replace(".", ","),
                  "unidade": "%",
-                 "label": "Assertividade geral ISCMV (referência)",
+                 "label": "Assertividade geral ISCM (referência)",
                  "sub": f"{int(sem_a['adequado'].sum())}/{len(sem_a)} "
                         "ocorrências classificadas", "cor": CINZA},
                 {"valor": "--" if dif is None
@@ -651,7 +651,7 @@ class ReuniaoIndicadoresService:
                 {"label": "Desperdício REAL", "color": VERMELHO,
                  "data": [round(float(pct_desp[s]), 1)
                           if s in pct_desp.index else None for s in semanas]},
-                {"label": "Todas as ocorrências (ISCMV)", "color": CINZA,
+                {"label": "Todas as ocorrências (ISCM)", "color": CINZA,
                  "data": [round(float(pct_sem[s]), 1)
                           if s in pct_sem.index else None for s in semanas]},
             ], max_y=100),

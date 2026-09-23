@@ -16,10 +16,10 @@ gestor abrir e ler.
 | Seção | Recorte |
 |---|---|
 | Tempo Resposta | Convênio (GV) códigos V/A/V · USA Vermelho · USB Vermelho — cada um Geral/Diurno/Noturno |
-| Assertividade | Base APH nas viaturas ISCMV |
-| Transferência | Inter-hospitalar das viaturas ISCMV — volume, TR e códigos |
+| Assertividade | Base APH nas viaturas ISCM |
+| Transferência | Inter-hospitalar das viaturas ISCM — volume, TR e códigos |
 | Plantão | TR pelos 14 plantões (dia × turno), 12 meses |
-| Desperdício | Universo ISCMV — % real × evitado + Pareto de motivos |
+| Desperdício | Universo ISCM — % real × evitado + Pareto de motivos |
 
 ## Relatório de Gestão (PDF)
 

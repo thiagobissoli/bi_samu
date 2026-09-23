@@ -5,7 +5,7 @@ Cada tema tem um construtor que devolve um dicionário serializável:
 renderizado genericamente por templates/indicadores/dashboard.html (Chart.js).
 
 Filtros globais (todas as páginas): data inicial/final, convênio (Grande
-Vitória), ISCMV, transporte, motivo e tipo.
+Vitória), ISCM, transporte, motivo e tipo.
 """
 
 from __future__ import annotations
@@ -147,8 +147,8 @@ class IndicadoresService:
                 pass
         if f.get("convenio"):
             mask &= df["convenio"]
-        if f.get("iscmv"):
-            mask &= df["iscmv"]
+        if f.get("iscm"):
+            mask &= df["iscm"]
         # seleção múltipla: valor único (str) ou lista de valores
         for chave, coluna in (("transporte", "transporte"),
                               ("recurso", "recurso"),
@@ -1905,8 +1905,8 @@ class IndicadoresService:
                  "sub": self._preenchimento(df, "unidade")},
                 {"label": "Unidades distintas",
                  "valor": str(com_unidade["unidade_curta"].nunique()), "sub": ""},
-                {"label": "Viaturas ISCMV",
-                 "valor": str(int(com_unidade["iscmv"].sum())),
+                {"label": "Viaturas ISCM",
+                 "valor": str(int(com_unidade["iscm"].sum())),
                  "sub": "registros em viaturas do núcleo"},
             ],
             "charts": [

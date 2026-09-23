@@ -1,7 +1,7 @@
 """Constantes do módulo Indicadores (§35.2).
 
 Definições de negócio herdadas dos sistemas legados (DBSamu / Desperdicio):
-cadeia temporal P1–P9, mapas de cor, convênio Grande Vitória, viaturas ISCMV
+cadeia temporal P1–P9, mapas de cor, convênio Grande Vitória, viaturas ISCM
 e a Escala NEWS modificada.
 """
 
@@ -12,9 +12,9 @@ DATA_HORA_FMT = "%d/%m/%Y %H:%M:%S"
 # Convênio = Grande Vitória (cidades normalizadas sem acento, maiúsculas)
 CIDADES_CONVENIO = {"VITORIA", "VILA VELHA", "SERRA", "CARIACICA"}
 
-# ISCMV — 42 viaturas do núcleo (definição curada do projeto Desperdicio):
+# ISCM — 42 viaturas do núcleo (definição curada do projeto Desperdicio):
 # USA 10..100 (múltiplas de 10) + USB pares 22..98 não múltiplas de 10.
-ISCMV_VIATURAS = (
+ISCM_VIATURAS = (
     {f"USA {n}" for n in range(10, 101, 10)}
     | {f"USB {n}" for n in range(22, 99, 2) if n % 10 != 0}
 )

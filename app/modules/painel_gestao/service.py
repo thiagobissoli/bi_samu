@@ -117,10 +117,10 @@ class PainelGestaoService:
 
         # ---------------- Tempo Resposta -----------------------------------
         # Somente transporte Pré-hospitalar, nas unidades do convênio
-        # (viaturas ISCMV) e cidades do Convênio; KPI único = média da
+        # (viaturas ISCM) e cidades do Convênio; KPI único = média da
         # última semana (o recorte por plantão fica nas linhas
         # Geral/Diurno/Noturno do gráfico).
-        conv = df[df["convenio"] & df["iscmv"]
+        conv = df[df["convenio"] & df["iscm"]
                   & (df["transporte"] == "Pré-hospitalar")]
         bases_tr = [
             ("Convênio Verde/Amarelo/Vermelho",
@@ -142,12 +142,12 @@ class PainelGestaoService:
         secoes.append({"id": "tr", "titulo": "Tempo Resposta",
                        "icone": "fa-stopwatch", "cor": "primary",
                        "nota": "1ª ambulância a chegar · Pré-hospitalar · "
-                               "unidades do convênio (ISCMV) em Vitória, "
+                               "unidades do convênio (ISCM) em Vitória, "
                                "Vila Velha, Serra e Cariacica",
                        "blocos": blocos_tr})
 
-        # ---------------- Assertividade ISCMV ------------------------------
-        base_a = df[(df["transporte"] == "Pré-hospitalar") & df["iscmv"]
+        # ---------------- Assertividade ISCM ------------------------------
+        base_a = df[(df["transporte"] == "Pré-hospitalar") & df["iscm"]
                     & df["codigo_cor"].isin(ADEQUACAO)
                     & df["risco_cor"].notna()]
         ok = pd.Series(False, index=base_a.index)
@@ -170,7 +170,7 @@ class PainelGestaoService:
             dados_cod.append(round(float(pct), 1) if pct is not None else None)
             hex_cod.append(hexa)
         secoes.append({
-            "id": "assertividade", "titulo": "Assertividade ISCMV",
+            "id": "assertividade", "titulo": "Assertividade ISCM",
             "icone": "fa-bullseye", "cor": "success",
             "nota": "código da equipe × risco da triagem — base APH nas "
                     "viaturas do núcleo",
@@ -180,7 +180,7 @@ class PainelGestaoService:
                            if len(sem_a) else "--",
                            "sub": f"semana {sem_ult} · n = {len(sem_a)}"}],
                  "chart": {"tipo": "line",
-                           "titulo": "Assertividade ISCMV (12 meses, %)",
+                           "titulo": "Assertividade ISCM (12 meses, %)",
                            "labels": rot_meses,
                            "datasets": [{"label": "% adequado",
                                          "data": [round(float(serie_a[m]), 1)
@@ -198,8 +198,8 @@ class PainelGestaoService:
                            "max_y": 100}},
             ]})
 
-        # ---------------- Transferência inter-hospitalar ISCMV -------------
-        inter = df[df["iscmv"] & (df["transporte"] == "Inter-hospitalar")]
+        # ---------------- Transferência inter-hospitalar ISCM -------------
+        inter = df[df["iscm"] & (df["transporte"] == "Inter-hospitalar")]
         sem_i = ult_semana(inter)
         v_tr_i = tr_validos(sem_i)
         inter12 = inter[inter["dt_ocorr"].dt.to_period("M").isin(meses)]
@@ -212,7 +212,7 @@ class PainelGestaoService:
                                  "data": [int(serie.get(m, 0)) for m in meses],
                                  "color": CORES_PLANTAO[turno]})
         secoes.append({
-            "id": "transferencia", "titulo": "Transferência Inter-hospitalar (ISCMV)",
+            "id": "transferencia", "titulo": "Transferência Inter-hospitalar (ISCM)",
             "icone": "fa-route", "cor": "info",
             "nota": "transportes inter-hospitalares das viaturas do núcleo",
             "blocos": [

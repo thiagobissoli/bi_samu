@@ -2,7 +2,7 @@
 
 Lê `vsky_registros_analiticos` (módulo download_vsky) para um DataFrame e
 deriva tudo o que os dashboards consomem: datas, períodos P1–P9, cores de
-código/risco, viatura/ISCMV, convênio, sinais vitais e NEWS modificada.
+código/risco, viatura/ISCM, convênio, sinais vitais e NEWS modificada.
 
 Convenções herdadas dos legados:
 - "---" e vazio = ausente;
@@ -27,7 +27,7 @@ from app.core.database import engine
 from app.modules.indicadores.constants import (
     CIDADES_CONVENIO,
     DATA_HORA_FMT,
-    ISCMV_VIATURAS,
+    ISCM_VIATURAS,
     MAPA_CODIGO_COR,
     MAPA_RISCO_COR,
 )
@@ -319,7 +319,7 @@ def _derivar(df: pd.DataFrame,
     df["risco_cor"] = df["risco_inicial"].map(
         lambda v: MAPA_RISCO_COR.get(norm_txt(v).lower()) if pd.notna(v) else None)
 
-    # --- viatura / ISCMV / convênio ---------------------------------------
+    # --- viatura / ISCM / convênio ---------------------------------------
     # Tipo de transporte (USA/USB) identificado pela coluna Unidade:
     # casa a sigla em qualquer posição (ex.: "USA - AEROMEDICO",
     # "USB 42 - SERRA"), com o número da viatura quando houver.
@@ -329,7 +329,7 @@ def _derivar(df: pd.DataFrame,
                                  np.where(unid.eq(""), None, "OUTRO"))
     df["viatura"] = np.where(
         ext[0].notna() & ext[1].notna(), ext[0] + " " + ext[1], None)
-    df["iscmv"] = df["viatura"].isin(ISCMV_VIATURAS)
+    df["iscm"] = df["viatura"].isin(ISCM_VIATURAS)
     # Rótulo curto: "USB 42 - SERRA" -> "USB 42". Quando o prefixo não tem
     # número ("USA - AEROMEDICO", "USA - NEP 33"), mantém o complemento para
     # não colapsar unidades distintas num só rótulo "USA".

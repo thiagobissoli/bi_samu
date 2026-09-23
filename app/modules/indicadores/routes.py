@@ -1,7 +1,7 @@
 """Endpoints do módulo Indicadores (§35.2).
 
 Todas as páginas compartilham os filtros globais (data inicial/final,
-convênio Grande Vitória, ISCMV, transporte, motivo, tipo), propagados
+convênio Grande Vitória, ISCM, transporte, motivo, tipo), propagados
 via query string.
 """
 
@@ -25,7 +25,10 @@ def _filtros(request: Request) -> dict:
         "data_inicial": q.get("data_inicial", ""),
         "data_final": q.get("data_final", ""),
         "convenio": q.get("convenio", ""),
-        "iscmv": q.get("iscmv", ""),
+        # "iscmv" era o nome antigo do filtro: links e favoritos
+        # salvos continuam valendo (sem isto o filtro sumiria em
+        # silêncio e a tela mostraria a frota inteira).
+        "iscm": q.get("iscm", q.get("iscmv", "")),
         # seleção múltipla — parâmetro repetido na query string
         "transporte": q.getlist("transporte"),
         "recurso": q.getlist("recurso"),
