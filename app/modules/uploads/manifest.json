@@ -1,0 +1,24 @@
+{
+    "name": "Uploads",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [],
+    "permissions": [
+        "upload.listar",
+        "upload.enviar",
+        "upload.excluir"
+    ],
+    "menu": [
+        {
+            "label": "Uploads",
+            "url": "/uploads",
+            "icon": "fa-upload",
+            "permission": "upload.listar",
+            "order": 41,
+            "group": "dados"
+        }
+    ],
+    "routes": [
+        "/uploads"
+    ]
+}

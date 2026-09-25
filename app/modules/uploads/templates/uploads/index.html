@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}<li class="breadcrumb-item active">Uploads</li>{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title"><i class="fa-solid fa-upload me-2"></i>Arquivos</h3></div>
+            <div class="card-body">
+                <form method="get" action="/uploads/" class="row g-2 mb-3">
+                    <div class="col-auto"><input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Pesquisar..."></div>
+                    <div class="col-auto"><button class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-magnifying-glass"></i></button></div>
+                </form>
+                {% if pg["items"] %}
+                <table class="table table-striped table-sm align-middle">
+                    <thead><tr><th>#</th><th>Arquivo</th><th>Módulo</th><th>Tipo</th><th>Tamanho</th><th>Data</th><th class="text-end">Ações</th></tr></thead>
+                    <tbody>
+                    {% for item in pg["items"] %}
+                    <tr>
+                        <td>{{ item.id }}</td>
+                        <td>{{ item.nome_original }}</td>
+                        <td><span class="badge text-bg-secondary">{{ item.modulo }}</span></td>
+                        <td><small>{{ item.mime_type }}</small></td>
+                        <td>{{ "%.1f"|format(item.tamanho / 1024) }} KB</td>
+                        <td>{{ item.created_at | localdt }}</td>
+                        <td class="text-end">
+                            <a href="/uploads/{{ item.id }}/download" class="btn btn-outline-primary btn-sm" title="Baixar">
+                                <i class="fa-solid fa-download"></i>
+                            </a>
+                            {% if "upload.excluir" in usuario_logado.permissoes %}
+                            <form method="post" action="/uploads/{{ item.id }}/delete" class="d-inline" onsubmit="return confirm('Excluir este arquivo?');">
+                                <button class="btn btn-outline-danger btn-sm"><i class="fa-solid fa-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% include "components/pagination.html" %}
+                {% else %}<p class="text-muted mb-0">Nenhum arquivo enviado.</p>{% endif %}
+            </div>
+        </div>
+    </div>
+    {% if "upload.enviar" in usuario_logado.permissoes %}
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Enviar arquivo</h3></div>
+            <form method="post" action="/uploads/enviar" enctype="multipart/form-data">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Arquivo * <small class="text-muted">(imagens, PDF, Office — máx. 25 MB)</small></label>
+                        <input type="file" name="arquivo" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Módulo</label>
+                        <input type="text" name="modulo" class="form-control" value="geral">
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-primary"><i class="fa-solid fa-upload"></i> Enviar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

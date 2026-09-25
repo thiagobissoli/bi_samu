@@ -1,0 +1,87 @@
+"""Uploads (§20) — arquivos no disco, metadados no banco (§36.12)."""
+
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.audit import record_audit
+from app.core.auth import require_permission
+from app.core.database import get_session, utcnow
+from app.core.pagination import paginate
+from app.core.storage import absolute_path, save_upload
+from app.core.templating import render
+from app.models import Arquivo, Usuario
+
+router = APIRouter(prefix="/uploads", tags=["Uploads"])
+
+
+@router.get("/", include_in_schema=False)
+async def index(
+    request: Request,
+    page: int = 1,
+    q: str | None = None,
+    usuario: Usuario = Depends(require_permission("upload.listar")),
+    db: Session = Depends(get_session),
+):
+    query = select(Arquivo).where(
+        Arquivo.deleted_at.is_(None),
+        Arquivo.empresa_id == usuario.empresa_id,
+    ).order_by(Arquivo.id.desc())
+    if q:
+        query = query.where(Arquivo.nome_original.ilike(f"%{q}%"))
+    pg = paginate(db, query, page)
+    return render(request, "uploads/index.html", usuario,
+                  page_title="Uploads", pg=pg, q=q or "", qs=f"&q={q or ''}")
+
+
+@router.post("/enviar", include_in_schema=False)
+async def enviar(
+    request: Request,
+    arquivo: UploadFile = File(...),
+    modulo: str = Form("geral"),
+    usuario: Usuario = Depends(require_permission("upload.enviar")),
+    db: Session = Depends(get_session),
+):
+    try:
+        item = save_upload(db, arquivo, usuario.empresa_id, modulo, created_by=usuario.id)
+    except ValueError:
+        return RedirectResponse("/uploads/", status_code=303)
+    record_audit(db, tabela="arquivos", acao="UPLOAD", registro_id=item.id,
+                 valor_novo={"nome": item.nome_original, "tamanho": item.tamanho,
+                             "mime": item.mime_type},
+                 usuario=usuario, request=request)
+    return RedirectResponse("/uploads/", status_code=303)
+
+
+@router.get("/{item_id}/download", include_in_schema=False)
+async def download(
+    item_id: int,
+    usuario: Usuario = Depends(require_permission("upload.listar")),
+    db: Session = Depends(get_session),
+):
+    item = db.get(Arquivo, item_id)
+    if item is None or item.deleted_at is not None or item.empresa_id != usuario.empresa_id:
+        return RedirectResponse("/uploads/", status_code=303)
+    path = absolute_path(item)
+    if not path.is_file():
+        return RedirectResponse("/uploads/", status_code=303)
+    return FileResponse(path, filename=item.nome_original, media_type=item.mime_type)
+
+
+@router.post("/{item_id}/delete", include_in_schema=False)
+async def delete(
+    request: Request,
+    item_id: int,
+    usuario: Usuario = Depends(require_permission("upload.excluir")),
+    db: Session = Depends(get_session),
+):
+    item = db.get(Arquivo, item_id)
+    if item is not None and item.deleted_at is None and item.empresa_id == usuario.empresa_id:
+        item.deleted_at = utcnow()
+        item.deleted_by = usuario.id
+        db.commit()
+        record_audit(db, tabela="arquivos", acao="DELETE", registro_id=item.id,
+                     valor_anterior={"nome": item.nome_original},
+                     usuario=usuario, request=request)
+    return RedirectResponse("/uploads/", status_code=303)
