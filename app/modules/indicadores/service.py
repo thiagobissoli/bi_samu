@@ -11,12 +11,11 @@ Vitória), ISCM, transporte, motivo e tipo.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
 
-from app.modules.indicadores import nucleo
+from app.modules.indicadores import filtros, nucleo
 from app.modules.indicadores.constants import (
     ADEQUACAO,
     AUDITORIA_INDICADORES,
@@ -130,40 +129,7 @@ class IndicadoresService:
                 df["dt_ocorr"].max().strftime("%Y-%m-%d"))
 
     def _filtrar(self, df: pd.DataFrame, f: dict) -> pd.DataFrame:
-        if df.empty:
-            return df
-        mask = pd.Series(True, index=df.index)
-        if f.get("data_inicial"):
-            try:
-                dt = datetime.strptime(f["data_inicial"], "%Y-%m-%d")
-                mask &= df["dt_ocorr"] >= dt
-            except ValueError:
-                pass
-        if f.get("data_final"):
-            try:
-                dt = datetime.strptime(f["data_final"], "%Y-%m-%d") + timedelta(days=1)
-                mask &= df["dt_ocorr"] < dt
-            except ValueError:
-                pass
-        if f.get("convenio"):
-            mask &= df["convenio"]
-        if f.get("iscm"):
-            mask &= df["iscm"]
-        # seleção múltipla: valor único (str) ou lista de valores
-        for chave, coluna in (("transporte", "transporte"),
-                              ("recurso", "recurso"),
-                              ("codigo", "codigo_da_ocorrencia"),
-                              ("motivo", "motivo"),
-                              ("tipo", "tipo"),
-                              ("unidade", "unidade_curta"),
-                              ("cidade", "cidade"),
-                              ("risco", "risco_inicial")):
-            valores = f.get(chave)
-            if valores:
-                if isinstance(valores, str):
-                    valores = [valores]
-                mask &= df[coluna].isin(valores)
-        return df[mask]
+        return filtros.aplicar(df, f)
 
     # ------------------------------------------------- página Desempenho
 

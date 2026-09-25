@@ -199,19 +199,8 @@ def marca_cache(empresa_id: int = 1) -> int:
 
 
 def _montar_opcoes(df: pd.DataFrame) -> dict:
-    if df.empty:
-        return {"transportes": [], "recursos": [], "codigos": [], "tipos": [],
-                "motivos": [], "unidades": [], "cidades": [], "riscos": []}
-    return {
-        "transportes": sorted(df["transporte"].dropna().unique()),
-        "recursos": sorted(df["recurso"].dropna().unique()),
-        "codigos": sorted(df["codigo_da_ocorrencia"].dropna().unique()),
-        "tipos": sorted(df["tipo"].dropna().unique()),
-        "motivos": sorted(df["motivo"].dropna().unique()),
-        "unidades": sorted(u for u in df["unidade_curta"].unique() if u),
-        "cidades": sorted(df["cidade"].dropna().unique()),
-        "riscos": sorted(df["risco_inicial"].dropna().unique()),
-    }
+    from app.modules.indicadores import filtros
+    return filtros.opcoes(df)
 
 
 def invalidar_cache(empresa_id: int | None = None) -> None:
