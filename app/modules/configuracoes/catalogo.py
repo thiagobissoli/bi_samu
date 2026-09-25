@@ -129,6 +129,16 @@ CATALOGO: tuple[Grupo, ...] = (
                     padrao=str(DESCONTO_P41_PADRAO), tipo=NUMERO),
           ) + _metas_indicadores()),
 
+    Grupo("NCPS", "fa-clipboard-check",
+          "Notificação de eventos (segurança do paciente e do trabalhador).", (
+              Chave("ncps_powerbi_token_hash", "Token do Power BI (hash)",
+                    "Hash SHA-256 do token que o Power BI envia em "
+                    "Authorization: Bearer. O token em si é mostrado uma única "
+                    "vez, ao ser gerado em Cadastros NCPS; gerar outro "
+                    "invalida o anterior.",
+                    somente_leitura=True, gerida_em="/ncps/cadastros"),
+          )),
+
     Grupo("Cópia de segurança", "fa-database",
           "Backup do banco. Ajustável também na própria tela de Backup.", (
               Chave("backup_ativo", "Cópia diária ligada",

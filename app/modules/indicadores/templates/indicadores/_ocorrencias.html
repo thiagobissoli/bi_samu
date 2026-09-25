@@ -1,0 +1,122 @@
+{# Modal com as ocorrências por trás de um ponto de gráfico.
+   JS: abrirOcorrencias(urlApi, urlExcel) — urlApi devolve a página no formato
+   de drill.pagina(); a paginação acrescenta &pagina=N. #}
+<div class="modal fade" id="modal-ocorrencias" tabindex="-1" aria-labelledby="modal-ocorrencias-titulo" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <div>
+                    <h5 class="modal-title fs-6 mb-0" id="modal-ocorrencias-titulo">Ocorrências</h5>
+                    <div class="small text-body-secondary" id="modal-ocorrencias-recorte"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="px-3 py-2 small d-flex flex-wrap gap-3 align-items-center border-bottom" id="modal-ocorrencias-resumo"></div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped table-hover align-middle mb-0 small">
+                        <thead class="table-light" style="position: sticky; top: 0; z-index: 1"><tr id="modal-ocorrencias-cab"></tr></thead>
+                        <tbody id="modal-ocorrencias-corpo"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer py-2 justify-content-between">
+                <nav aria-label="Páginas"><ul class="pagination pagination-sm mb-0" id="modal-ocorrencias-paginas"></ul></nav>
+                <a class="btn btn-outline-success btn-sm" id="modal-ocorrencias-excel" href="#">
+                    <i class="fa-solid fa-file-excel"></i> Exportar todas (Excel)</a>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var PODE_INVESTIGAR = {{ ('investigacao.visualizar' in usuario_logado.permissoes) | tojson }};
+    var modal = null, urlAtual = "";
+    function el(tag, cls, texto) {
+        var e = document.createElement(tag);
+        if (cls) e.className = cls;
+        if (texto !== undefined && texto !== null) e.textContent = texto;
+        return e;
+    }
+    function carregar(pagina) {
+        var corpo = document.getElementById("modal-ocorrencias-corpo");
+        corpo.innerHTML = "";
+        var tr = el("tr"), td = el("td", "text-center text-body-secondary py-4");
+        td.colSpan = 12;
+        td.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Buscando ocorrências…';
+        tr.append(td); corpo.append(tr);
+        var sep = urlAtual.indexOf("?") >= 0 ? "&" : "?";
+        fetch(urlAtual + sep + "pagina=" + pagina, { headers: { accept: "application/json" } })
+            .then(function (r) { return r.json(); })
+            .then(function (resp) {
+                corpo.innerHTML = "";
+                if (!resp.success) {
+                    var tr2 = el("tr"), td2 = el("td", "text-danger py-3", resp.message || "Falha ao buscar.");
+                    td2.colSpan = 12; tr2.append(td2); corpo.append(tr2); return;
+                }
+                var d = resp.data;
+                document.getElementById("modal-ocorrencias-titulo").textContent = d.titulo || "Ocorrências";
+                document.getElementById("modal-ocorrencias-recorte").textContent = d.recorte || "";
+                var resumo = document.getElementById("modal-ocorrencias-resumo");
+                resumo.innerHTML = "";
+                resumo.append(el("span", "fw-semibold", d.total.toLocaleString("pt-BR") + " registro(s)"),
+                              el("span", "text-body-secondary", d.ocorrencias.toLocaleString("pt-BR") + " ocorrência(s) distintas"),
+                              el("span", "text-body-secondary", "Mais recentes primeiro · cada linha é um empenho de viatura"));
+                var cab = document.getElementById("modal-ocorrencias-cab");
+                cab.innerHTML = "";
+                d.colunas.forEach(function (c) { cab.append(el("th", "text-nowrap", c)); });
+                if (!d.linhas.length) {
+                    var tr3 = el("tr"), td3 = el("td", "text-center text-body-secondary py-3", "Nenhum registro.");
+                    td3.colSpan = d.colunas.length; tr3.append(td3); corpo.append(tr3);
+                }
+                d.linhas.forEach(function (linha) {
+                    var tr4 = el("tr");
+                    linha.forEach(function (v, i) {
+                        var td4 = el("td", i === 1 ? "text-nowrap" : "");
+                        if (i === 0 && v && PODE_INVESTIGAR) {
+                            var a = el("a", "", v);
+                            a.href = "/investigacao/?ocorrencia=" + encodeURIComponent(v);
+                            a.target = "_blank"; a.rel = "noopener";
+                            a.title = "Investigar esta ocorrência";
+                            td4.append(a);
+                        } else {
+                            td4.textContent = v;
+                        }
+                        tr4.append(td4);
+                    });
+                    corpo.append(tr4);
+                });
+                var pags = document.getElementById("modal-ocorrencias-paginas");
+                pags.innerHTML = "";
+                function item(rotulo, n, ativo, desab) {
+                    var li = el("li", "page-item" + (ativo ? " active" : "") + (desab ? " disabled" : ""));
+                    var b = el("button", "page-link", rotulo);
+                    b.type = "button";
+                    if (!desab && !ativo) b.addEventListener("click", function () { carregar(n); });
+                    li.append(b); pags.append(li);
+                }
+                if (d.paginas > 1) {
+                    item("«", d.pagina - 1, false, d.pagina <= 1);
+                    for (var n = 1; n <= d.paginas; n++) {
+                        if (n <= 2 || n > d.paginas - 2 || Math.abs(n - d.pagina) <= 1) item(String(n), n, n === d.pagina, false);
+                        else if (Math.abs(n - d.pagina) === 2) item("…", n, false, true);
+                    }
+                    item("»", d.pagina + 1, false, d.pagina >= d.paginas);
+                }
+            })
+            .catch(function () {
+                corpo.innerHTML = "";
+                var tr5 = el("tr"), td5 = el("td", "text-danger py-3", "Não foi possível buscar as ocorrências.");
+                td5.colSpan = 12; tr5.append(td5); corpo.append(tr5);
+            });
+    }
+    window.abrirOcorrencias = function (urlApi, urlExcel) {
+        urlAtual = urlApi;
+        document.getElementById("modal-ocorrencias-excel").href = urlExcel;
+        document.getElementById("modal-ocorrencias-recorte").textContent = "";
+        if (!modal) modal = new bootstrap.Modal(document.getElementById("modal-ocorrencias"));
+        modal.show();
+        carregar(1);
+    };
+})();
+</script>

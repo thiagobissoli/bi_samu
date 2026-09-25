@@ -1,67 +1,44 @@
 {% extends "base.html" %}
+{% import "indicadores/_filtros.html" as painel with context %}
 
 {% block breadcrumb %}
 <li class="breadcrumb-item"><a href="/indicadores/">Indicadores</a></li>
 <li class="breadcrumb-item active">Desempenho</li>
 {% endblock %}
 
-{% block content %}
-<div class="card mb-3">
-    <div class="card-body py-2">
-        <form method="get" action="/indicadores/desempenho" class="row g-2 align-items-end">
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="metrica">Métrica</label>
-                <select id="metrica" name="metrica" class="form-select form-select-sm">
-                    {% for slug, meta in metricas.items() %}
-                    <option value="{{ slug }}" {% if slug == dados.metrica %}selected{% endif %}>{{ meta[1] }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="dimensao">Dimensão</label>
-                <select id="dimensao" name="dimensao" class="form-select form-select-sm">
-                    {% for slug, meta in dimensoes.items() %}
-                    <option value="{{ slug }}" {% if slug == dados.dimensao %}selected{% endif %}>{{ meta[1] }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="min_n">n mínimo</label>
-                <input type="number" id="min_n" name="min_n" class="form-control form-control-sm"
-                       style="width: 5rem;" min="1" value="{{ min_n }}">
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="data_inicial">Data inicial</label>
-                <input type="date" id="data_inicial" name="data_inicial"
-                       value="{{ filtros.data_inicial }}" class="form-control form-control-sm">
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="data_final">Data final</label>
-                <input type="date" id="data_final" name="data_final"
-                       value="{{ filtros.data_final }}" class="form-control form-control-sm">
-            </div>
-            <div class="col-auto">
-                <div class="form-check form-check-inline mb-1">
-                    <input class="form-check-input" type="checkbox" id="convenio" name="convenio"
-                           value="1" {% if filtros.convenio %}checked{% endif %}>
-                    <label class="form-check-label small" for="convenio">Convênio (GV)</label>
-                </div>
-                <div class="form-check form-check-inline mb-1">
-                    <input class="form-check-input" type="checkbox" id="iscm" name="iscm"
-                           value="1" {% if filtros.iscm %}checked{% endif %}>
-                    <label class="form-check-label small" for="iscm">ISCM</label>
-                </div>
-            </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm">
-                    <i class="fa-solid fa-chart-column"></i> Analisar
-                </button>
-                <a href="/indicadores/desempenho" class="btn btn-outline-secondary btn-sm">Limpar</a>
-            </div>
-        </form>
-    </div>
-</div>
+{% block styles %}{{ painel.recursos() }}{% endblock %}
 
+{% block content %}
+{% call painel.form("/indicadores/desempenho", "Analisar") %}
+    <div class="col-auto">
+        <label class="form-label mb-0 small" for="metrica">Métrica</label>
+        <select id="metrica" name="metrica" class="form-select form-select-sm">
+            {% for slug, meta in metricas.items() %}
+            <option value="{{ slug }}" {% if slug == metrica %}selected{% endif %}>{{ meta[1] }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label mb-0 small" for="dimensao">Dimensão</label>
+        <select id="dimensao" name="dimensao" class="form-select form-select-sm">
+            {% for slug, meta in dimensoes.items() %}
+            <option value="{{ slug }}" {% if slug == dimensao %}selected{% endif %}>{{ meta[1] }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label mb-0 small" for="min_n">n mínimo</label>
+        <input type="number" id="min_n" name="min_n" class="form-control form-control-sm"
+               style="width: 5rem;" min="1" value="{{ min_n }}">
+    </div>
+{% endcall %}
+
+{% if dados is none %}
+<div class="card"><div class="card-body text-center py-5">
+    <i class="fa-solid fa-ranking-star fa-2x text-body-secondary mb-3 d-block" aria-hidden="true"></i>
+    <h2 class="h5">Escolha a métrica e a dimensão e clique em <strong>Analisar</strong></h2>
+</div></div>
+{% else %}
 <p class="text-muted mb-3">
     <i class="fa-solid fa-ranking-star me-1"></i>
     <strong>{{ dados.rotulo_metrica }}</strong> por <strong>{{ dados.rotulo_dimensao }}</strong>
@@ -132,9 +109,12 @@
     </div>
 </div>
 {% endif %}
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
+{{ painel.scripts() }}
+{% if dados is not none %}
 <script src="{{ url_for('static', path='vendor/chartjs/chart.umd.js') }}"></script>
 <script>
 (function () {
@@ -188,4 +168,5 @@
     });
 })();
 </script>
+{% endif %}
 {% endblock %}

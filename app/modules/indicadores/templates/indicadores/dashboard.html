@@ -1,165 +1,76 @@
 {% extends "base.html" %}
+{% import "indicadores/_filtros.html" as painel with context %}
+
+{% block title %}{{ meta_tema.titulo }}{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{{ url_for('static', path='vendor/select2/select2.min.css') }}">
+{{ painel.recursos() }}
 <style>
-    /* Select2 alinhado ao form-control-sm do Bootstrap */
-    .select2-container .select2-selection--multiple {
-        min-height: 31px;
-        font-size: .875rem;
-        border-color: var(--bs-border-color, #dee2e6);
-    }
-    .select2-container--default .select2-selection--multiple .select2-selection__choice {
-        margin-top: 3px;
-        font-size: .78rem;
-    }
-    .select2-container .select2-search--inline .select2-search__field {
-        margin-top: 5px;
-        font-size: .82rem;
-    }
+    .grafico-clicavel canvas { cursor: pointer; }
+    .dica-clique { font-size: .72rem; }
+    .mapa-calor { border-collapse: separate; border-spacing: 2px; font-size: .68rem; width: 100%; }
+    .mapa-calor th { font-weight: 600; color: var(--bs-secondary-color); text-align: center; white-space: nowrap; }
+    .mapa-calor th.linha { text-align: right; padding-right: .35rem; }
+    .mapa-calor td { text-align: center; border-radius: 3px; padding: .3rem 0; cursor: pointer; font-variant-numeric: tabular-nums; }
+    .mapa-calor td.vazio { cursor: default; background: var(--bs-tertiary-bg); }
+    .mapa-calor td:not(.vazio):hover { outline: 2px solid var(--bs-body-color); }
+    .legenda-calor { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #dbe9fb, #2a78d6, #0d2f5e); }
 </style>
 {% endblock %}
 
 {% block breadcrumb %}
 <li class="breadcrumb-item"><a href="/indicadores/{% if qs %}?{{ qs }}{% endif %}">Indicadores</a></li>
-<li class="breadcrumb-item active">{{ dados.titulo }}</li>
+<li class="breadcrumb-item active">{{ meta_tema.titulo }}</li>
 {% endblock %}
 
 {% block content %}
-<div class="card mb-3">
-    <div class="card-body py-2">
-        <form method="get" action="/indicadores/{{ tema }}" class="row g-2 align-items-end">
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="data_inicial">Data inicial</label>
-                <input type="date" id="data_inicial" name="data_inicial"
-                       value="{{ filtros.data_inicial }}" class="form-control form-control-sm">
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="data_final">Data final</label>
-                <input type="date" id="data_final" name="data_final"
-                       value="{{ filtros.data_final }}" class="form-control form-control-sm">
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="transporte">Transporte</label>
-                <select id="transporte" name="transporte" class="form-select form-select-sm select2-multi"
-                        multiple data-width="170px">
-                    {% for op in opcoes.transportes %}
-                    <option value="{{ op }}" {% if op in filtros.transporte %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="recurso"
-                       title="Identificado pela coluna Unidade (USA/USB)">Tipo de transporte</label>
-                <select id="recurso" name="recurso" class="form-select form-select-sm select2-multi"
-                        multiple data-width="140px">
-                    {% for op in opcoes.recursos %}
-                    <option value="{{ op }}" {% if op in filtros.recurso %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="codigo">Código da ocorrência</label>
-                <select id="codigo" name="codigo" class="form-select form-select-sm select2-multi"
-                        multiple data-width="190px">
-                    {% for op in opcoes.codigos %}
-                    <option value="{{ op }}" {% if op in filtros.codigo %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="tipo">Tipo</label>
-                <select id="tipo" name="tipo" class="form-select form-select-sm select2-multi"
-                        multiple data-width="150px">
-                    {% for op in opcoes.tipos %}
-                    <option value="{{ op }}" {% if op in filtros.tipo %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto" style="max-width: 280px;">
-                <label class="form-label mb-0 small" for="motivo">Motivo</label>
-                <select id="motivo" name="motivo" class="form-select form-select-sm select2-multi"
-                        multiple data-width="280px">
-                    {% for op in opcoes.motivos %}
-                    <option value="{{ op }}" {% if op in filtros.motivo %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="unidade">Unidade</label>
-                <select id="unidade" name="unidade" class="form-select form-select-sm select2-multi"
-                        multiple data-width="150px">
-                    {% for op in opcoes.unidades %}
-                    <option value="{{ op }}" {% if op in filtros.unidade %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="cidade">Cidade</label>
-                <select id="cidade" name="cidade" class="form-select form-select-sm select2-multi"
-                        multiple data-width="170px">
-                    {% for op in opcoes.cidades %}
-                    <option value="{{ op }}" {% if op in filtros.cidade %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="risco">Risco inicial</label>
-                <select id="risco" name="risco" class="form-select form-select-sm select2-multi"
-                        multiple data-width="160px">
-                    {% for op in opcoes.riscos %}
-                    <option value="{{ op }}" {% if op in filtros.risco %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            {% if dados.profissionais_opcoes %}
-            <div class="col-auto" style="max-width: 320px;">
-                <label class="form-label mb-0 small" for="profissional">Profissionais</label>
-                <select id="profissional" name="profissional"
-                        class="form-select form-select-sm select2-multi"
-                        multiple data-width="300px">
-                    {% for op in dados.profissionais_opcoes %}
-                    <option value="{{ op }}" {% if op in dados.profissionais_selecionados %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            {% endif %}
-            <div class="col-auto">
-                <div class="form-check form-check-inline mb-1">
-                    <input class="form-check-input" type="checkbox" id="convenio" name="convenio"
-                           value="1" {% if filtros.convenio %}checked{% endif %}>
-                    <label class="form-check-label small" for="convenio"
-                           title="Vitória + Vila Velha + Serra + Cariacica">Convênio (GV)</label>
-                </div>
-                <div class="form-check form-check-inline mb-1">
-                    <input class="form-check-input" type="checkbox" id="iscm" name="iscm"
-                           value="1" {% if filtros.iscm %}checked{% endif %}>
-                    <label class="form-check-label small" for="iscm"
-                           title="42 viaturas do núcleo (USA 10–100, USB pares)">ISCM</label>
-                </div>
-            </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm">
-                    <i class="fa-solid fa-filter"></i> Aplicar
-                </button>
-                <a href="/indicadores/{{ tema }}" class="btn btn-outline-secondary btn-sm">Limpar</a>
-            </div>
-            <div class="col-auto ms-auto">
-                <label class="form-label mb-0 small" for="nav-tema">Dashboard</label>
-                <select id="nav-tema" class="form-select form-select-sm"
-                        onchange="location.href='/indicadores/' + this.value + location.search;">
-                    {% for slug, meta in temas.items() %}
-                    <option value="{{ slug }}" {% if slug == tema %}selected{% endif %}>{{ meta[0] }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-        </form>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <p class="text-body-secondary mb-0 small">
+        <i class="fa-solid {{ meta_tema.icone }} me-1"></i>{{ meta_tema.descricao }}
+    </p>
+    <div class="ms-auto d-flex align-items-center gap-2">
+        <label class="small text-body-secondary mb-0" for="nav-tema">Dashboard</label>
+        <select id="nav-tema" class="form-select form-select-sm" style="width: auto"
+                onchange="location.href='/indicadores/' + this.value + '?{{ qs }}';">
+            {% for slug, m in temas.items() %}
+            <option value="{{ slug }}" {% if slug == tema %}selected{% endif %}>{{ m[0] }}</option>
+            {% endfor %}
+        </select>
+        <a href="/indicadores/correlacao?{{ qs }}" class="btn btn-outline-primary btn-sm text-nowrap">
+            <i class="fa-solid fa-diagram-project"></i> Correlacionar</a>
     </div>
 </div>
 
-<p class="text-muted mb-3">
-    <i class="fa-solid {{ dados.icone }} me-1"></i>{{ dados.descricao }}
-    — <strong>{{ dados.total_filtrado }}</strong> registros no filtro atual.
+{% call painel.form("/indicadores/" ~ tema) %}
+    {% if tema.startswith("prof-") %}
+    <div class="col-12 col-lg-6">
+        <label class="form-label mb-0 small" for="f-profissional">Profissionais (indicadores individuais)</label>
+        <select id="f-profissional" name="profissional" multiple class="form-select form-select-sm select2-multi" data-chave="profissional">
+            {% set opcoes_prof = dados.profissionais_opcoes if dados and dados.profissionais_opcoes else filtros.profissional %}
+            {% for op in opcoes_prof %}
+            <option value="{{ op }}" {% if op in filtros.profissional %}selected{% endif %}>{{ op }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+{% endcall %}
+
+{% if dados is none %}
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="fa-solid fa-filter fa-2x text-body-secondary mb-3 d-block" aria-hidden="true"></i>
+        <h2 class="h5">Defina os filtros e clique em <strong>Aplicar</strong></h2>
+        <p class="text-body-secondary mb-0">Os dados só são calculados depois de aplicar. O período já vem
+            com os últimos 30 dias da base.</p>
+    </div>
+</div>
+{% else %}
+
+<p class="text-body-secondary mb-3 small">
+    <strong>{{ '{:,}'.format(dados.total_filtrado).replace(',', '.') }}</strong> registros no filtro atual.
+    {% if dados.charts | selectattr('drill') | list %}
+    <span class="ms-2"><i class="fa-solid fa-hand-pointer"></i> Clique num ponto, barra ou célula para ver as ocorrências.</span>
+    {% endif %}
 </p>
 
 {% if dados.total_filtrado == 0 %}
@@ -172,9 +83,9 @@
     <div class="col-6 col-md-3 col-xl-2 mb-2">
         <div class="card h-100">
             <div class="card-body py-2 px-3">
-                <div class="text-muted small text-truncate" title="{{ kpi.label }}">{{ kpi.label }}</div>
+                <div class="text-body-secondary small text-truncate" title="{{ kpi.label }}">{{ kpi.label }}</div>
                 <div class="fs-5 fw-bold">{{ kpi.valor }}</div>
-                {% if kpi.sub %}<div class="text-muted" style="font-size: .75rem;">{{ kpi.sub }}</div>{% endif %}
+                {% if kpi.sub %}<div class="text-body-secondary" style="font-size: .75rem;">{{ kpi.sub }}</div>{% endif %}
             </div>
         </div>
     </div>
@@ -184,8 +95,8 @@
 
 <div class="row">
     {% for chart in dados.charts %}
-    <div class="col-md-6 mb-3">
-        <div class="card h-100">
+    <div class="{{ 'col-12' if chart.tipo == 'heatmap' else 'col-md-6' }} mb-3">
+        <div class="card h-100 {{ 'grafico-clicavel' if chart.drill }}">
             <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
                 <h3 class="card-title fs-6 mb-0">{{ chart.titulo }}</h3>
                 <div class="btn-group btn-group-sm flex-shrink-0">
@@ -201,16 +112,24 @@
                 </div>
             </div>
             <div class="card-body">
-                {% if chart.height %}
-                {# Muitas categorias: área rolável, gráfico alto por dentro #}
+                {% if chart.tipo == 'heatmap' %}
+                <div class="table-responsive" id="chart-{{ loop.index }}"></div>
+                <div class="d-flex align-items-center gap-2 mt-2 small text-body-secondary">
+                    <span id="calor-min-{{ loop.index }}"></span>
+                    <div class="legenda-calor flex-grow-1" style="max-width: 220px"></div>
+                    <span id="calor-max-{{ loop.index }}"></span>
+                    <span class="ms-2">{{ 'média em mm:ss' if chart.unidade_y == 'min' else 'ocorrências no período' }} · célula vazia = sem dados</span>
+                </div>
+                {% elif chart.height %}
                 <div style="max-height: 420px; overflow-y: auto;">
                     <div style="height: {{ chart.height }}px; position: relative;">
-                        <canvas id="chart-{{ loop.index }}"></canvas>
+                        <canvas id="chart-{{ loop.index }}" role="img" aria-label="{{ chart.titulo }}"></canvas>
                     </div>
                 </div>
                 {% else %}
-                <canvas id="chart-{{ loop.index }}" height="230"></canvas>
+                <canvas id="chart-{{ loop.index }}" height="230" role="img" aria-label="{{ chart.titulo }}"></canvas>
                 {% endif %}
+                {% if chart.drill %}<div class="dica-clique text-body-secondary mt-1"><i class="fa-solid fa-hand-pointer"></i> clique para ver as ocorrências</div>{% endif %}
             </div>
         </div>
     </div>
@@ -246,31 +165,22 @@
     </div>
 </div>
 {% endfor %}
+{% include "indicadores/_ocorrencias.html" %}
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
+{{ painel.scripts() }}
+{% if dados is not none %}
 <script src="{{ url_for('static', path='vendor/chartjs/chart.umd.js') }}"></script>
-<script src="{{ url_for('static', path='vendor/select2/select2.min.js') }}"></script>
-<script src="{{ url_for('static', path='vendor/select2/pt-BR.js') }}"></script>
-<script>
-$(function () {
-    $(".select2-multi").each(function () {
-        $(this).select2({
-            width: $(this).data("width") || "180px",
-            placeholder: "Todos",
-            language: "pt-BR",
-            closeOnSelect: false,
-            allowClear: false,
-        });
-    });
-});
-</script>
 <script>
 (function () {
     // Renderização instantânea: sem animações (páginas têm 10+ gráficos)
     Chart.defaults.animation = false;
 
     const charts = {{ dados.charts | tojson }};
+    const TEMA = {{ tema | tojson }};
+    const QS = {{ qs | tojson }};
     const PALETA = ["#0d6efd", "#dc3545", "#198754", "#ffc107", "#6f42c1",
                     "#fd7e14", "#20c997", "#6c757d", "#0dcaf0", "#d63384"];
 
@@ -282,10 +192,61 @@ $(function () {
         return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
     }
 
+    function detalhar(i, x, s) {
+        const params = (QS ? QS + "&" : "") + "grafico=" + i + "&x=" + x
+            + (s === null || s === undefined ? "" : "&s=" + s);
+        window.abrirOcorrencias("/indicadores/api/" + TEMA + "/ocorrencias?" + params,
+                                "/indicadores/" + TEMA + "/ocorrencias.xlsx?" + params);
+    }
+
+    // ---- mapa de calor (HTML): escala sequencial de um só tom ----------
+    function corSequencial(t) {
+        // claro -> escuro no azul, sem arco-íris
+        const a = [219, 233, 251], b = [42, 120, 214], c = [13, 47, 94];
+        const [p, q, f] = t < 0.5 ? [a, b, t * 2] : [b, c, (t - 0.5) * 2];
+        return "rgb(" + p.map((v, k) => Math.round(v + (q[k] - v) * f)).join(",") + ")";
+    }
+    function desenharMapa(spec, i) {
+        const alvo = document.getElementById("chart-" + (i + 1));
+        const todos = spec.valores.flat().filter(v => v !== null && v !== undefined);
+        const min = Math.min(...todos), max = Math.max(...todos);
+        const fmt = v => spec.unidade_y === "min" ? minParaMMSS(v) : String(v);
+        document.getElementById("calor-min-" + (i + 1)).textContent = todos.length ? fmt(min) : "";
+        document.getElementById("calor-max-" + (i + 1)).textContent = todos.length ? fmt(max) : "";
+        const tab = document.createElement("table");
+        tab.className = "mapa-calor";
+        const cab = tab.createTHead().insertRow();
+        cab.appendChild(document.createElement("th"));
+        spec.colunas.forEach(c => { const th = document.createElement("th"); th.textContent = c; cab.appendChild(th); });
+        const corpo = tab.createTBody();
+        spec.linhas.forEach((linha, r) => {
+            const tr = corpo.insertRow();
+            const th = document.createElement("th"); th.className = "linha"; th.textContent = linha; tr.appendChild(th);
+            spec.valores[r].forEach((v, c) => {
+                const td = tr.insertCell();
+                const n = spec.n ? spec.n[r][c] : null;
+                if (v === null || v === undefined || (spec.unidade_y !== "min" && v === 0)) {
+                    td.className = "vazio";
+                    td.title = linha + " " + spec.colunas[c] + ": sem dados";
+                    return;
+                }
+                const t = max > min ? (v - min) / (max - min) : 0.5;
+                td.style.background = corSequencial(t);
+                td.style.color = t > 0.45 ? "#fff" : "#0d2f5e";
+                td.textContent = spec.unidade_y === "min" ? minParaMMSS(v) : v;
+                td.title = linha + " " + spec.colunas[c] + ": " + fmt(v) + (n !== null && spec.unidade_y === "min" ? " (n=" + n + ")" : "");
+                if (spec.drill) td.addEventListener("click", () => detalhar(i, r * spec.colunas.length + c, null));
+            });
+        });
+        alvo.appendChild(tab);
+    }
+
     charts.forEach(function (spec, i) {
+        if (spec.tipo === "heatmap") { desenharMapa(spec, i); return; }
         const el = document.getElementById("chart-" + (i + 1));
         if (!el) return;
         const ehPizza = spec.tipo === "doughnut" || spec.tipo === "pie";
+        const ehFaixa = spec.tipo === "faixa";
         const datasets = spec.datasets.map(function (ds, j) {
             const base = {
                 label: ds.label,
@@ -294,6 +255,17 @@ $(function () {
                 tension: 0.3,
                 spanGaps: true,
             };
+            if (ehFaixa) {
+                if (j === 0) {
+                    base.backgroundColor = "#2a78d655"; base.borderColor = "#2a78d6";
+                    base.borderRadius = 4; base.borderSkipped = false;
+                } else {
+                    Object.assign(base, { type: "line", showLine: false, indexAxis: "y",
+                        pointStyle: "line", pointRadius: 9, pointRotation: 90, borderWidth: 3,
+                        borderColor: getComputedStyle(document.documentElement).getPropertyValue("--bs-emphasis-color").trim() || "#0d2f5e" });
+                }
+                return base;
+            }
             if (ehPizza) {
                 base.backgroundColor = ds.colors || PALETA;
             } else if (ds.colors) {
@@ -304,7 +276,7 @@ $(function () {
                 base.backgroundColor = spec.tipo === "line" ? cor + "33" : cor + "cc";
                 base.borderColor = cor;
             }
-            if (spec.tipo === "line") base.fill = false;
+            if (spec.tipo === "line") { base.fill = false; base.pointRadius = spec.labels.length > 40 ? 0 : 3; base.pointHoverRadius = 6; base.pointHitRadius = 8; }
             if (ds.dash) base.borderDash = ds.dash;
             return base;
         });
@@ -316,6 +288,15 @@ $(function () {
             plugins: { legend: { display: ehPizza || spec.datasets.length > 1,
                                  position: ehPizza ? "right" : "top" } },
         };
+        if (spec.drill) {
+            opts.onClick = function (evt, _elems, chart) {
+                const alvo = chart.getElementsAtEventForMode(evt, "nearest", { intersect: false }, true)[0];
+                if (alvo) detalhar(i, alvo.index, alvo.datasetIndex);
+            };
+            opts.onHover = function (evt, elems) {
+                evt.native.target.style.cursor = elems.length ? "pointer" : "default";
+            };
+        }
         if (!ehPizza) {
             // Linhas: escala ajustada à faixa dos valores (folga de 15%) —
             // partir do zero achata séries que oscilam longe da base.
@@ -327,6 +308,7 @@ $(function () {
                 opts.scales.y.stacked = true;
             }
             if (spec.max_y) opts.scales[spec.horizontal ? "x" : "y"].max = spec.max_y;
+            if (spec.unidade_x === "min") opts.scales.x.title = { display: true, text: "minutos" };
             if (spec.unidade_y === "min") {
                 // Indicadores de tempo: eixo e tooltip em mm:ss
                 const eixoValor = spec.horizontal ? "x" : "y";
@@ -337,6 +319,9 @@ $(function () {
                 opts.plugins.tooltip = {
                     callbacks: {
                         label: function (ctx) {
+                            if (Array.isArray(ctx.raw)) {
+                                return ctx.dataset.label + ": " + minParaMMSS(ctx.raw[0]) + " a " + minParaMMSS(ctx.raw[1]);
+                            }
                             const v = spec.horizontal ? ctx.parsed.x : ctx.parsed.y;
                             return (ctx.dataset.label || "") + ": " + minParaMMSS(v);
                         }
@@ -346,7 +331,7 @@ $(function () {
                 opts.scales.y.title = { display: true, text: spec.unidade_y };
             }
         }
-        new Chart(el, { type: ehPizza ? "doughnut" : spec.tipo,
+        new Chart(el, { type: ehPizza ? "doughnut" : (ehFaixa ? "bar" : spec.tipo),
                         data: { labels: spec.labels, datasets: datasets },
                         options: opts });
     });
@@ -381,7 +366,7 @@ $(function () {
     const SLUG_PAGINA = {{ dados.slug | tojson }};
 
     function slugArquivo(texto) {
-        return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        return texto.normalize("NFD").replace(/[̀-ͯ]/g, "")
             .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "")
             .toLowerCase().slice(0, 60);
     }
@@ -425,6 +410,22 @@ $(function () {
     function exportarChart(i, fmt) {
         const spec = charts[i - 1];
         const nome = SLUG_PAGINA + "-" + slugArquivo(spec.titulo);
+        if (spec.tipo === "heatmap") {
+            const alvo = document.getElementById("chart-" + i);
+            if (fmt === "xlsx") {
+                const linhas = [[""].concat(spec.colunas)];
+                spec.linhas.forEach((l, r) => linhas.push([l].concat(spec.valores[r])));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), "Dados");
+                XLSX.writeFile(wb, nome + ".xlsx");
+            } else {
+                html2canvas(alvo, { backgroundColor: "#ffffff", scale: 2 }).then(function (canvas) {
+                    if (fmt === "png") baixarDataUrl(canvas.toDataURL("image/png"), nome + ".png");
+                    else pdfComImagem(canvas, spec.titulo, nome);
+                });
+            }
+            return;
+        }
         if (fmt === "png") {
             baixarDataUrl(canvasComFundo(i).toDataURL("image/png"), nome + ".png");
         } else if (fmt === "pdf") {
@@ -432,7 +433,7 @@ $(function () {
         } else if (fmt === "xlsx") {
             const linhas = [["Categoria"].concat(spec.datasets.map(d => d.label))];
             spec.labels.forEach(function (rotulo, r) {
-                linhas.push([rotulo].concat(spec.datasets.map(d => d.data[r])));
+                linhas.push([rotulo].concat(spec.datasets.map(d => Array.isArray(d.data[r]) ? d.data[r].join(" a ") : d.data[r])));
             });
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), "Dados");
@@ -480,4 +481,5 @@ $(function () {
     });
 })();
 </script>
+{% endif %}
 {% endblock %}

@@ -1,7 +1,8 @@
 {% extends "base.html" %}
+{% import "indicadores/_filtros.html" as painel with context %}
 
 {% block styles %}
-<link rel="stylesheet" href="{{ url_for('static', path='vendor/select2/select2.min.css') }}">
+{{ painel.recursos() }}
 <style>
     .select2-container .select2-selection--multiple {
         min-height: 31px; font-size: .875rem;
@@ -97,8 +98,8 @@
                quebraria o calendário no meio; o zoom reduz o conjunto para
                caber. A altura de layout é dividida pela escala porque o zoom
                encolhe também o min-height. */
-            zoom: {{ dados.escala_impressao }};
-            min-height: {{ (188 / dados.escala_impressao) | round(1) }}mm;
+            zoom: {{ dados.escala_impressao if dados else 1 }};
+            min-height: {{ (188 / (dados.escala_impressao if dados else 1)) | round(1) }}mm;
         }
         .cal-cartao > * { flex: 0 0 auto; }
 
@@ -155,9 +156,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="card mb-3 cal-sem-impressao">
-    <div class="card-body py-2">
-        <form method="get" action="/indicadores/calendarios" class="row g-2 align-items-end">
+{% call painel.form("/indicadores/calendarios", "Gerar calendário", "cal-sem-impressao") %}
             <div class="col-12">
                 <label class="form-label mb-1 small fw-semibold">Indicadores exibidos em cada dia</label>
                 <div class="d-flex flex-wrap gap-3">
@@ -189,77 +188,6 @@
                        value="{{ params.unidades }}" class="form-control form-control-sm"
                        style="width: 5.5rem;">
             </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="data_inicial">Data inicial</label>
-                <input type="date" id="data_inicial" name="data_inicial"
-                       value="{{ filtros.data_inicial }}" class="form-control form-control-sm">
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="data_final">Data final</label>
-                <input type="date" id="data_final" name="data_final"
-                       value="{{ filtros.data_final }}" class="form-control form-control-sm">
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="unidade">Unidade</label>
-                <select id="unidade" name="unidade" class="form-select form-select-sm select2-multi"
-                        multiple data-width="170px">
-                    {% for op in opcoes.unidades %}
-                    <option value="{{ op }}" {% if op in filtros.unidade %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="cidade">Cidade</label>
-                <select id="cidade" name="cidade" class="form-select form-select-sm select2-multi"
-                        multiple data-width="170px">
-                    {% for op in opcoes.cidades %}
-                    <option value="{{ op }}" {% if op in filtros.cidade %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="codigo">Código</label>
-                <select id="codigo" name="codigo" class="form-select form-select-sm select2-multi"
-                        multiple data-width="170px">
-                    {% for op in opcoes.codigos %}
-                    <option value="{{ op }}" {% if op in filtros.codigo %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="transporte">Transporte</label>
-                <select id="transporte" name="transporte" class="form-select form-select-sm select2-multi"
-                        multiple data-width="160px">
-                    {% for op in opcoes.transportes %}
-                    <option value="{{ op }}" {% if op in filtros.transporte %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <label class="form-label mb-0 small" for="recurso"
-                       title="Identificado pela coluna Unidade (USA/USB)">Tipo de transporte</label>
-                <select id="recurso" name="recurso" class="form-select form-select-sm select2-multi"
-                        multiple data-width="140px">
-                    {% for op in opcoes.recursos %}
-                    <option value="{{ op }}" {% if op in filtros.recurso %}selected{% endif %}>{{ op }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <div class="form-check form-check-inline mb-1">
-                    <input class="form-check-input" type="checkbox" id="convenio"
-                           name="convenio" value="1"
-                           {% if filtros.convenio %}checked{% endif %}>
-                    <label class="form-check-label small" for="convenio"
-                           title="Vitória + Vila Velha + Serra + Cariacica">Convênio (GV)</label>
-                </div>
-                <div class="form-check form-check-inline mb-1">
-                    <input class="form-check-input" type="checkbox" id="iscm"
-                           name="iscm" value="1" {% if filtros.iscm %}checked{% endif %}>
-                    <label class="form-check-label small" for="iscm">ISCM</label>
-                </div>
-            </div>
-
             <div class="col-12">
                 <div class="d-flex flex-wrap align-items-start gap-4 pt-1
                             border-top mt-1">
@@ -304,17 +232,17 @@
                                 onclick="window.print();">
                             <i class="fa-solid fa-print"></i> Imprimir calendário
                         </button>
-                        <a href="/indicadores/calendarios"
-                           class="btn btn-outline-secondary btn-sm">Limpar</a>
-                        <button type="submit" class="btn btn-primary btn-sm">
-                            <i class="fa-solid fa-calendar-days"></i> Gerar calendário
-                        </button>
                     </div>
                 </div>
             </div>
-        </form>
-    </div>
-</div>
+{% endcall %}
+
+{% if dados is none %}
+<div class="card cal-sem-impressao"><div class="card-body text-center py-5">
+    <i class="fa-solid fa-calendar-days fa-2x text-body-secondary mb-3 d-block" aria-hidden="true"></i>
+    <h2 class="h5">Escolha os indicadores e clique em <strong>Gerar calendário</strong></h2>
+</div></div>
+{% else %}
 
 <p class="cal-sem-impressao text-muted mb-2 small">
     <i class="fa-solid fa-circle-info me-1"></i>
@@ -466,20 +394,9 @@
     {% endif %}
 </p>
 {% endif %}
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='vendor/select2/select2.min.js') }}"></script>
-<script src="{{ url_for('static', path='vendor/select2/pt-BR.js') }}"></script>
-<script>
-$(function () {
-    $(".select2-multi").each(function () {
-        $(this).select2({
-            width: $(this).data("width") || "180px",
-            placeholder: "Todas", language: "pt-BR",
-            closeOnSelect: false, allowClear: false,
-        });
-    });
-});
-</script>
+{{ painel.scripts() }}
 {% endblock %}

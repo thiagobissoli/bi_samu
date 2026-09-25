@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% import "indicadores/_filtros.html" as painel with context %}
+
+{% block styles %}
+{{ painel.recursos() }}
+<style>
+    .matriz-corr { border-collapse: separate; border-spacing: 3px; font-size: .78rem; }
+    .matriz-corr th { font-weight: 600; color: var(--bs-secondary-color); vertical-align: bottom; }
+    .matriz-corr thead th { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; padding: .3rem 0; max-height: 11rem; }
+    .matriz-corr tbody th { text-align: right; white-space: nowrap; padding-right: .4rem; }
+    .matriz-corr td { width: 3.4rem; height: 2.4rem; text-align: center; border-radius: 4px;
+                      font-variant-numeric: tabular-nums; }
+    .matriz-corr td a { display: block; color: inherit; text-decoration: none; line-height: 2.4rem; }
+    .matriz-corr td a:hover { outline: 2px solid var(--bs-body-color); border-radius: 4px; }
+    .legenda-div { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #2a78d6, #f0efec, #e34948); }
+    .stat .valor { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .grafico-clicavel canvas { cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/indicadores/{% if qs %}?{{ qs }}{% endif %}">Indicadores</a></li>
+<li class="breadcrumb-item active">Correlação</li>
+{% endblock %}
+
+{% macro opcoes_metricas(selecionada) -%}
+{% for grupo in metricas.values() | map(attribute='grupo') | unique %}
+<optgroup label="{{ grupo }}">
+    {% for chave, m in metricas.items() if m.grupo == grupo %}
+    <option value="{{ chave }}" {{ 'selected' if chave == selecionada }}>{{ m.rotulo }}</option>
+    {% endfor %}
+</optgroup>
+{% endfor %}
+{%- endmacro %}
+
+{% block content %}
+<p class="text-body-secondary small mb-2">
+    Cada indicador é agregado por um <strong>agrupamento</strong> (dia, semana, unidade, cidade…). Cada grupo vira um
+    ponto; a correlação mostra se os grupos em que um indicador sobe também têm o outro subindo (ou descendo).
+</p>
+
+{% call painel.form("/indicadores/correlacao", "Calcular") %}
+    <div class="col-12">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de análise">
+            {% for valor, rotulo, icone in [('dispersao', 'Dispersão X × Y', 'fa-braille'),
+                                            ('matriz', 'Matriz de correlação', 'fa-table-cells'),
+                                            ('series', 'Séries lado a lado', 'fa-chart-line')] %}
+            <input type="radio" class="btn-check" name="modo" id="modo-{{ valor }}" value="{{ valor }}"
+                   {{ 'checked' if params.modo == valor }}>
+            <label class="btn btn-outline-primary" for="modo-{{ valor }}"><i class="fa-solid {{ icone }} me-1"></i>{{ rotulo }}</label>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="col-6 col-md-3 so-dispersao">
+        <label class="form-label mb-0 small" for="c-x">Indicador X</label>
+        <select id="c-x" name="x" class="form-select form-select-sm">{{ opcoes_metricas(params.x) }}</select>
+    </div>
+    <div class="col-6 col-md-3 so-dispersao">
+        <label class="form-label mb-0 small" for="c-y">Indicador Y</label>
+        <select id="c-y" name="y" class="form-select form-select-sm">{{ opcoes_metricas(params.y) }}</select>
+    </div>
+    <div class="col-12 col-md-6 so-varios">
+        <label class="form-label mb-0 small" for="c-metricas">Indicadores</label>
+        <select id="c-metricas" name="metricas" multiple class="form-select form-select-sm select2-multi">
+            {% for chave, m in metricas.items() %}
+            <option value="{{ chave }}" {{ 'selected' if chave in params.metricas }}>{{ m.rotulo }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-6 col-md-2">
+        <label class="form-label mb-0 small" for="c-dim">Agrupar por</label>
+        <select id="c-dim" name="dimensao" class="form-select form-select-sm">
+            {% for chave, (rot, temporal) in dimensoes.items() %}
+            <option value="{{ chave }}" {{ 'selected' if chave == params.dimensao }} data-temporal="{{ 1 if temporal else 0 }}">{{ rot }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-6 col-md-1">
+        <label class="form-label mb-0 small" for="c-min" title="Grupos com menos registros ficam de fora">n mínimo</label>
+        <input type="number" min="1" id="c-min" name="min_n" value="{{ params.min_n }}" class="form-control form-control-sm">
+    </div>
+{% endcall %}
+
+{% if dados is none %}
+<div class="card"><div class="card-body text-center py-5">
+    <i class="fa-solid fa-diagram-project fa-2x text-body-secondary mb-3 d-block" aria-hidden="true"></i>
+    <h2 class="h5">Escolha os indicadores e clique em <strong>Calcular</strong></h2>
+    <p class="text-body-secondary mb-0">Sugestão: Tempo de Central × Tempo de Resposta, agrupado por dia.</p>
+</div></div>
+{% else %}
+
+{% if dados.modo == 'dispersao' %}
+{# ============================================================ DISPERSÃO #}
+<div class="row g-3 mb-3">
+    {% for rot, valor, dica in [('r de Pearson', dados.pearson, 'Relação linear, de −1 a +1'),
+                               ('ρ de Spearman', dados.spearman, 'Relação de ordem — robusta a extremos'),
+                               ('R²', dados.r2, 'Parte da variação de Y acompanhada por X'),
+                               ('p-valor', dados.p, 'Abaixo de 0,05: pouco provável ser acaso'),
+                               ('Grupos', dados.n_grupos, 'Pontos com n ≥ ' ~ dados.min_n)] %}
+    <div class="col-6 col-md">
+        <div class="card h-100 stat"><div class="card-body py-2">
+            <div class="small text-body-secondary">{{ rot }}</div>
+            <div class="valor">{{ '—' if valor is none else ('{:.3f}'.format(valor) if valor is float else valor) | replace('.', ',') }}</div>
+            <div class="small text-body-secondary">{{ dica }}</div>
+        </div></div>
+    </div>
+    {% endfor %}
+</div>
+<div class="alert {{ 'alert-info' if dados.pearson is not none else 'alert-warning' }} small">
+    <i class="fa-solid fa-circle-info me-1"></i>{{ dados.interpretacao }}
+</div>
+<div class="card mb-3 grafico-clicavel">
+    <div class="card-header py-2"><h3 class="card-title fs-6 mb-0">{{ dados.rotulo_x }} × {{ dados.rotulo_y }} — um ponto por {{ dados.rotulo_dimensao | lower }}</h3></div>
+    <div class="card-body">
+        <div style="position: relative; height: 420px"><canvas id="g-dispersao" role="img" aria-label="Gráfico de dispersão"></canvas></div>
+        <div class="small text-body-secondary mt-1"><i class="fa-solid fa-hand-pointer"></i> clique num ponto para ver as ocorrências do grupo</div>
+    </div>
+</div>
+<details class="card mb-3"><summary class="card-header py-2 small">Ver os {{ dados.n_grupos }} grupos em tabela</summary>
+    <div class="card-body p-0 table-responsive" style="max-height: 360px">
+        <table class="table table-sm table-striped mb-0 small">
+            <thead><tr><th>{{ dados.rotulo_dimensao }}</th><th class="text-end">{{ dados.rotulo_x }}</th><th class="text-end">{{ dados.rotulo_y }}</th><th class="text-end">n</th></tr></thead>
+            <tbody>{% for p in dados.pontos %}<tr><td>{{ p.grupo }}</td><td class="text-end">{{ p.x }}</td><td class="text-end">{{ p.y }}</td><td class="text-end">{{ p.n }}</td></tr>{% endfor %}</tbody>
+        </table>
+    </div>
+</details>
+
+{% elif dados.modo == 'matriz' %}
+{# ============================================================ MATRIZ #}
+<div class="card mb-3">
+    <div class="card-header py-2 d-flex flex-wrap gap-2 align-items-center">
+        <h3 class="card-title fs-6 mb-0">Correlação de Pearson entre os indicadores — {{ dados.n_grupos }} grupos por {{ dados.rotulo_dimensao | lower }}</h3>
+    </div>
+    <div class="card-body table-responsive">
+        {% if dados.n_grupos < 3 %}
+        <div class="alert alert-warning mb-0">Poucos grupos para medir correlação. Amplie o período ou reduza o n mínimo.</div>
+        {% else %}
+        <table class="matriz-corr">
+            <thead><tr><th></th>{% for r in dados.rotulos %}<th scope="col">{{ r }}</th>{% endfor %}</tr></thead>
+            <tbody>
+                {% for linha in dados.celulas %}
+                {% set a = dados.metricas[loop.index0] %}
+                <tr><th scope="row">{{ dados.rotulos[loop.index0] }}</th>
+                    {% for c in linha %}
+                    {% set b = dados.metricas[loop.index0] %}
+                    <td data-r="{{ c.r if c.r is not none else '' }}"
+                        title="{{ dados.rotulos[dados.metricas.index(a)] }} × {{ dados.rotulos[loop.index0] }}: r = {{ c.r if c.r is not none else '—' }} · {{ c.n }} grupos{% if c.p is not none %} · p = {{ c.p }}{% endif %}">
+                        {% if a != b and c.r is not none %}
+                        <a href="/indicadores/correlacao?{{ qs }}&aplicar=1&modo=dispersao&x={{ a }}&y={{ b }}&dimensao={{ dados.dimensao }}&min_n={{ dados.min_n }}">{{ '%.2f' | format(c.r) | replace('.', ',') }}</a>
+                        {% else %}{{ '—' if c.r is none else '1' }}{% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="d-flex align-items-center gap-2 mt-3 small text-body-secondary" style="max-width: 420px">
+            <span>−1</span><div class="legenda-div flex-grow-1"></div><span>+1</span>
+        </div>
+        <p class="small text-body-secondary mt-2 mb-0">Azul: quando um sobe, o outro desce. Vermelho: sobem juntos. Clique numa célula
+            para ver a dispersão do par. Correlação não prova causa.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% else %}
+{# ============================================================ SÉRIES #}
+<div class="card mb-3">
+    <div class="card-header py-2"><h3 class="card-title fs-6 mb-0">Todos os indicadores num eixo só — índice (média do período = 100)</h3></div>
+    <div class="card-body">
+        <div style="position: relative; height: 320px"><canvas id="g-indexado" role="img" aria-label="Indicadores indexados"></canvas></div>
+        <p class="small text-body-secondary mt-2 mb-0">110 = 10% acima da própria média no período. Indexar permite comparar
+            indicadores de unidades diferentes sem usar dois eixos.</p>
+    </div>
+</div>
+<div class="row">
+    {% for s in dados.series %}
+    <div class="col-md-6 mb-3">
+        <div class="card h-100 grafico-clicavel">
+            <div class="card-header py-2"><h3 class="card-title fs-6 mb-0">{{ s.rotulo }} ({{ s.unidade }})</h3></div>
+            <div class="card-body"><div style="position: relative; height: 220px"><canvas id="g-serie-{{ loop.index0 }}" role="img" aria-label="{{ s.rotulo }}"></canvas></div></div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% include "indicadores/_ocorrencias.html" %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ painel.scripts() }}
+<script>
+(function () {
+    // campos conforme o tipo de análise escolhido
+    function ajustar() {
+        var modo = (document.querySelector('input[name="modo"]:checked') || {}).value || "dispersao";
+        document.querySelectorAll(".so-dispersao").forEach(e => e.hidden = modo !== "dispersao");
+        document.querySelectorAll(".so-varios").forEach(e => e.hidden = modo === "dispersao");
+        var dim = document.getElementById("c-dim");
+        Array.from(dim.options).forEach(o => o.disabled = modo === "series" && o.dataset.temporal !== "1");
+        if (dim.selectedOptions[0] && dim.selectedOptions[0].disabled) dim.value = "semana";
+    }
+    document.querySelectorAll('input[name="modo"]').forEach(r => r.addEventListener("change", ajustar));
+    ajustar();
+})();
+</script>
+{% if dados is not none %}
+<script src="{{ url_for('static', path='vendor/chartjs/chart.umd.js') }}"></script>
+<script>
+(function () {
+    Chart.defaults.animation = false;
+    const D = {{ dados | tojson }};
+    const QS = {{ qs | tojson }};
+    const CORES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
+    const css = getComputedStyle(document.documentElement);
+    const TEXTO = css.getPropertyValue("--bs-secondary-color").trim() || "#6c757d";
+    const GRADE = css.getPropertyValue("--bs-border-color-translucent").trim() || "rgba(0,0,0,.1)";
+
+    function mmss(v) {
+        if (v === null || v === undefined || isNaN(v)) return "—";
+        const t = Math.round(v * 60);
+        return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0");
+    }
+    function fmt(v, unidade) {
+        if (v === null || v === undefined) return "—";
+        if (unidade === "min") return mmss(v);
+        if (unidade === "%") return v.toFixed(1).replace(".", ",") + "%";
+        return (Math.round(v * 100) / 100).toLocaleString("pt-BR");
+    }
+    function detalhar(grupo, metrica) {
+        const p = (QS ? QS + "&" : "") + "dimensao=" + encodeURIComponent(D.dimensao)
+            + "&grupo=" + encodeURIComponent(grupo) + (metrica ? "&metrica=" + metrica : "");
+        window.abrirOcorrencias("/indicadores/api/correlacao/ocorrencias?" + p,
+                                "/indicadores/correlacao/ocorrencias.xlsx?" + p);
+    }
+    function eixo(titulo, unidade) {
+        const e = { title: { display: true, text: titulo, color: TEXTO },
+                    grid: { color: GRADE }, ticks: { color: TEXTO } };
+        if (unidade === "min") e.ticks.callback = v => mmss(v);
+        return e;
+    }
+
+    if (D.modo === "dispersao") {
+        const pontos = D.pontos.filter(p => p.x !== null && p.y !== null);
+        const datasets = [{
+            label: D.rotulo_dimensao, data: pontos.map(p => ({ x: p.x, y: p.y, grupo: p.grupo, n: p.n })),
+            backgroundColor: "#2a78d6aa", borderColor: "#ffffff", borderWidth: 1,
+            pointRadius: 5, pointHoverRadius: 8,
+        }];
+        if (D.reta) {
+            const r = D.reta;
+            datasets.push({ type: "line", label: "Tendência (mínimos quadrados)",
+                data: [{ x: r.x_min, y: r.intercepto + r.inclinacao * r.x_min },
+                       { x: r.x_max, y: r.intercepto + r.inclinacao * r.x_max }],
+                borderColor: css.getPropertyValue("--bs-emphasis-color").trim() || "#0d2f5e", borderWidth: 2, borderDash: [6, 4], pointRadius: 0 });
+        }
+        new Chart(document.getElementById("g-dispersao"), {
+            type: "scatter", data: { datasets: datasets },
+            options: {
+                maintainAspectRatio: false,
+                scales: { x: eixo(D.rotulo_x + " (" + D.unidade_x + ")", D.unidade_x),
+                          y: eixo(D.rotulo_y + " (" + D.unidade_y + ")", D.unidade_y) },
+                plugins: {
+                    legend: { labels: { color: TEXTO } },
+                    tooltip: { callbacks: { label: ctx => {
+                        const p = ctx.raw;
+                        if (!p.grupo) return ctx.dataset.label;
+                        return [p.grupo, D.rotulo_x + ": " + fmt(p.x, D.unidade_x),
+                                D.rotulo_y + ": " + fmt(p.y, D.unidade_y), "n = " + p.n];
+                    } } } },
+                onClick: (evt, _e, chart) => {
+                    const alvo = chart.getElementsAtEventForMode(evt, "nearest", { intersect: true }, true)
+                        .find(e => e.datasetIndex === 0);
+                    if (alvo) detalhar(pontos[alvo.index].grupo, D.y);
+                },
+                onHover: (evt, elems) => { evt.native.target.style.cursor = elems.length ? "pointer" : "default"; },
+            },
+        });
+    } else if (D.modo === "matriz") {
+        // escala divergente: azul (−1) · cinza neutro (0) · vermelho (+1)
+        function mistura(a, b, t) { return a.map((v, k) => Math.round(v + (b[k] - v) * t)); }
+        const NEG = [42, 120, 214], NEU = [240, 239, 236], POS = [227, 73, 72];
+        document.querySelectorAll(".matriz-corr td[data-r]").forEach(td => {
+            if (td.dataset.r === "") { td.style.background = "var(--bs-tertiary-bg)"; return; }
+            const r = parseFloat(td.dataset.r);
+            const rgb = r < 0 ? mistura(NEU, NEG, Math.min(1, -r)) : mistura(NEU, POS, Math.min(1, r));
+            td.style.background = "rgb(" + rgb.join(",") + ")";
+            td.style.color = Math.abs(r) > 0.55 ? "#fff" : "#1a1a19";
+        });
+    } else {
+        const rotulos = D.grupos;
+        new Chart(document.getElementById("g-indexado"), {
+            type: "line",
+            data: { labels: rotulos, datasets: D.indexadas.map((s, j) => ({
+                label: s.rotulo, data: s.valores, borderColor: CORES[j % CORES.length],
+                backgroundColor: CORES[j % CORES.length], borderWidth: 2, pointRadius: 2, tension: 0.25, spanGaps: true })) },
+            options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+                scales: { x: { ticks: { color: TEXTO }, grid: { display: false } },
+                          y: { ticks: { color: TEXTO }, grid: { color: GRADE }, title: { display: true, text: "índice (média = 100)", color: TEXTO } } },
+                plugins: { legend: { labels: { color: TEXTO } } } },
+        });
+        D.series.forEach((s, j) => {
+            new Chart(document.getElementById("g-serie-" + j), {
+                type: "line",
+                data: { labels: rotulos, datasets: [{ label: s.rotulo, data: s.valores,
+                    borderColor: CORES[j % CORES.length], backgroundColor: CORES[j % CORES.length],
+                    borderWidth: 2, pointRadius: 3, pointHoverRadius: 6, tension: 0.25, spanGaps: true }] },
+                options: { maintainAspectRatio: false,
+                    scales: { x: { ticks: { color: TEXTO }, grid: { display: false } },
+                              y: Object.assign(eixo(s.unidade, s.unidade), { grace: "10%" }) },
+                    plugins: { legend: { display: false },
+                               tooltip: { callbacks: { label: ctx => s.rotulo + ": " + fmt(ctx.parsed.y, s.unidade) } } },
+                    onClick: (evt, _e, chart) => {
+                        const alvo = chart.getElementsAtEventForMode(evt, "nearest", { intersect: false }, true)[0];
+                        if (alvo) detalhar(rotulos[alvo.index], s.metrica);
+                    },
+                    onHover: (evt, elems) => { evt.native.target.style.cursor = elems.length ? "pointer" : "default"; },
+                },
+            });
+        });
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

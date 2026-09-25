@@ -1,0 +1,147 @@
+{# Painel de filtros dos Indicadores — montado a partir de filtros.FILTROS.
+
+   Uso:
+     {% import "indicadores/_filtros.html" as painel with context %}
+     {% call painel.form("/indicadores/tema") %} campos próprios da tela {% endcall %}
+
+   Nada é calculado ao abrir a tela: o formulário leva aplicar=1 e só então
+   a rota monta os dados. As opções dos selects vêm de /indicadores/api/opcoes
+   depois que a página abre (exigem o núcleo em memória). #}
+
+{% macro _campo(chave, rotulo, tipo, dica) -%}
+{% set id = "f-" ~ chave %}
+{% if tipo == "data" %}
+<label class="form-label mb-0 small" for="{{ id }}">{{ rotulo }}</label>
+<input type="date" id="{{ id }}" name="{{ chave }}" value="{{ filtros[chave] }}"
+       class="form-control form-control-sm">
+{% elif tipo == "multi" %}
+<label class="form-label mb-0 small" for="{{ id }}" {% if dica %}title="{{ dica }}"{% endif %}>{{ rotulo }}</label>
+<select id="{{ id }}" name="{{ chave }}" multiple data-chave="{{ chave }}"
+        class="form-select form-select-sm select2-multi" data-width="100%">
+    {% for v in filtros[chave] %}<option value="{{ v }}" selected>{{ rotulos_cor.get(v, v) if chave == 'cor' else v }}</option>{% endfor %}
+</select>
+{% elif tipo == "marca" %}
+<div class="form-check mt-3">
+    <input class="form-check-input" type="checkbox" id="{{ id }}" name="{{ chave }}" value="1"
+           {% if filtros[chave] %}checked{% endif %}>
+    <label class="form-check-label small" for="{{ id }}" {% if dica %}title="{{ dica }}"{% endif %}>{{ rotulo }}</label>
+</div>
+{% elif tipo == "simnao" %}
+<label class="form-label mb-0 small" for="{{ id }}" {% if dica %}title="{{ dica }}"{% endif %}>{{ rotulo }}</label>
+<select id="{{ id }}" name="{{ chave }}" class="form-select form-select-sm">
+    <option value="">Todos</option>
+    <option value="sim" {{ 'selected' if filtros[chave] == 'sim' }}>Sim</option>
+    <option value="nao" {{ 'selected' if filtros[chave] == 'nao' }}>Não</option>
+</select>
+{% elif tipo == "faixa" or tipo == "hora" %}
+<label class="form-label mb-0 small" {% if dica %}title="{{ dica }}"{% endif %}>{{ rotulo }}</label>
+<div class="input-group input-group-sm">
+    <input type="number" name="{{ chave }}_min" value="{{ filtros[chave ~ '_min'] }}" class="form-control"
+           placeholder="de" aria-label="{{ rotulo }} — de" {% if tipo == 'hora' %}min="0" max="23"{% else %}min="0"{% endif %}>
+    <input type="number" name="{{ chave }}_max" value="{{ filtros[chave ~ '_max'] }}" class="form-control"
+           placeholder="até" aria-label="{{ rotulo }} — até" {% if tipo == 'hora' %}min="0" max="23"{% else %}min="0"{% endif %}>
+</div>
+{% elif tipo == "tempo" %}
+<label class="form-label mb-0 small" {% if dica %}title="{{ dica }}"{% endif %}>Indicador de tempo entre (min)</label>
+<div class="input-group input-group-sm">
+    <select name="tempo_metrica" class="form-select" aria-label="Indicador de tempo" style="max-width: 55%">
+        <option value="">Escolha…</option>
+        {% for col, rot in tempos_filtraveis.items() %}
+        <option value="{{ col }}" {{ 'selected' if filtros.tempo_metrica == col }}>{{ rot }}</option>
+        {% endfor %}
+    </select>
+    <input type="number" step="0.5" min="0" name="tempo_min" value="{{ filtros.tempo_min }}" class="form-control" placeholder="de" aria-label="mínimo em minutos">
+    <input type="number" step="0.5" min="0" name="tempo_max" value="{{ filtros.tempo_max }}" class="form-control" placeholder="até" aria-label="máximo em minutos">
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro form(acao, rotulo_botao="Aplicar", classe="") -%}
+<form method="get" action="{{ acao }}" class="card mb-3 ind-filtros {{ classe }}">
+    <input type="hidden" name="aplicar" value="1">
+    <div class="card-body py-2">
+        {% if caller %}
+        <div class="row g-2 align-items-end pb-2 mb-2 border-bottom">{{ caller() }}</div>
+        {% endif %}
+        <div class="row g-2 align-items-end">
+            {% for chave, rotulo, tipo, coluna, grupo, principal, dica in catalogo if principal and tipo != 'marca' %}
+            <div class="col-6 col-md-3 col-xl-2">
+                {{ _campo(chave, rotulo, tipo, dica) }}
+            </div>
+            {% endfor %}
+            <div class="col-auto d-flex gap-3">
+                {% for chave, rotulo, tipo, coluna, grupo, principal, dica in catalogo if principal and tipo == 'marca' %}
+                {{ _campo(chave, rotulo, tipo, dica) }}
+                {% endfor %}
+            </div>
+            <div class="col-auto d-flex gap-2 ms-auto">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse"
+                        data-bs-target="#mais-filtros" aria-expanded="{{ 'true' if ocultos_ativos else 'false' }}">
+                    <i class="fa-solid fa-sliders"></i> Mais filtros
+                    {% if ocultos_ativos %}<span class="badge text-bg-primary ms-1">{{ ocultos_ativos }}</span>{% endif %}
+                </button>
+                <a href="{{ acao }}" class="btn btn-outline-secondary btn-sm">Limpar</a>
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="fa-solid fa-filter"></i> {{ rotulo_botao }}
+                </button>
+            </div>
+        </div>
+        <div class="collapse {{ 'show' if ocultos_ativos }}" id="mais-filtros">
+            {% for grupo, nome_grupo in grupos_filtro.items() %}
+            {% set campos = catalogo | selectattr('4', 'equalto', grupo) | rejectattr('5') | list %}
+            {% if campos %}
+            <fieldset class="border-top pt-2 mt-2">
+                <legend class="small fw-semibold text-body-secondary mb-1" style="font-size:.78rem">{{ nome_grupo }}</legend>
+                <div class="row g-2 align-items-end">
+                    {% for chave, rotulo, tipo, coluna, g, principal, dica in campos %}
+                    <div class="{{ 'col-12 col-lg-6' if tipo == 'tempo' else ('col-6 col-md-3 col-xl-2' if tipo in ('multi', 'simnao', 'faixa', 'hora') else 'col-auto') }}">
+                        {{ _campo(chave, rotulo, tipo, dica) }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </fieldset>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</form>
+{%- endmacro %}
+
+{% macro recursos() -%}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/select2/select2.min.css') }}">
+<style>
+    .ind-filtros .select2-container .select2-selection--multiple { min-height: 31px; font-size: .85rem;
+        border-color: var(--bs-border-color, #dee2e6); }
+    .ind-filtros .select2-container--default .select2-selection--multiple .select2-selection__choice { margin-top: 3px; font-size: .76rem; }
+    .ind-filtros .select2-container .select2-search--inline .select2-search__field { margin-top: 5px; font-size: .8rem; }
+</style>
+{%- endmacro %}
+
+{% macro scripts() -%}
+<script src="{{ url_for('static', path='vendor/select2/select2.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/select2/pt-BR.js') }}"></script>
+<script>
+$(function () {
+    var selects = $(".ind-filtros .select2-multi");
+    selects.each(function () {
+        $(this).select2({ width: "100%", placeholder: "Todos", language: "pt-BR",
+                          closeOnSelect: false, allowClear: false });
+    });
+    if (!selects.length) return;
+    // Opções carregadas depois da página: exigem os dados em memória.
+    selects.prop("disabled", false);
+    fetch("/indicadores/api/opcoes", { headers: { accept: "application/json" } })
+        .then(function (r) { return r.json(); })
+        .then(function (resp) {
+            var opcoes = resp.data || {};
+            selects.each(function () {
+                var el = this, atuais = $(el).val() || [];
+                (opcoes[el.dataset.chave] || []).forEach(function (par) {
+                    if (atuais.indexOf(par[0]) === -1) el.add(new Option(par[1], par[0], false, false));
+                });
+                $(el).trigger("change.select2");
+            });
+        });
+});
+</script>
+{%- endmacro %}

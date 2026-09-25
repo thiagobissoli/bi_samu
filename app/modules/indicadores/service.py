@@ -11,12 +11,12 @@ Vitória), ISCM, transporte, motivo e tipo.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
 
-from app.modules.indicadores import nucleo
+from app.modules.indicadores import drill, nucleo
+from app.modules.indicadores import filtros as filtros_mod
 from app.modules.indicadores.constants import (
     ADEQUACAO,
     AUDITORIA_INDICADORES,
@@ -87,27 +87,41 @@ class IndicadoresService:
 
     # ------------------------------------------------------------ dados
 
+    def _chave(self, tema: str, filtros: dict) -> tuple:
+        return (self.empresa_id, tema, nucleo.marca_cache(self.empresa_id),
+                filtros_mod.chave_cache(filtros))
+
     def dashboard(self, tema: str, filtros: dict) -> dict:
         if tema not in TEMAS:
             raise KeyError(tema)
         # Cache do payload por (tema, filtros, versão dos dados): revisitar
         # um dashboard com os mesmos filtros devolve o resultado pronto.
-        chave = (self.empresa_id, tema, nucleo.marca_cache(self.empresa_id),
-                 tuple(sorted((k, tuple(v) if isinstance(v, list) else v)
-                              for k, v in filtros.items() if v)))
+        chave = self._chave(tema, filtros)
         pronto = _cache_dashboards.get(chave)
-        if pronto is not None:
+        if pronto is not None and drill.obter(chave) is not None:
             return pronto
 
         df = self._filtrar(nucleo.carregar(self.empresa_id), filtros)
         titulo, icone, descricao = TEMAS[tema]
-        if df.empty:
-            dados = {"kpis": [], "charts": [], "tables": []}
-        elif tema in PROFISSIONAIS_SPEC:
-            dados = self._tema_profissional(df, PROFISSIONAIS_SPEC[tema],
-                                            filtros)
-        else:
-            dados = getattr(self, "tema_" + tema.replace("-", "_"))(df)
+        self._df_tema = df
+        try:
+            if df.empty:
+                dados = {"kpis": [], "charts": [], "tables": []}
+            elif tema in PROFISSIONAIS_SPEC:
+                dados = self._tema_profissional(df, PROFISSIONAIS_SPEC[tema],
+                                                filtros)
+            else:
+                dados = getattr(self, "tema_" + tema.replace("-", "_"))(df)
+        finally:
+            self._df_tema = None
+        # Descrições de detalhamento ficam no servidor; o gráfico só leva
+        # a indicação de que é clicável.
+        descricoes = []
+        for spec in dados.get("charts", []):
+            d = spec.pop("_drill", None)
+            descricoes.append(d)
+            spec["drill"] = d is not None
+        drill.registrar(chave, descricoes)
         dados.update({
             "slug": tema, "titulo": titulo, "icone": icone,
             "descricao": descricao, "total_filtrado": int(len(df)),
@@ -118,9 +132,70 @@ class IndicadoresService:
         _cache_dashboards[chave] = dados
         return dados
 
+    def ocorrencias(self, tema: str, filtros: dict, grafico: int, x: int,
+                    s: int | None = None, pagina: int = 1,
+                    completo: bool = False):
+        """Linhas por trás de um ponto de gráfico (rótulo x, série s).
+
+        Devolve (dados da página, DataFrame completo, descrição do gráfico)
+        — o DataFrame serve à exportação em Excel.
+        """
+        chave = self._chave(tema, filtros)
+        descricoes = drill.obter(chave)
+        if descricoes is None:                 # registro expirou: refaz
+            _cache_dashboards.pop(chave, None)
+            payload = self.dashboard(tema, filtros)
+            descricoes = drill.obter(chave) or []
+        else:
+            payload = _cache_dashboards.get(chave) or self.dashboard(tema, filtros)
+        if not 0 <= grafico < len(descricoes) or descricoes[grafico] is None:
+            raise KeyError("gráfico sem detalhamento")
+        d = descricoes[grafico]
+        spec = payload["charts"][grafico]
+        df = self._filtrar(nucleo.carregar(self.empresa_id), filtros)
+        rows = drill.linhas(df, d, x, s)
+
+        rotulo = spec["labels"][x] if 0 <= x < len(spec["labels"]) else ""
+        serie = (spec["datasets"][s]["label"]
+                 if s is not None and 0 <= s < len(spec["datasets"])
+                 and len(spec["datasets"]) > 1 else "")
+        metrica = d.get("metrica")
+        rotulo_metrica = (ROTULO_TEMPO.get(metrica, "Tempo") + " (mm:ss)"
+                          if metrica else None)
+        dados = drill.pagina(rows, pagina, metrica, rotulo_metrica)
+        dados.update({"titulo": spec["titulo"],
+                      "recorte": " · ".join(x for x in (str(rotulo), serie) if x)})
+        return _json_safe(dados), rows, d
+
     def opcoes_filtros(self) -> dict:
         # Pré-calculadas junto com o cache do núcleo (uma vez por carga)
         return nucleo.opcoes_filtros(self.empresa_id)
+
+    def periodo_disponivel_leve(self, completo: bool = False):
+        """Período da base direto no banco (MIN/MAX), sem carregar o núcleo.
+
+        Usado para abrir as telas na hora: o núcleo só é carregado quando o
+        usuário aplica os filtros. Devolve a data final (aaaa-mm-dd) ou, com
+        completo=True, o par (início, fim).
+        """
+        from sqlalchemy import text
+
+        from app.core.database import engine
+
+        with engine.connect() as conn:
+            inicio, fim = conn.execute(text(
+                "SELECT MIN(data_ocorrencia_dt), MAX(data_ocorrencia_dt) "
+                "FROM vsky_registros_analiticos "
+                "WHERE empresa_id = :emp AND deleted_at IS NULL"),
+                {"emp": self.empresa_id}).fetchone()
+
+        def iso(v):
+            if v is None:
+                return ""
+            if isinstance(v, str):
+                return v[:10]
+            return v.strftime("%Y-%m-%d")
+        return (iso(inicio), iso(fim)) if completo else iso(fim)
 
     def periodo_disponivel(self) -> tuple[str, str]:
         df = nucleo.carregar(self.empresa_id)
@@ -130,40 +205,7 @@ class IndicadoresService:
                 df["dt_ocorr"].max().strftime("%Y-%m-%d"))
 
     def _filtrar(self, df: pd.DataFrame, f: dict) -> pd.DataFrame:
-        if df.empty:
-            return df
-        mask = pd.Series(True, index=df.index)
-        if f.get("data_inicial"):
-            try:
-                dt = datetime.strptime(f["data_inicial"], "%Y-%m-%d")
-                mask &= df["dt_ocorr"] >= dt
-            except ValueError:
-                pass
-        if f.get("data_final"):
-            try:
-                dt = datetime.strptime(f["data_final"], "%Y-%m-%d") + timedelta(days=1)
-                mask &= df["dt_ocorr"] < dt
-            except ValueError:
-                pass
-        if f.get("convenio"):
-            mask &= df["convenio"]
-        if f.get("iscm"):
-            mask &= df["iscm"]
-        # seleção múltipla: valor único (str) ou lista de valores
-        for chave, coluna in (("transporte", "transporte"),
-                              ("recurso", "recurso"),
-                              ("codigo", "codigo_da_ocorrencia"),
-                              ("motivo", "motivo"),
-                              ("tipo", "tipo"),
-                              ("unidade", "unidade_curta"),
-                              ("cidade", "cidade"),
-                              ("risco", "risco_inicial")):
-            valores = f.get(chave)
-            if valores:
-                if isinstance(valores, str):
-                    valores = [valores]
-                mask &= df[coluna].isin(valores)
-        return df[mask]
+        return filtros_mod.aplicar(df, f)
 
     # ------------------------------------------------- página Desempenho
 
@@ -275,6 +317,24 @@ class IndicadoresService:
         s = int(round(segundos))
         return f"{s // 60:02d}:{s % 60:02d}"
 
+    # ------------------------------------------- detalhamento (drill-down)
+
+    _df_tema: pd.DataFrame | None = None
+
+    def _recorte(self, sub: pd.DataFrame) -> list:
+        return drill.recorte(sub, self._df_tema)
+
+    def _eixo_cat(self, col_cat: str) -> dict:
+        if col_cat in drill.DERIVADAS and (
+                self._df_tema is None or col_cat not in self._df_tema.columns):
+            return {"tipo": "derivada", "nome": col_cat}
+        return drill.col(col_cat)
+
+    @staticmethod
+    def _com(spec: dict, descricao: dict) -> dict:
+        spec["_drill"] = descricao
+        return spec
+
     @staticmethod
     def _validos(df: pd.DataFrame, col: str) -> pd.Series:
         """Valores válidos de uma métrica de tempo: > 0 e abaixo do teto."""
@@ -308,9 +368,13 @@ class IndicadoresService:
                              "data": [round(float(medias.get(d, np.nan)), 2)
                                       if d in medias.index else None
                                       for d in dias]})
-        return {"tipo": "line", "titulo": titulo,
-                "labels": [d.strftime("%d/%m") for d in dias],
-                "datasets": datasets, "unidade_y": "min"}
+        return self._com(
+            {"tipo": "line", "titulo": titulo,
+             "labels": [d.strftime("%d/%m") for d in dias],
+             "datasets": datasets, "unidade_y": "min"},
+            drill.desc(drill.tempo("dia"), dias, base=self._recorte(df),
+                       series=[[("valida", c)] for c, _ in cols],
+                       metrica=cols[0][0] if len(cols) == 1 else None))
 
     def _serie_agrupada_min(self, df: pd.DataFrame, cols: list[tuple[str, str]],
                             titulo: str, eixo: str) -> dict:
@@ -338,8 +402,100 @@ class IndicadoresService:
                              "data": [round(float(serie[k]), 2)
                                       if k in serie.index and pd.notna(serie[k])
                                       else None for k in chaves]})
-        return {"tipo": "line", "titulo": titulo, "labels": rotulos,
-                "datasets": datasets, "unidade_y": "min"}
+        return self._com(
+            {"tipo": "line", "titulo": titulo, "labels": rotulos,
+             "datasets": datasets, "unidade_y": "min"},
+            drill.desc(drill.tempo("semana" if eixo == "semana" else "mes"),
+                       chaves, base=self._recorte(df),
+                       series=[[("valida", c)] for c, _ in cols],
+                       metrica=cols[0][0] if len(cols) == 1 else None))
+
+    # ------------------------------------------------ gráficos novos
+
+    DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta",
+                   "Sexta", "Sábado"]
+
+    def _heatmap_tempo(self, df: pd.DataFrame, col: str, rotulo: str) -> dict:
+        """Mapa de calor: média do tempo por dia da semana (plantão) × hora."""
+        base = df[self._validos_mask(df, col)]
+        g = base.groupby(["plantao_dia_semana", "hora"])[col].agg(["mean", "count"])
+        valores, ns = [], []
+        for dia in self.DIAS_SEMANA:
+            valores.append([round(float(g.loc[(dia, h), "mean"]) / 60, 2)
+                            if (dia, h) in g.index else None for h in range(24)])
+            ns.append([int(g.loc[(dia, h), "count"]) if (dia, h) in g.index else 0
+                       for h in range(24)])
+        return self._com(
+            {"tipo": "heatmap", "titulo": f"{rotulo} — média por dia da semana × hora",
+             "linhas": self.DIAS_SEMANA, "colunas": [f"{h:02d}h" for h in range(24)],
+             "valores": valores, "n": ns, "unidade_y": "min",
+             "labels": [], "datasets": []},
+            drill.desc(drill.grade(drill.tempo("dia_semana"), self.DIAS_SEMANA,
+                                   drill.tempo("hora"), range(24)), [],
+                       base=self._recorte(df) + [("valida", col)], metrica=col))
+
+    def _heatmap_volume(self, base: pd.DataFrame, titulo: str) -> dict:
+        """Mapa de calor do volume por dia da semana (plantão) × hora."""
+        g = base.groupby(["plantao_dia_semana", "hora"]).size()
+        valores = [[int(g.get((dia, h), 0)) for h in range(24)]
+                   for dia in self.DIAS_SEMANA]
+        return self._com(
+            {"tipo": "heatmap", "titulo": titulo, "linhas": self.DIAS_SEMANA,
+             "colunas": [f"{h:02d}h" for h in range(24)], "valores": valores,
+             "n": valores, "labels": [], "datasets": []},
+            drill.desc(drill.grade(drill.tempo("dia_semana"), self.DIAS_SEMANA,
+                                   drill.tempo("hora"), range(24)), [],
+                       base=self._recorte(base)))
+
+    def _faixa_iqr(self, df: pd.DataFrame, col: str, col_cat: str,
+                   titulo: str, min_n: int = 5) -> dict:
+        """Faixa interquartil (P25–P75) e mediana por categoria, da pior
+        mediana para a melhor — mostra a dispersão que a média esconde."""
+        base = df[self._validos_mask(df, col) & df[col_cat].notna()
+                  & df[col_cat].ne("")]
+        g = base.groupby(col_cat)[col].agg(
+            p25=lambda v: v.quantile(0.25), mediana="median",
+            p75=lambda v: v.quantile(0.75), n="count")
+        g = g[g["n"] >= min_n].sort_values("mediana", ascending=False)
+        spec = {"tipo": "faixa", "horizontal": True, "unidade_y": "min",
+                "titulo": f"{titulo} — faixa P25–P75 e mediana (n ≥ {min_n})",
+                "labels": [f"{c} (n={int(r['n'])})" for c, r in g.iterrows()],
+                "datasets": [
+                    {"label": "P25–P75",
+                     "data": [[round(r["p25"] / 60, 2), round(r["p75"] / 60, 2)]
+                              for _, r in g.iterrows()]},
+                    {"label": "Mediana",
+                     "data": [round(r["mediana"] / 60, 2) for _, r in g.iterrows()]},
+                ]}
+        if len(g) > 12:
+            spec["height"] = max(240, 20 * len(g) + 60)
+        return self._com(spec, drill.desc(
+            self._eixo_cat(col_cat), list(g.index),
+            base=self._recorte(df) + [("valida", col)], metrica=col))
+
+    def _ecdf(self, df: pd.DataFrame, col: str, rotulo: str,
+              max_min: int = 60) -> dict:
+        """Distribuição acumulada: % dos atendimentos concluídos até X min."""
+        v = self._validos(df, col)
+        minutos = list(range(0, max_min + 1))
+        dados = [round(float((v <= m * 60).mean() * 100), 1) if len(v) else None
+                 for m in minutos]
+        meta = self._metas_tempo().get(col)
+        titulo = f"{rotulo} — % concluídos até X minutos (acumulado)"
+        if meta and len(v):
+            titulo += (f" · meta {self._hms(meta)}: "
+                       f"{(v <= meta).mean() * 100:.1f}% dentro")
+        return self._com(
+            {"tipo": "line", "titulo": titulo, "max_y": 100, "unidade_x": "min",
+             "labels": [f"{m}" for m in minutos],
+             "datasets": [{"label": "% acumulado", "data": dados}]},
+            drill.desc(drill.ROTULO, rotulos=[
+                self._recorte(df) + [("ate", col, m * 60)] for m in minutos],
+                metrica=col))
+
+    @staticmethod
+    def _validos_mask(df: pd.DataFrame, col: str) -> pd.Series:
+        return (df[col] > 0) & (df[col] < CAP_TEMPO.get(col, 14400))
 
     def _hist_tempo(self, df: pd.DataFrame, col: str, titulo: str,
                     passo_min: int = 2, max_min: int = 30) -> dict:
@@ -350,10 +506,14 @@ class IndicadoresService:
         contagens = [int(((v >= a) & (v < b)).sum())
                      for a, b in zip(bordas[:-1], bordas[1:])]
         contagens.append(int((v >= max_min).sum()))
-        return {"tipo": "bar",
-                "titulo": titulo.replace("(min)", "(mm:ss)"),
-                "labels": labels,
-                "datasets": [{"label": "Ocorrências", "data": contagens}]}
+        bordas_s = [b * 60 for b in bordas]
+        return self._com(
+            {"tipo": "bar",
+             "titulo": titulo.replace("(min)", "(mm:ss)"),
+             "labels": labels,
+             "datasets": [{"label": "Ocorrências", "data": contagens}]},
+            drill.desc(drill.faixa(col, bordas_s), range(len(bordas)),
+                       base=self._recorte(df) + [("valida", col)], metrica=col))
 
     def _por_categoria(self, df: pd.DataFrame, col: str, col_cat: str,
                        titulo: str, top: int | None = 15, min_n: int = 5,
@@ -382,7 +542,9 @@ class IndicadoresService:
                 "horizontal": horizontal, "unidade_y": "min"}
         if horizontal and len(grupo) > 12:
             spec["height"] = max(240, 20 * len(grupo) + 60)
-        return spec
+        return self._com(spec, drill.desc(
+            self._eixo_cat(col_cat), list(grupo.index),
+            base=self._recorte(df) + [("valida", col)], metrica=col))
 
     def _por_unidade(self, df: pd.DataFrame, col: str, titulo: str,
                      top: int = 15, min_n: int = 5) -> dict:
@@ -395,12 +557,15 @@ class IndicadoresService:
         base = df[(df[col] > 0) & (df[col] < cap) & df["dt_ocorr"].notna()]
         grupo = base.groupby(base["dt_ocorr"].dt.to_period("M"))[col] \
                     .agg(["mean", "count"]).sort_index()
-        return {"tipo": "line", "titulo": titulo,
-                "labels": [f"{p.strftime('%m/%Y')} (n={int(r['count'])})"
-                           for p, r in grupo.iterrows()],
-                "datasets": [{"label": "Média (min)",
-                              "data": [round(x / 60, 2) for x in grupo["mean"]]}],
-                "unidade_y": "min"}
+        return self._com(
+            {"tipo": "line", "titulo": titulo,
+             "labels": [f"{p.strftime('%m/%Y')} (n={int(r['count'])})"
+                        for p, r in grupo.iterrows()],
+             "datasets": [{"label": "Média (min)",
+                           "data": [round(x / 60, 2) for x in grupo["mean"]]}],
+             "unidade_y": "min"},
+            drill.desc(drill.tempo("mes"), list(grupo.index),
+                       base=self._recorte(df) + [("valida", col)], metrica=col))
 
     def _por_ano(self, df: pd.DataFrame, col: str, titulo: str) -> dict:
         """Média anual (min) de uma métrica de tempo."""
@@ -408,24 +573,30 @@ class IndicadoresService:
         base = df[(df[col] > 0) & (df[col] < cap) & df["dt_ocorr"].notna()]
         grupo = base.groupby(base["dt_ocorr"].dt.year)[col] \
                     .agg(["mean", "count"]).sort_index()
-        return {"tipo": "line", "titulo": titulo,
-                "labels": [f"{int(ano)} (n={int(r['count'])})"
-                           for ano, r in grupo.iterrows()],
-                "datasets": [{"label": "Média (min)",
-                              "data": [round(x / 60, 2) for x in grupo["mean"]]}],
-                "unidade_y": "min"}
+        return self._com(
+            {"tipo": "line", "titulo": titulo,
+             "labels": [f"{int(ano)} (n={int(r['count'])})"
+                        for ano, r in grupo.iterrows()],
+             "datasets": [{"label": "Média (min)",
+                           "data": [round(x / 60, 2) for x in grupo["mean"]]}],
+             "unidade_y": "min"},
+            drill.desc(drill.tempo("ano"), list(grupo.index),
+                       base=self._recorte(df) + [("valida", col)], metrica=col))
 
     def _por_semana(self, df: pd.DataFrame, col: str, titulo: str) -> dict:
         """Média semanal (min) de uma métrica de tempo — semanas ISO."""
         cap = CAP_TEMPO.get(col, 14400)
         base = df[(df[col] > 0) & (df[col] < cap) & df["semana_iso"].notna()]
         grupo = base.groupby("semana_iso")[col].agg(["mean", "count"]).sort_index()
-        return {"tipo": "line", "titulo": titulo,
-                "labels": [f"{sem} (n={int(r['count'])})"
-                           for sem, r in grupo.iterrows()],
-                "datasets": [{"label": "Média (min)",
-                              "data": [round(x / 60, 2) for x in grupo["mean"]]}],
-                "unidade_y": "min"}
+        return self._com(
+            {"tipo": "line", "titulo": titulo,
+             "labels": [f"{sem} (n={int(r['count'])})"
+                        for sem, r in grupo.iterrows()],
+             "datasets": [{"label": "Média (min)",
+                           "data": [round(x / 60, 2) for x in grupo["mean"]]}],
+             "unidade_y": "min"},
+            drill.desc(drill.tempo("semana"), list(grupo.index),
+                       base=self._recorte(df) + [("valida", col)], metrica=col))
 
     @staticmethod
     def _contagem(df: pd.DataFrame, col: str, top: int | None = None) -> pd.Series:
@@ -441,7 +612,8 @@ class IndicadoresService:
                 "horizontal": horizontal}
         if horizontal and len(vc) > 12:
             spec["height"] = max(240, 20 * len(vc) + 60)
-        return spec
+        return self._com(spec, drill.desc(drill.col(col), list(vc.index),
+                                          base=self._recorte(df)))
 
     def _bar_percentual(self, df: pd.DataFrame, col: str, titulo: str) -> dict:
         """Distribuição percentual de uma coluna (n absoluto no rótulo)."""
@@ -454,14 +626,17 @@ class IndicadoresService:
                 "horizontal": True}
         if len(vc) > 12:
             spec["height"] = max(240, 20 * len(vc) + 60)
-        return spec
+        return self._com(spec, drill.desc(drill.col(col), list(vc.index),
+                                          base=self._recorte(df)))
 
     def _pizza(self, df: pd.DataFrame, col: str, titulo: str,
                top: int = 8) -> dict:
         vc = self._contagem(df, col, top)
-        return {"tipo": "doughnut", "titulo": titulo, "labels": list(vc.index),
-                "datasets": [{"label": "Ocorrências",
-                              "data": [int(x) for x in vc]}]}
+        return self._com(
+            {"tipo": "doughnut", "titulo": titulo, "labels": list(vc.index),
+             "datasets": [{"label": "Ocorrências",
+                           "data": [int(x) for x in vc]}]},
+            drill.desc(drill.col(col), list(vc.index), base=self._recorte(df)))
 
     def _tabela_contagem(self, df: pd.DataFrame, col: str, titulo: str,
                          rotulo: str, top: int = 30) -> dict:
@@ -501,12 +676,14 @@ class IndicadoresService:
                 labels = [c.strftime("%m/%Y") for c in chaves]
             else:
                 labels = list(chaves)
-            charts.append({
+            charts.append(self._com({
                 "tipo": tipo, "titulo": f"{rotulo} — {sufixo}",
                 "labels": labels,
                 "datasets": [{"label": nome,
                               "data": [int(s.get(c, 0)) for c in chaves]}
-                             for nome, s in series]})
+                             for nome, s in series]},
+                drill.desc(drill.tempo(eixo), chaves,
+                           series=[self._recorte(b) for _, b in bases])))
         return charts
 
     def _preenchimento(self, df: pd.DataFrame, col: str) -> str:
@@ -542,16 +719,23 @@ class IndicadoresService:
         return {
             "kpis": kpis,
             "charts": [
-                {"tipo": "bar", "titulo": "Média por processo (min)",
-                 "labels": rotulos,
-                 "datasets": [{"label": "Média (min)", "data": medias},
-                              {"label": "Mediana (min)", "data": medianas}],
-                 "unidade_y": "min"},
-                {"tipo": "bar", "titulo": "Cumprimento de SLA (%) — P1 geral e P2 APH por cor",
-                 "labels": [s[0] for s in sla],
-                 "datasets": [{"label": "% dentro do SLA",
-                               "data": [round(s[1], 1) for s in sla]}],
-                 "max_y": 100},
+                self._com(
+                    {"tipo": "bar", "titulo": "Média por processo (min)",
+                     "labels": rotulos,
+                     "datasets": [{"label": "Média (min)", "data": medias},
+                                  {"label": "Mediana (min)", "data": medianas}],
+                     "unidade_y": "min"},
+                    drill.desc(drill.ROTULO, rotulos=[[("valida", c)]
+                                                      for c, _, _ in PERIODOS])),
+                self._com(
+                    {"tipo": "bar", "titulo": "Cumprimento de SLA (%) — P1 geral e P2 APH por cor",
+                     "labels": [s[0] for s in sla],
+                     "datasets": [{"label": "% dentro do SLA",
+                                   "data": [round(s[1], 1) for s in sla]}],
+                     "max_y": 100},
+                    drill.desc(drill.ROTULO, rotulos=[[("valida", "t_p1")]] + [
+                        [("mascara", "aph"), ("igual", "codigo_cor", cor),
+                         ("valida", "t_p2")] for cor in SLA_P2_POR_COR])),
                 self._serie_diaria_min(
                     df, [("t_p1", "P1"), ("t_p2", "P2"), ("t_p3", "P3"),
                          ("t_p4", "P4"), ("t_p4_1", "P4.1"), ("t_p4_2", "P4.2")],
@@ -595,12 +779,20 @@ class IndicadoresService:
         ]
         base = df[(df[col] > 0) & (df[col] < CAP_TEMPO.get(col, 14400))]
         por_hora = base.groupby("hora")[col].mean() / 60
-        charts.append({"tipo": "bar", "titulo": f"{rotulo} por hora do dia (média em min)",
-                       "labels": [f"{h:02d}h" for h in range(24)],
-                       "datasets": [{"label": "Média (min)",
-                                     "data": [round(float(por_hora.get(h, 0)), 2)
-                                              for h in range(24)]}],
-                       "unidade_y": "min"})
+        charts.append(self._com(
+            {"tipo": "bar", "titulo": f"{rotulo} por hora do dia (média em min)",
+             "labels": [f"{h:02d}h" for h in range(24)],
+             "datasets": [{"label": "Média (min)",
+                           "data": [round(float(por_hora.get(h, 0)), 2)
+                                    for h in range(24)]}],
+             "unidade_y": "min"},
+            drill.desc(drill.tempo("hora"), range(24),
+                       base=self._recorte(df) + [("valida", col)], metrica=col)))
+        charts += [
+            self._heatmap_tempo(df, col, rotulo),
+            self._ecdf(df, col, rotulo),
+            self._faixa_iqr(df, col, "unidade_curta", f"{rotulo} por unidade"),
+        ]
         return {"kpis": self._kpis_tempo(df, col), "charts": charts, "tables": []}
 
     def tema_tempo_central(self, df: pd.DataFrame) -> dict:
@@ -865,6 +1057,8 @@ class IndicadoresService:
         charts = self._charts_volume(
             [("Total", base), ("USA", usa), ("USB", usb)],
             "Saídas de ambulâncias")
+        charts.append(self._heatmap_volume(
+            base, "Saídas por dia da semana × hora (total no período)"))
         return {"kpis": kpis, "charts": charts, "tables": []}
 
     def tema_regulacoes(self, df: pd.DataFrame) -> dict:
@@ -891,6 +1085,8 @@ class IndicadoresService:
         charts.append({
             "tipo": "bar",
             "titulo": "Média de regulações por hora do dia",
+            "_drill": drill.desc(drill.tempo("hora"), range(24),
+                                 base=[("notna", "regulador"), ("notna", "ocorrencia")]),
             "labels": [f"{h:02d}h" for h in range(24)],
             "datasets": [{"label": "Média por dia",
                           "data": [round(float(por_hora.get(h, 0)) / dias, 1)
@@ -941,7 +1137,7 @@ class IndicadoresService:
             vc = self._validos(df[df["codigo_cor"] == cor], "tempo_resposta")
             medias.append(round(vc.mean() / 60, 1) if len(vc) else None)
             ns.append(len(vc))
-        dados["charts"].append({
+        dados["charts"].append(self._com({
             "tipo": "bar",
             "titulo": "Tempo de resposta médio por código (min) — "
                       + " · ".join(f"{ROTULO_COR[c]}: n={n}"
@@ -949,7 +1145,10 @@ class IndicadoresService:
             "labels": [ROTULO_COR[c] for c in cores],
             "datasets": [{"label": "Média (min)", "data": medias,
                           "colors": [HEX_COR[c] for c in cores]}],
-            "unidade_y": "min"})
+            "unidade_y": "min"},
+            drill.desc(drill.ROTULO, rotulos=[
+                [("igual", "codigo_cor", c), ("valida", "tempo_resposta")]
+                for c in cores], metrica="tempo_resposta")))
         dados["charts"] += [
             self._por_categoria(df, "tempo_resposta", "micro_regiao",
                                 "Tempo de Resposta por micro região",
@@ -1043,6 +1242,8 @@ class IndicadoresService:
             (p.strftime("%m/%Y"), g) for p, g in
             meses.groupby(meses["dt_ocorr"].dt.to_period("M")))
 
+        ASSERT = [("mascara", "assertividade")]
+
         def _assert_por(col: str, titulo: str, horizontal: bool = True) -> dict:
             grupo = base[base[col].notna() & base[col].ne("")] \
                 .groupby(col)["adequado"].agg(["mean", "count"]) \
@@ -1056,24 +1257,34 @@ class IndicadoresService:
                     "horizontal": horizontal, "max_y": 100}
             if horizontal and len(grupo) > 12:
                 spec["height"] = max(240, 20 * len(grupo) + 60)
-            return spec
+            return self._com(spec, drill.desc(drill.col(col), list(grupo.index),
+                                              base=ASSERT + [("notna", col)]))
+
+        chaves_mes = sorted(meses["dt_ocorr"].dt.to_period("M").unique())
 
         return {
             "kpis": kpis,
             "charts": [
-                {"tipo": "bar", "titulo": "Assertividade por cor (%)",
-                 "labels": [ROTULO_COR[c] for c in ADEQUACAO],
-                 "datasets": [{"label": "% adequado", "data": barras,
-                               "colors": [HEX_COR[c] for c in ADEQUACAO]}],
-                 "max_y": 100},
-                {"tipo": "line", "titulo": "Assertividade geral por semana (%)",
-                 "labels": semanas,
-                 "datasets": [{"label": "% adequado", "data": serie}],
-                 "max_y": 100},
-                {"tipo": "line", "titulo": "Assertividade geral por mês (%)",
-                 "labels": lab_mes,
-                 "datasets": [{"label": "% adequado", "data": val_mes}],
-                 "max_y": 100},
+                self._com(
+                    {"tipo": "bar", "titulo": "Assertividade por cor (%)",
+                     "labels": [ROTULO_COR[c] for c in ADEQUACAO],
+                     "datasets": [{"label": "% adequado", "data": barras,
+                                   "colors": [HEX_COR[c] for c in ADEQUACAO]}],
+                     "max_y": 100},
+                    drill.desc(drill.ROTULO, rotulos=[
+                        ASSERT + [("igual", "codigo_cor", c)] for c in ADEQUACAO])),
+                self._com(
+                    {"tipo": "line", "titulo": "Assertividade geral por semana (%)",
+                     "labels": semanas,
+                     "datasets": [{"label": "% adequado", "data": serie}],
+                     "max_y": 100},
+                    drill.desc(drill.tempo("semana"), semanas, base=ASSERT)),
+                self._com(
+                    {"tipo": "line", "titulo": "Assertividade geral por mês (%)",
+                     "labels": lab_mes,
+                     "datasets": [{"label": "% adequado", "data": val_mes}],
+                     "max_y": 100},
+                    drill.desc(drill.tempo("mes"), chaves_mes, base=ASSERT)),
                 _assert_por("micro_regiao", "Assertividade por micro região"),
                 _assert_por("cidade", "Assertividade por cidade"),
                 _assert_por("recurso",
@@ -1104,6 +1315,8 @@ class IndicadoresService:
         mes_de = base4["dt_ocorr"].dt.to_period("M")
         meses = sorted(mes_de.dropna().unique())
 
+        por_cor = [[("igual", "codigo_cor", c)] for c in cores4]
+
         def _serie_cores(chaves, agrupa) -> list[dict]:
             datasets = []
             for cor in cores4:
@@ -1118,24 +1331,32 @@ class IndicadoresService:
             "charts": [
                 self._bar_contagem(df, "codigo_da_ocorrencia",
                                    "Ocorrências por código", top=12),
-                {"tipo": "doughnut", "titulo": "Distribuição das 4 cores (denominador só cores)",
-                 "labels": [ROTULO_COR[c] for c in cores4],
-                 "datasets": [{"label": "Ocorrências",
-                               "data": [int((base4["codigo_cor"] == c).sum()) for c in cores4],
-                               "colors": [HEX_COR[c] for c in cores4]}]},
-                {"tipo": "line", "titulo": "Evolução diária por cor",
-                 "labels": [d.strftime("%d/%m") for d in dias],
-                 "datasets": _serie_cores(
-                     dias, lambda b: b.groupby("dia").size())},
-                {"tipo": "line", "titulo": "Evolução semanal por cor",
-                 "labels": list(semanas),
-                 "datasets": _serie_cores(
-                     semanas, lambda b: b.groupby("semana_iso").size())},
-                {"tipo": "line", "titulo": "Evolução mensal por cor",
-                 "labels": [m.strftime("%m/%Y") for m in meses],
-                 "datasets": _serie_cores(
-                     meses, lambda b: b.groupby(
-                         b["dt_ocorr"].dt.to_period("M")).size())},
+                self._com(
+                    {"tipo": "doughnut", "titulo": "Distribuição das 4 cores (denominador só cores)",
+                     "labels": [ROTULO_COR[c] for c in cores4],
+                     "datasets": [{"label": "Ocorrências",
+                                   "data": [int((base4["codigo_cor"] == c).sum()) for c in cores4],
+                                   "colors": [HEX_COR[c] for c in cores4]}]},
+                    drill.desc(drill.col("codigo_cor"), cores4)),
+                self._com(
+                    {"tipo": "line", "titulo": "Evolução diária por cor",
+                     "labels": [d.strftime("%d/%m") for d in dias],
+                     "datasets": _serie_cores(
+                         dias, lambda b: b.groupby("dia").size())},
+                    drill.desc(drill.tempo("dia"), dias, series=por_cor)),
+                self._com(
+                    {"tipo": "line", "titulo": "Evolução semanal por cor",
+                     "labels": list(semanas),
+                     "datasets": _serie_cores(
+                         semanas, lambda b: b.groupby("semana_iso").size())},
+                    drill.desc(drill.tempo("semana"), semanas, series=por_cor)),
+                self._com(
+                    {"tipo": "line", "titulo": "Evolução mensal por cor",
+                     "labels": [m.strftime("%m/%Y") for m in meses],
+                     "datasets": _serie_cores(
+                         meses, lambda b: b.groupby(
+                             b["dt_ocorr"].dt.to_period("M")).size())},
+                    drill.desc(drill.tempo("mes"), meses, series=por_cor)),
             ],
             "tables": [self._tabela_contagem(df, "codigo_da_ocorrencia",
                                              "Todos os códigos", "Código")],
@@ -1496,6 +1717,11 @@ class IndicadoresService:
         ]
         charts = [{"tipo": "doughnut",
                    "titulo": "Origem da viatura que atendeu",
+                   "_drill": drill.desc(drill.ROTULO, rotulos=[
+                       [("idx", aval.index[~aval["fora_do_municipio"].astype(bool)]
+                         .to_numpy(dtype=np.int32))],
+                       [("idx", aval.index[aval["fora_do_municipio"].astype(bool)]
+                         .to_numpy(dtype=np.int32))]]),
                    "labels": ["Do próprio município", "De outro município"],
                    "datasets": [{"label": "Ocorrências",
                                  "data": [proprio, fora]}]}]
@@ -1552,6 +1778,7 @@ class IndicadoresService:
         """
         metas = self._metas_tempo()
         linhas, labels, valores = [], [], []
+        acima_por_rotulo = []   # linhas que estouraram a meta, por indicador
         for col, rotulo, sub in AUDITORIA_INDICADORES:
             if col not in df.columns:
                 continue
@@ -1565,7 +1792,9 @@ class IndicadoresService:
                 limite = df.loc[valida.index, "codigo_cor"].map(SLA_P2_POR_COR)
                 com_meta = limite.notna()
                 avaliados = int(com_meta.sum())
-                acima = int((valida[com_meta] > limite[com_meta]).sum())
+                estourou = valida[com_meta] > limite[com_meta]
+                acima = int(estourou.sum())
+                idx_acima = estourou[estourou].index
                 meta_txt = "01:30 / 03:00 / 04:00 por cor"
                 referencia = SLA_P2_POR_COR["amarelo"]
             else:
@@ -1580,6 +1809,7 @@ class IndicadoresService:
                     continue
                 avaliados = len(valida)
                 acima = int((valida > meta).sum())
+                idx_acima = valida[valida > meta].index
                 meta_txt, referencia = self._hms(meta), meta
 
             if not avaliados:
@@ -1596,6 +1826,8 @@ class IndicadoresService:
                            self._hms(mediana), self._hms(p90)])
             labels.append(rotulo)
             valores.append(round(pct, 1))
+            acima_por_rotulo.append(
+                [("idx", idx_acima.to_numpy(dtype=np.int32)), ("valida", col)])
 
         if not linhas:
             return None
@@ -1606,6 +1838,7 @@ class IndicadoresService:
                  "sub": f"{piores[0][0]} acima da meta"}] if piores else []
         charts = [{"tipo": "bar", "horizontal": True,
                    "titulo": "% de atendimentos acima da meta, por indicador",
+                   "_drill": drill.desc(drill.ROTULO, rotulos=acima_por_rotulo),
                    "labels": labels,
                    "datasets": [{"label": "% acima da meta", "data": valores}],
                    "height": max(240, 26 * len(labels) + 60)}]
@@ -1676,8 +1909,11 @@ class IndicadoresService:
             ],
             "charts": [
                 self._pizza(df, "sexo", "Sexo"),
-                {"tipo": "bar", "titulo": "Idade (faixas etárias)", "labels": labels,
-                 "datasets": [{"label": "Pacientes", "data": hist}]},
+                self._com(
+                    {"tipo": "bar", "titulo": "Idade (faixas etárias)", "labels": labels,
+                     "datasets": [{"label": "Pacientes", "data": hist}]},
+                    drill.desc(drill.faixa("idade_num", [a for a, _ in bordas] + [200]),
+                               range(len(bordas)), base=[("notna", "idade_num")])),
                 self._bar_contagem(df, "faixa", "Faixa (campo do vSky)", top=10,
                                    horizontal=False),
             ],
@@ -1699,10 +1935,13 @@ class IndicadoresService:
             "charts": [
                 self._pizza(df, "tipo", "Tipo"),
                 self._bar_contagem(df, "motivo", "Top 20 motivos", top=20),
-                {"tipo": "bar", "titulo": "Top 15 códigos clínicos (prefixo do motivo)",
-                 "labels": list(vc.index),
-                 "datasets": [{"label": "Ocorrências",
-                               "data": [int(x) for x in vc]}], "horizontal": True},
+                self._com(
+                    {"tipo": "bar", "titulo": "Top 15 códigos clínicos (prefixo do motivo)",
+                     "labels": list(vc.index),
+                     "datasets": [{"label": "Ocorrências",
+                                   "data": [int(x) for x in vc]}], "horizontal": True},
+                    drill.desc({"tipo": "derivada", "nome": "motivo_codigo"},
+                               list(vc.index), base=[("notna", "motivo")])),
             ],
             "tables": [self._tabela_contagem(df, "motivo", "Motivos", "Motivo",
                                              top=50)],
@@ -1727,7 +1966,17 @@ class IndicadoresService:
             c, s = int(serie_com.get(d, 0)), int(serie_sem.get(d, 0))
             pct_dia.append(round(c / (c + s) * 100, 1) if c + s else None)
 
-        def _com_sem_serie(chaves, chave_com, chave_sem, titulo) -> dict:
+        COM_SEM = [[("mascara", "atendimento_com")], [("mascara", "atendimento_sem")]]
+
+        def _com_sem_serie(chaves, chave_com, chave_sem, titulo,
+                           eixo=None, chaves_drill=None) -> dict:
+            spec = _spec_com_sem(chaves, chave_com, chave_sem, titulo)
+            if eixo:
+                self._com(spec, drill.desc(drill.tempo(eixo), chaves_drill,
+                                           series=COM_SEM))
+            return spec
+
+        def _spec_com_sem(chaves, chave_com, chave_sem, titulo) -> dict:
             return {"tipo": "line", "titulo": titulo, "labels": list(chaves),
                     "datasets": [
                         {"label": "Com atendimento",
@@ -1768,7 +2017,10 @@ class IndicadoresService:
                     ], "horizontal": horizontal}
             if horizontal and len(tab) > 12:
                 spec["height"] = max(240, 22 * len(tab) + 60)
-            return spec
+            return self._com(spec, drill.desc(
+                drill.col(col), list(tab.index),
+                base=[("mascara", "atendimento_informado"), ("notna", col)],
+                series=COM_SEM))
 
         return {
             "kpis": [
@@ -1783,34 +2035,44 @@ class IndicadoresService:
                          "despacho (orientação, trote, queda, sem resposta)")},
             ],
             "charts": [
-                {"tipo": "doughnut", "titulo": "Atendimento — composição do total",
-                 "labels": ["Com atendimento", "Sem atendimento",
-                            "Não informado (sem despacho)"],
-                 "datasets": [{"label": "Ocorrências",
-                               "data": [int(com.sum()), int(sem.sum()),
-                                        int(vazio.sum())],
-                               "colors": ["#198754", "#dc3545", "#adb5bd"]}]},
-                {"tipo": "line", "titulo": "Com × sem atendimento por dia (contagem)",
-                 "labels": [d.strftime("%d/%m") for d in dias],
-                 "datasets": [
-                     {"label": "Com atendimento",
-                      "data": [int(serie_com.get(d, 0)) for d in dias],
-                      "color": "#198754"},
-                     {"label": "Sem atendimento",
-                      "data": [int(serie_sem.get(d, 0)) for d in dias],
-                      "color": "#dc3545"},
-                 ]},
-                {"tipo": "line",
-                 "titulo": "% com atendimento por dia (entre os informados)",
-                 "labels": [d.strftime("%d/%m") for d in dias],
-                 "datasets": [{"label": "% com atendimento", "data": pct_dia}],
-                 "max_y": 100},
+                self._com(
+                    {"tipo": "doughnut", "titulo": "Atendimento — composição do total",
+                     "labels": ["Com atendimento", "Sem atendimento",
+                                "Não informado (sem despacho)"],
+                     "datasets": [{"label": "Ocorrências",
+                                   "data": [int(com.sum()), int(sem.sum()),
+                                            int(vazio.sum())],
+                                   "colors": ["#198754", "#dc3545", "#adb5bd"]}]},
+                    drill.desc(drill.ROTULO, rotulos=COM_SEM + [
+                        [("mascara", "atendimento_vazio")]])),
+                self._com(
+                    {"tipo": "line", "titulo": "Com × sem atendimento por dia (contagem)",
+                     "labels": [d.strftime("%d/%m") for d in dias],
+                     "datasets": [
+                         {"label": "Com atendimento",
+                          "data": [int(serie_com.get(d, 0)) for d in dias],
+                          "color": "#198754"},
+                         {"label": "Sem atendimento",
+                          "data": [int(serie_sem.get(d, 0)) for d in dias],
+                          "color": "#dc3545"},
+                     ]},
+                    drill.desc(drill.tempo("dia"), dias, series=COM_SEM)),
+                self._com(
+                    {"tipo": "line",
+                     "titulo": "% com atendimento por dia (entre os informados)",
+                     "labels": [d.strftime("%d/%m") for d in dias],
+                     "datasets": [{"label": "% com atendimento", "data": pct_dia}],
+                     "max_y": 100},
+                    drill.desc(drill.tempo("dia"), dias,
+                               base=[("mascara", "atendimento_informado")])),
                 _com_sem_serie(semanas, sem_com, sem_sem,
-                               "Com × sem atendimento por semana (contagem)"),
+                               "Com × sem atendimento por semana (contagem)",
+                               "semana", semanas),
                 _com_sem_serie([m.strftime("%m/%Y") for m in meses],
                                {m.strftime("%m/%Y"): v for m, v in mes_com.items()},
                                {m.strftime("%m/%Y"): v for m, v in mes_sem.items()},
-                               "Com × sem atendimento por mês (contagem)"),
+                               "Com × sem atendimento por mês (contagem)",
+                               "mes", meses),
                 _com_sem_por("recurso",
                              "Com × sem atendimento por tipo de transporte (USA/USB)",
                              horizontal=False),
@@ -1840,6 +2102,7 @@ class IndicadoresService:
             return resultado
 
         datasets = _serie_transportes(dias, lambda b: b.groupby("dia").size())
+        por_transporte = [[("igual", "transporte", v)] for v in valores]
 
         def _transporte_por(col: str, titulo: str,
                             horizontal: bool = True) -> dict:
@@ -1858,7 +2121,11 @@ class IndicadoresService:
                     ], "horizontal": horizontal}
             if horizontal and len(tab) > 12:
                 spec["height"] = max(240, 22 * len(tab) + 60)
-            return spec
+            return self._com(spec, drill.desc(
+                drill.col(col), list(tab.index),
+                base=[("notna", "transporte"), ("notna", col)],
+                series=[[("igual", "transporte", v)] for v in valores
+                        if v in tab.columns]))
 
         return {
             "kpis": [{"label": valor, "valor": str(int((df["transporte"] == valor).sum())),
@@ -1866,18 +2133,24 @@ class IndicadoresService:
                      for valor in valores],
             "charts": [
                 self._pizza(df, "transporte", "Transporte"),
-                {"tipo": "line", "titulo": "Evolução diária por transporte",
-                 "labels": [d.strftime("%d/%m") for d in dias],
-                 "datasets": datasets},
-                {"tipo": "line", "titulo": "Evolução semanal por transporte",
-                 "labels": list(semanas),
-                 "datasets": _serie_transportes(
-                     semanas, lambda b: b.groupby("semana_iso").size())},
-                {"tipo": "line", "titulo": "Evolução mensal por transporte",
-                 "labels": [m.strftime("%m/%Y") for m in meses],
-                 "datasets": _serie_transportes(
-                     meses, lambda b: b.groupby(
-                         b["dt_ocorr"].dt.to_period("M")).size())},
+                self._com(
+                    {"tipo": "line", "titulo": "Evolução diária por transporte",
+                     "labels": [d.strftime("%d/%m") for d in dias],
+                     "datasets": datasets},
+                    drill.desc(drill.tempo("dia"), dias, series=por_transporte)),
+                self._com(
+                    {"tipo": "line", "titulo": "Evolução semanal por transporte",
+                     "labels": list(semanas),
+                     "datasets": _serie_transportes(
+                         semanas, lambda b: b.groupby("semana_iso").size())},
+                    drill.desc(drill.tempo("semana"), semanas, series=por_transporte)),
+                self._com(
+                    {"tipo": "line", "titulo": "Evolução mensal por transporte",
+                     "labels": [m.strftime("%m/%Y") for m in meses],
+                     "datasets": _serie_transportes(
+                         meses, lambda b: b.groupby(
+                             b["dt_ocorr"].dt.to_period("M")).size())},
+                    drill.desc(drill.tempo("mes"), meses, series=por_transporte)),
                 _transporte_por("recurso",
                                 "Transporte por tipo de transporte (USA/USB)",
                                 horizontal=False),
@@ -1936,9 +2209,12 @@ class IndicadoresService:
             v = df[col].dropna()
             labels = [f"{a}–{b}" for a, b in faixas]
             data = [int(((v >= a) & (v < b)).sum()) for a, b in faixas]
-            charts.append({"tipo": "bar", "titulo": f"{rotulo} (aferidos)",
-                           "labels": labels,
-                           "datasets": [{"label": "Pacientes", "data": data}]})
+            charts.append(self._com(
+                {"tipo": "bar", "titulo": f"{rotulo} (aferidos)",
+                 "labels": labels,
+                 "datasets": [{"label": "Pacientes", "data": data}]},
+                drill.desc(drill.faixa(col, [a for a, _ in faixas] + [faixas[-1][1]]),
+                           range(len(faixas)), base=[("notna", col)])))
 
         news = df["news_total"].dropna()
         bandas = df["news_risco"].dropna().value_counts()
@@ -1951,12 +2227,16 @@ class IndicadoresService:
                      "valor": f"{(news >= 7).mean() * 100:.1f}%" if len(news) else "--",
                      "sub": f"{int((news >= 7).sum())} pacientes"})
         charts.append({"tipo": "doughnut", "titulo": "NEWS modificada — bandas de risco",
+                       "_drill": drill.desc(drill.col("news_risco"),
+                                            [b for b in ordem if b in bandas.index]),
                        "labels": [b for b in ordem if b in bandas.index],
                        "datasets": [{"label": "Pacientes",
                                      "data": [int(bandas[b]) for b in ordem if b in bandas.index],
                                      "colors": [cores_bandas[b] for b in ordem if b in bandas.index]}]})
         scores = list(range(0, 16))
         charts.append({"tipo": "bar", "titulo": "NEWS modificada — distribuição do escore",
+                       "_drill": drill.desc(drill.faixa("news_total", list(range(0, 16))),
+                                            range(16), base=[("notna", "news_total")]),
                        "labels": [str(s) for s in scores[:-1]] + ["15+"],
                        "datasets": [{"label": "Pacientes",
                                      "data": [int((news == s).sum()) for s in scores[:-1]]
@@ -2007,6 +2287,8 @@ class IndicadoresService:
             g = base.groupby(col)["news_total"].agg(["mean", "count"])
             cats = _grupos(col, ordem)
             return {"tipo": "bar", "titulo": titulo,
+                    "_drill": drill.desc(drill.col(col), cats,
+                                         base=[("notna", "news_total")]),
                     "labels": [f"{(rotulos or {}).get(c, c)} "
                                f"(n={int(g.loc[c, 'count'])})" for c in cats],
                     "datasets": [{"label": "NEWS médio",
@@ -2019,6 +2301,10 @@ class IndicadoresService:
             cats = _grupos(col, ordem)
             tab = pd.crosstab(base[col], base["news_risco"], normalize="index") * 100
             return {"tipo": "bar", "titulo": titulo, "stacked": True, "max_y": 100,
+                    "_drill": drill.desc(drill.col(col), cats,
+                                         base=[("notna", "news_total")],
+                                         series=[[("igual", "news_risco", b)]
+                                                 for b in ordem_bandas]),
                     "labels": [f"{(rotulos or {}).get(c, c)} "
                                f"(n={int((base[col] == c).sum())})" for c in cats],
                     "datasets": [{"label": banda,
@@ -2118,16 +2404,19 @@ class IndicadoresService:
                 self._bar_contagem(df, "obito", "Valores do campo Óbito", top=8,
                                    horizontal=False),
                 {"tipo": "line", "titulo": "Óbitos por dia",
+                 "_drill": drill.desc(drill.tempo("dia"), dias, base=[("mascara", "obito")]),
                  "labels": [d.strftime("%d/%m") for d in dias],
                  "datasets": [{"label": "Óbitos",
                                "data": [int(serie.get(d, 0)) for d in dias],
                                "color": "#dc3545"}]},
                 {"tipo": "line", "titulo": "Óbitos por semana",
+                 "_drill": drill.desc(drill.tempo("semana"), semanas, base=[("mascara", "obito")]),
                  "labels": semanas,
                  "datasets": [{"label": "Óbitos",
                                "data": [int(serie_sem.get(s, 0)) for s in semanas],
                                "color": "#dc3545"}]},
                 {"tipo": "line", "titulo": "Óbitos por mês",
+                 "_drill": drill.desc(drill.tempo("mes"), todos_meses, base=[("mascara", "obito")]),
                  "labels": [m.strftime("%m/%Y") for m in todos_meses],
                  "datasets": [{"label": "Óbitos",
                                "data": [int(serie_mes.get(m, 0)) for m in todos_meses],
@@ -2177,6 +2466,7 @@ class IndicadoresService:
 
         charts = [
             {"tipo": "doughnut", "titulo": "Volume por plantão",
+             "_drill": drill.desc(drill.col("turno"), ["Diurno", "Noturno"]),
              "labels": ["Diurno (07:00–18:59)", "Noturno (19:00–06:59)"],
              "datasets": [{"label": "Ocorrências",
                            "data": [int((df["turno"] == "Diurno").sum()),
@@ -2210,10 +2500,16 @@ class IndicadoresService:
                              if k in serie.index and pd.notna(serie[k])
                              else None for k in chaves],
                     "color": COR_TURNO[turno]})
+            eixo_drill = drill.tempo("semana" if eixo == "semanal" else "mes")
             charts.append({"tipo": "line",
                            "titulo": f"Tempo de Resposta — média {eixo} por plantão (min)",
                            "labels": rotulos_x, "datasets": datasets_tr,
-                           "unidade_y": "min"})
+                           "unidade_y": "min",
+                           "_drill": drill.desc(
+                               eixo_drill, chaves, base=[("valida", "tempo_resposta")],
+                               series=[[("igual", "turno", t)]
+                                       for t in ("Diurno", "Noturno")],
+                               metrica="tempo_resposta")})
 
             # Mesma evolução, aberta pelos 14 plantões (dia × turno):
             # cor por dia da semana; diurno sólido, noturno tracejado.
@@ -2243,7 +2539,11 @@ class IndicadoresService:
                            "titulo": f"Tempo de Resposta — média {eixo} por dia da "
                                      "semana e plantão (min) — noturno tracejado",
                            "labels": rotulos_x, "datasets": datasets_dow,
-                           "unidade_y": "min"})
+                           "unidade_y": "min",
+                           "_drill": drill.desc(
+                               eixo_drill, chaves, base=[("valida", "tempo_resposta")],
+                               series=[[("igual", "plantao", p)] for p in plantoes],
+                               metrica="tempo_resposta")})
 
         # Volume por dia da semana do plantão (dois turnos lado a lado)
         datasets_dia = []
@@ -2255,11 +2555,15 @@ class IndicadoresService:
                                  "color": COR_TURNO[turno]})
         charts.append({"tipo": "bar",
                        "titulo": "Volume por dia da semana do plantão",
-                       "labels": dias_ordem, "datasets": datasets_dia})
+                       "labels": dias_ordem, "datasets": datasets_dia,
+                       "_drill": drill.desc(drill.tempo("dia_semana"), dias_ordem,
+                                            series=[[("igual", "turno", t)]
+                                                    for t in ("Diurno", "Noturno")])})
 
         # Volume por hora do dia (fronteiras dos plantões às 07h e 19h)
         por_hora = df.groupby("hora").size()
         charts.append({"tipo": "bar", "titulo": "Volume por hora do dia",
+                       "_drill": drill.desc(drill.tempo("hora"), range(24)),
                        "labels": [f"{h:02d}h" for h in range(24)],
                        "datasets": [{"label": "Ocorrências",
                                      "data": [int(por_hora.get(h, 0))
@@ -2277,6 +2581,8 @@ class IndicadoresService:
             charts.append({
                 "tipo": "bar",
                 "titulo": f"{rotulo} por plantão (média em min)",
+                "_drill": drill.desc(drill.col("plantao"), plantoes,
+                                     base=[("valida", col)], metrica=col),
                 "labels": [f"{p} (n={int(grupo.loc[p, 'count'])})"
                            if p in grupo.index else p for p in plantoes],
                 "datasets": [{"label": "Média (min)",
@@ -2335,6 +2641,9 @@ class IndicadoresService:
              "sub": f"{cand.sum() / n_u * 100:.1f}% (real + evitado)"},
         ]
 
+        DESP = [[("mascara", "desperdicio_real")],
+                [("mascara", "desperdicio_evitado")]]
+
         # --- séries temporais: % real e % evitado -------------------------
         def _serie_pct(eixo_col, chaves, rotulos_x, titulo):
             datasets = []
@@ -2349,7 +2658,11 @@ class IndicadoresService:
                                          / total * 100, 1) if total else None)
                 datasets.append({"label": rot, "data": dados_s, "color": cor})
             return {"tipo": "line", "titulo": titulo, "labels": rotulos_x,
-                    "datasets": datasets}
+                    "datasets": datasets,
+                    "_drill": drill.desc(
+                        drill.tempo("semana" if chaves and isinstance(chaves[0], str)
+                                    else "mes"), chaves,
+                        base=[("mascara", "saida")], series=DESP)}
 
         semanas = sorted(universo["semana_iso"].dropna().unique())
         meses_col = universo["dt_ocorr"].dt.to_period("M")
@@ -2366,6 +2679,8 @@ class IndicadoresService:
         sits = sorted(sit[cand].unique())
         charts.append({
             "tipo": "bar", "titulo": "Composição por situação",
+            "_drill": drill.desc({"tipo": "derivada", "nome": "situacao_norm"}, sits,
+                                 base=[("mascara", "saida")], series=DESP),
             "labels": [s.title() for s in sits],
             "datasets": [
                 {"label": "Real",
@@ -2394,6 +2709,9 @@ class IndicadoresService:
                     "horizontal": horizontal}
             if horizontal and len(grupo) > 12:
                 spec["height"] = max(240, 20 * len(grupo) + 60)
+            spec["_drill"] = drill.desc(drill.col(col), list(grupo.index),
+                                        base=[("mascara", "saida"), ("notna", col)],
+                                        series=[DESP[0]])
             return spec
 
         charts += [
@@ -2418,6 +2736,8 @@ class IndicadoresService:
         spec_pareto = {
             "tipo": "bar",
             "titulo": "Pareto de motivos do desperdício real (até 80% acumulado)",
+            "_drill": drill.desc(drill.col("motivo"), [m for m, _ in pareto],
+                                 base=[("mascara", "saida"), DESP[0][0]]),
             "labels": [f"{m} " for m, _ in pareto],
             "datasets": [{"label": "Ocorrências",
                           "data": [q for _, q in pareto]}],
@@ -2464,6 +2784,8 @@ class IndicadoresService:
                  "sub": f"{masks[rotulo].mean() * 100:.2f}% compareceu"}
                 for _, rotulo, _ in apoios]
 
+        APOIOS = [[("mascara", col)] for col, _, _ in apoios]
+
         def _apoio_serie(chaves: list, grupo_de) -> list[dict]:
             datasets = []
             for _, rotulo, cor in apoios:
@@ -2497,17 +2819,22 @@ class IndicadoresService:
                     "horizontal": horizontal}
             if horizontal and len(tab) > 12:
                 spec["height"] = max(240, 22 * len(tab) + 60)
+            spec["_drill"] = drill.desc(drill.col(col_cat), list(tab.index),
+                                        base=[("notna", col_cat)], series=APOIOS)
             return spec
 
         charts = [
             {"tipo": "line", "titulo": "Comparecimentos por dia",
+             "_drill": drill.desc(drill.tempo("dia"), dias, series=APOIOS),
              "labels": [d.strftime("%d/%m") for d in dias],
              "datasets": _apoio_serie(dias, lambda b: b.groupby("dia").size())},
             {"tipo": "line", "titulo": "Comparecimentos por semana",
+             "_drill": drill.desc(drill.tempo("semana"), semanas, series=APOIOS),
              "labels": semanas,
              "datasets": _apoio_serie(
                  semanas, lambda b: b.groupby("semana_iso").size())},
             {"tipo": "line", "titulo": "Comparecimentos por mês",
+             "_drill": drill.desc(drill.tempo("mes"), meses, series=APOIOS),
              "labels": [m.strftime("%m/%Y") for m in meses],
              "datasets": _apoio_serie(
                  meses, lambda b: b[b["dt_ocorr"].notna()].groupby(
@@ -2628,8 +2955,11 @@ class IndicadoresService:
             m = dfx[dfx["dt_ocorr"].notna()]
             return m.groupby(m["dt_ocorr"].dt.to_period("M"))
 
+        SERIES_PROF = ([[("igual", nome_col, n)] for n in selecionados]
+                       if selecionados else [[("notna", nome_col)]])
+
         def _par_temporal(titulo, valor_fn, unidade=None, max_y=None,
-                          zero=False) -> list[dict]:
+                          zero=False, base_drill=None, metrica=None) -> list[dict]:
             """Par de gráficos de linha (por semana e por mês)."""
             pares = [("semana", semanas, list(semanas)),
                      ("mês", meses, [m.strftime("%m/%Y") for m in meses])]
@@ -2654,6 +2984,9 @@ class IndicadoresService:
                     spec_c["unidade_y"] = unidade
                 if max_y:
                     spec_c["max_y"] = max_y
+                spec_c["_drill"] = drill.desc(
+                    drill.tempo("semana" if eixo == "semana" else "mes"), chaves,
+                    base=base_drill or [], series=SERIES_PROF, metrica=metrica)
                 specs.append(spec_c)
             return specs
 
@@ -2674,10 +3007,13 @@ class IndicadoresService:
         charts += _par_temporal("Volume", _fn_volume, zero=True)
         for tempo in spec["tempos"]:
             charts += _par_temporal(ROTULO_TEMPO[tempo], _fn_tempo(tempo),
-                                    unidade="min")
+                                    unidade="min", base_drill=[("valida", tempo)],
+                                    metrica=tempo)
         if spec["tempo_resposta"]:
             charts += _par_temporal("Tempo de Resposta",
-                                    _fn_tempo("tempo_resposta"), unidade="min")
+                                    _fn_tempo("tempo_resposta"), unidade="min",
+                                    base_drill=[("valida", "tempo_resposta")],
+                                    metrica="tempo_resposta")
 
         if spec.get("sla_p1"):
             cap_p1 = CAP_TEMPO.get("t_p1", 3600)
@@ -2688,7 +3024,8 @@ class IndicadoresService:
                 g = (v.groupby("semana_iso")["dentro"] if eixo == "semana"
                      else _grupo_mes(v)["dentro"])
                 return g.mean() * 100
-            charts += _par_temporal("SLA P1 ≤ 1:30 (%)", _fn_sla, max_y=100)
+            charts += _par_temporal("SLA P1 ≤ 1:30 (%)", _fn_sla, max_y=100,
+                                    base_drill=[("valida", "t_p1")], metrica="t_p1")
 
         if spec["envio_ro"]:
             def _fn_envio(dfg, eixo):
@@ -2711,9 +3048,11 @@ class IndicadoresService:
                     return g.mean() * 100
                 return fn
             charts += _par_temporal("% desperdício real",
-                                    _fn_desp(desp_real), max_y=100)
+                                    _fn_desp(desp_real), max_y=100,
+                                    base_drill=[("mascara", "saida")])
             charts += _par_temporal("% desperdício evitado",
-                                    _fn_desp(desp_evitado), max_y=100)
+                                    _fn_desp(desp_evitado), max_y=100,
+                                    base_drill=[("mascara", "saida")])
             # Composição do desperdício por situação (real × evitado)
             idx_sel = base_ind.index
             real_sel = desp_real[idx_sel]
@@ -2721,7 +3060,14 @@ class IndicadoresService:
             sit_sel = sit_b[idx_sel]
             sits = sorted(sit_sel[real_sel | evit_sel].unique())
             if sits:
+                sel = ([("em", nome_col, selecionados)] if selecionados
+                       else [("notna", nome_col)])
                 charts.append({
+                    "_drill": drill.desc(
+                        {"tipo": "derivada", "nome": "situacao_norm"}, sits,
+                        base=sel + [("mascara", "saida")],
+                        series=[[("mascara", "desperdicio_real")],
+                                [("mascara", "desperdicio_evitado")]]),
                     "tipo": "bar",
                     "titulo": "Desperdício por situação"
                               f" nos registros de {rotulo.lower()}{sufixo}",
@@ -2747,7 +3093,8 @@ class IndicadoresService:
                 g = (sub.groupby("semana_iso")["ok"] if eixo == "semana"
                      else _grupo_mes(sub)["ok"])
                 return g.mean() * 100
-            charts += _par_temporal("Assertividade", _fn_assert, max_y=100)
+            charts += _par_temporal("Assertividade", _fn_assert, max_y=100,
+                                    base_drill=[("mascara", "assertividade")])
 
         if spec.get("codigo", True):
             charts.append(self._bar_percentual(
