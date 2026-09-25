@@ -16,6 +16,19 @@ from app.modules.ncps.models import Ncps
 from app.modules.ncps.permissions import (filtrar_visiveis, pode_tratar,
                                           pode_triar, pode_ver)
 
+
+def _id_pelo_codigo(html: str) -> int:
+    """Confirmação mostra só o código; o id sai da busca por ele."""
+    from app.core.database import SessionLocal as _S
+    from app.modules.ncps.service import buscar_acompanhamento
+    codigo = re.search(r'font-monospace[^>]*>([A-Z0-9]{8})<', html).group(1)
+    assert "Protocolo" not in html            # o número não é informado
+    db = _S()
+    try:
+        return buscar_acompanhamento(db, 1, codigo).id
+    finally:
+        db.close()
+
 client = TestClient(app)
 
 
@@ -24,14 +37,13 @@ def _login():
 
 
 def _publicar(**campos) -> tuple[int, str]:
-    """Envia o formulário público e devolve (protocolo, código)."""
+    """Envia o formulário público e devolve (id, código)."""
     dados = {"natureza": "paciente", "descricao": "Paciente caiu da maca.",
              **campos}
     html = client.post("/ncps/publico", data=dados).text
-    protocolo = re.search(r'Protocolo</small>\s*<span[^>]*>(\d+)<', html)
     codigo = re.search(r'font-monospace[^>]*>([A-Z0-9]{8})<', html)
-    assert protocolo and codigo, "confirmação sem protocolo/código"
-    return int(protocolo.group(1)), codigo.group(1)
+    assert codigo, "confirmação sem código"
+    return _id_pelo_codigo(html), codigo.group(1)
 
 
 def _usuario(id_, *permissoes, setores=()):
@@ -109,14 +121,24 @@ def test_formulario_publico_e_acompanhamento():
     finally:
         db.close()
 
-    ok = client.post("/ncps/acompanhar",
-                     data={"protocolo": protocolo, "codigo": codigo.lower()}).text
-    assert f"Protocolo {protocolo}" in ok and "Recebida" in ok
+    ok = client.post("/ncps/acompanhar", data={"codigo": codigo.lower()}).text
+    assert f"Código <span class=\"font-monospace\">{codigo}</span>" in ok and "Recebida" in ok
     assert "caiu da maca" not in ok            # o relato não é exposto
+    assert f"Protocolo {protocolo}" not in ok
 
-    errado = client.post("/ncps/acompanhar",
-                         data={"protocolo": protocolo, "codigo": "XXXXXXXX"}).text
+    errado = client.post("/ncps/acompanhar", data={"codigo": "XXXXXXXX"}).text
     assert "não encontrada" in errado
+    # o protocolo sozinho não abre nada
+    so_numero = client.post("/ncps/acompanhar", data={"codigo": str(protocolo)}).text
+    assert "não encontrada" in so_numero
+
+
+def test_codigo_aparece_na_lista_e_serve_na_busca():
+    _login()
+    protocolo, codigo = _publicar(descricao="Relato para ver o código na lista.")
+    lista = client.get("/ncps/?q=" + codigo).text
+    assert codigo in lista and f'/ncps/{protocolo}"' in lista
+    assert codigo in client.get(f"/ncps/{protocolo}").text
 
 
 def test_formulario_publico_valida_campos():
@@ -144,7 +166,7 @@ def test_fluxo_completo_de_tratativa():
         "descricao": "Corte com perfurocortante.", "houve_lesao": "sim",
         "data_hora_ocorrencia": "2026-09-20T14:30"}).text
     assert "Notificação registrada" in html
-    ncps_id = int(re.search(r'Protocolo</small>\s*<span[^>]*>(\d+)<', html).group(1))
+    ncps_id = _id_pelo_codigo(html)
 
     db = SessionLocal()
     try:

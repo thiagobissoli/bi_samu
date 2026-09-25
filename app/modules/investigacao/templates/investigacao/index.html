@@ -89,9 +89,9 @@
         <div class="tab-pane fade {{ 'show active' if filtros.ncps }}" id="inicio-ncps" role="tabpanel">
         <form method="get" class="row g-2 align-items-end">
             <div class="col-md-4">
-                <label class="form-label small mb-1" for="ncps">Protocolo da NCPS</label>
+                <label class="form-label small mb-1" for="ncps">Nº da NCPS ou código de acompanhamento</label>
                 <input type="text" class="form-control" id="ncps" name="ncps"
-                       inputmode="numeric" value="{{ filtros.ncps }}" placeholder="ex.: 1824">
+                       value="{{ filtros.ncps }}" placeholder="ex.: 1824 ou 7KQ2XM9D">
             </div>
             <div class="col-auto">
                 <button class="btn btn-primary">

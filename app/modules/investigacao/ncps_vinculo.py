@@ -60,17 +60,26 @@ def resumo(n) -> dict:
 
 
 def carregar(db: Session, usuario, protocolo) -> tuple[object | None, str | None]:
-    """NCPS pelo protocolo, se o usuário puder usá-la numa investigação."""
+    """NCPS pelo número ou pelo código de acompanhamento, se o usuário
+    puder usá-la numa investigação."""
     from app.modules.ncps.models import Ncps
 
     if "ncps.listar" not in usuario.permissoes:
         return None, "Seu perfil não tem acesso às notificações NCPS."
-    try:
-        protocolo = int(str(protocolo).strip().lstrip("#"))
-    except ValueError:
-        return None, "Informe o número do protocolo da NCPS."
+    from app.modules.ncps import service as ncps_service
+
+    texto = str(protocolo or "").strip().lstrip("#")
+    codigo = ncps_service.normalizar_codigo(texto)
+    if texto.isdigit():
+        protocolo = int(texto)
+        filtro = Ncps.id == protocolo
+    elif len(codigo) == 8:              # código de acompanhamento
+        protocolo = codigo
+        filtro = Ncps.codigo_hash == ncps_service.hash_codigo(codigo)
+    else:
+        return None, "Informe o número da NCPS ou o código de acompanhamento."
     n = db.scalar(select(Ncps).where(
-        Ncps.id == protocolo, Ncps.empresa_id == usuario.empresa_id,
+        filtro, Ncps.empresa_id == usuario.empresa_id,
         Ncps.deleted_at.is_(None)))
     if n is None or not _visivel(n, usuario):
         return None, f"NCPS #{protocolo} não encontrada."

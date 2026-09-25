@@ -9,6 +9,19 @@ from app.core.database import SessionLocal
 from app.core.seeds import ADMIN_EMAIL, ADMIN_SENHA
 from app.main import app
 
+
+def _id_pelo_codigo(html: str) -> int:
+    """Confirmação mostra só o código; o id sai da busca por ele."""
+    from app.core.database import SessionLocal as _S
+    from app.modules.ncps.service import buscar_acompanhamento
+    codigo = re.search(r'font-monospace[^>]*>([A-Z0-9]{8})<', html).group(1)
+    assert "Protocolo" not in html            # o número não é informado
+    db = _S()
+    try:
+        return buscar_acompanhamento(db, 1, codigo).id
+    finally:
+        db.close()
+
 client = TestClient(app)
 HTML = {"accept": "text/html"}
 
@@ -30,7 +43,7 @@ def _uma_ocorrencia() -> str:
 
 def _notificar(**dados) -> int:
     html = client.post("/ncps/notificar", data={"natureza": "paciente", **dados}).text
-    return int(re.search(r'Protocolo</small>\s*<span[^>]*>(\d+)<', html).group(1))
+    return _id_pelo_codigo(html)
 
 
 def test_ncps_com_ocorrencia_abre_o_dossie_com_o_relato():

@@ -13,7 +13,7 @@ mantendo os mesmos códigos de classificação e as mesmas regras de acesso.
 | URL | Quem | O quê |
 |---|---|---|
 | `/ncps/publico` | qualquer pessoa, sem login | notificação sempre anônima |
-| `/ncps/acompanhar` | qualquer pessoa, sem login | andamento pelo protocolo + código |
+| `/ncps/acompanhar` | qualquer pessoa, sem login | andamento pelo código de acompanhamento |
 | `/ncps/notificar` | `ncps.notificar` | notificação identificada (ou anônima, se sigilosa) e "minhas notificações" |
 | `/ncps/` | `ncps.listar` | lista com filtros, busca e exportação para Excel |
 | `/ncps/{id}` | `ncps.listar` + regra de visibilidade | análise em abas |
@@ -56,14 +56,17 @@ Para reproduzir os perfis do sistema anterior, crie em **Perfis**:
 | Coordenador (analista) | `ncps.notificar`, `ncps.listar`, `ncps.coordenar` + vínculo a um setor |
 | Colaborador | `ncps.notificar` |
 
-## Protocolo e código de acompanhamento
+## Código de acompanhamento
 
-Toda notificação recebe um **protocolo** (o id) e um **código** de 8
-caracteres, mostrado uma única vez; o banco guarda só o hash. A consulta
-pública exige os dois. As importadas do sistema anterior sem código (lá só
-as sigilosas tinham) continuam consultáveis apenas pelo protocolo, como antes.
+Toda notificação recebe um **código** de 8 caracteres (sem 0/O/1/I), que é
+a única coisa pedida na consulta pública — o número interno da NCPS não é
+informado a quem notifica nem aceito na consulta, porque é sequencial e
+permitiria varrer as notificações.
 
-O formulário público e a consulta têm limite de tentativas por IP.
+O código fica guardado cifrado (para aparecer na lista de NCPS, em "Minhas
+notificações" e na tela de análise, só para quem pode ver a notificação) e
+também como hash, usado na busca. A consulta pública tem limite de
+tentativas por IP.
 
 ## Integração com o vSky
 

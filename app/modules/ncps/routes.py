@@ -94,34 +94,32 @@ async def publico_enviar(request: Request, db: Session = Depends(get_session)):
                  request=request)
     # Mostrado uma única vez, direto na resposta (sem ir para a URL)
     return render(request, "ncps/publico.html", None, **ctx, dados={},
-                  erros={}, enviada={"id": n.id, "codigo": codigo})
+                  erros={}, enviada={"codigo": codigo})
 
 
 @router.get("/acompanhar", include_in_schema=False)
 def acompanhar(request: Request):
     return render(request, "ncps/acompanhar.html", None, ncp=None, erro=None,
-                  protocolo="", cat=cat)
+                  cat=cat)
 
 
 @router.post("/acompanhar", include_in_schema=False)
 async def acompanhar_consultar(request: Request,
                                db: Session = Depends(get_session)):
-    """Consulta por protocolo + código. É POST para o código não ir à URL."""
+    """Consulta só pelo código de acompanhamento. É POST para o código não
+    ir à URL."""
     form = await request.form()
-    protocolo = (form.get("protocolo") or "").strip()
     if _limite_consulta.blocked(_ip(request)):
-        return render(request, "ncps/acompanhar.html", None, ncp=None,
-                      protocolo=protocolo, cat=cat,
+        return render(request, "ncps/acompanhar.html", None, ncp=None, cat=cat,
                       erro="Muitas consultas seguidas. Aguarde alguns minutos.")
-    n = service.buscar_acompanhamento(db, EMPRESA_PUBLICA, protocolo,
-                                      form.get("codigo"))
+    n = service.buscar_acompanhamento(db, EMPRESA_PUBLICA, form.get("codigo"))
     if n is None:
         _limite_consulta.register(_ip(request))
     return render(request, "ncps/acompanhar.html", None, ncp=n, cat=cat,
-                  protocolo=protocolo,
                   tz=service.fuso(db, EMPRESA_PUBLICA).key,
+                  codigo=service.codigo_de(n) if n else None,
                   erro=None if n else "Notificação não encontrada. Confira o "
-                  "protocolo e o código de acompanhamento.")
+                  "código de acompanhamento.")
 
 
 # ================================================================== notificar (logado)
@@ -152,7 +150,7 @@ async def notificar_enviar(
                  valor_novo={"natureza": n.natureza, "anonima": n.anonima},
                  usuario=None if n.anonima else usuario, request=request)
     return _tela_notificar(request, db, usuario, dados={}, erros={},
-                           enviada={"id": n.id, "codigo": codigo})
+                           enviada={"codigo": codigo})
 
 
 def _tela_notificar(request, db, usuario, **ctx):
@@ -162,6 +160,7 @@ def _tela_notificar(request, db, usuario, **ctx):
     ).order_by(Ncps.id.desc()).limit(50)))
     return render(request, "ncps/notificar.html", usuario,
                   page_title="Notificar evento (NCPS)", minhas=minhas,
+                  codigo_de=service.codigo_de,
                   **_contexto_form(db, usuario.empresa_id), **ctx)
 
 
@@ -184,7 +183,7 @@ def index(
         gestores=service.cadastro(db, NcpsGestor, usuario.empresa_id, so_ativos=False),
         locais=service.cadastro(db, NcpsLocal, usuario.empresa_id, so_ativos=False),
         triagem=naturezas_triagem(usuario.permissoes),
-        atrasadas=service.acoes_atrasadas,
+        atrasadas=service.acoes_atrasadas, codigo_de=service.codigo_de,
         msg=request.query_params.get("msg"), erro=request.query_params.get("erro"))
 
 
@@ -282,7 +281,7 @@ def analise(
     emp = usuario.empresa_id
     return render(
         request, "ncps/analise.html", usuario, page_title=f"NCPS #{n.id}",
-        n=n, cat=cat, hoje=date.today(),
+        n=n, cat=cat, hoje=date.today(), codigo=service.codigo_de(n),
         pode_triar=pode_triar(n, usuario), pode_tratar=pode_tratar(n, usuario),
         ghes=service.ghes(db, emp, n.ghe_id),
         perigos=service.perigos(db, emp, n.ocupacional.perigo_id

@@ -6,7 +6,7 @@
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-start">
             <div>
-                <small class="text-body-secondary">Protocolo {{ ncp.id }}</small>
+                {% if codigo %}<small class="text-body-secondary">Código <span class="font-monospace">{{ codigo }}</span></small>{% endif %}
                 <h4 class="mb-1">{{ sit[0] }}</h4>
                 <p class="text-body-secondary">{{ sit[1] }}</p>
             </div>

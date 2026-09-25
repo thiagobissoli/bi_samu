@@ -8,7 +8,6 @@ usam as mesmas funções.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import secrets
 from collections import Counter
@@ -101,6 +100,39 @@ def normalizar_codigo(codigo: str | None) -> str:
 def gerar_codigo() -> str:
     return "".join(secrets.choice(cat.ALFABETO_CODIGO)
                    for _ in range(cat.TAMANHO_CODIGO))
+
+
+def novo_codigo(db: Session) -> str:
+    """Código de acompanhamento que ainda não existe no banco.
+
+    Ele sozinho identifica a notificação na consulta pública, então não
+    pode repetir (32^8 combinações tornam a repetição rara, mas conferir
+    é barato).
+    """
+    while True:
+        codigo = gerar_codigo()
+        if not db.scalar(select(Ncps.id).where(
+                Ncps.codigo_hash == hash_codigo(codigo)).limit(1)):
+            return codigo
+
+
+def aplicar_codigo(n: Ncps, codigo: str) -> None:
+    from app.core.crypto import encrypt_value
+
+    n.codigo_hash = hash_codigo(codigo)
+    n.codigo_cifrado = encrypt_value(codigo)
+
+
+def codigo_de(n: Ncps) -> str | None:
+    """Código de acompanhamento para exibir a quem pode ver a NCPS."""
+    if not n.codigo_cifrado:
+        return None
+    from app.core.crypto import decrypt_value
+
+    try:
+        return decrypt_value(n.codigo_cifrado)
+    except Exception:  # noqa: BLE001 — chave do sistema trocada: não quebra a lista
+        return None
 
 
 # ------------------------------------------------------------------ catálogos
@@ -213,7 +245,7 @@ def registrar(db: Session, empresa_id: int, form, usuario=None) -> tuple[Ncps, s
             NcpsGhe.id == ghe_id, NcpsGhe.empresa_id == empresa_id)):
         ghe_id = None
 
-    codigo = gerar_codigo()
+    codigo = novo_codigo(db)
     n = Ncps(
         empresa_id=empresa_id,
         natureza=form.get("natureza"),
@@ -229,9 +261,9 @@ def registrar(db: Session, empresa_id: int, form, usuario=None) -> tuple[Ncps, s
         confidencial=confidencial,
         anonima=anonima,
         notificante_id=None if anonima else usuario.id,
-        codigo_hash=hash_codigo(codigo),
         created_by=None if anonima else usuario.id,
     )
+    aplicar_codigo(n, codigo)
     if trabalhador:
         n.ocupacional = NcpsOcupacional(
             empresa_id=empresa_id,
@@ -241,27 +273,19 @@ def registrar(db: Session, empresa_id: int, form, usuario=None) -> tuple[Ncps, s
     return n, codigo
 
 
-def buscar_acompanhamento(db: Session, empresa_id: int, protocolo,
+def buscar_acompanhamento(db: Session, empresa_id: int,
                           codigo: str | None) -> Ncps | None:
-    """Consulta de quem notificou, pelo protocolo e código.
+    """Consulta de quem notificou — só pelo código de acompanhamento.
 
-    Notificações registradas aqui sempre têm código, e ele é exigido.
-    As importadas do sistema anterior sem código (só as não sigilosas
-    não tinham) continuam consultáveis só pelo protocolo, como lá.
+    O protocolo (id) não é pedido nem mostrado: sequencial, ele permitiria
+    varrer as notificações; o código não é adivinhável.
     """
-    try:
-        protocolo = int(protocolo)
-    except (TypeError, ValueError):
+    codigo = normalizar_codigo(codigo)
+    if len(codigo) != cat.TAMANHO_CODIGO:
         return None
-    n = db.scalar(select(Ncps).where(
-        Ncps.id == protocolo, Ncps.empresa_id == empresa_id,
-        Ncps.deleted_at.is_(None)))
-    if n is None:
-        return None
-    if n.codigo_hash:
-        informado = hash_codigo(normalizar_codigo(codigo))
-        return n if hmac.compare_digest(informado, n.codigo_hash) else None
-    return None if n.confidencial else n
+    return db.scalar(select(Ncps).where(
+        Ncps.codigo_hash == hash_codigo(codigo), Ncps.empresa_id == empresa_id,
+        Ncps.deleted_at.is_(None)).limit(1))
 
 
 # ------------------------------------------------------------------ consulta
@@ -324,6 +348,9 @@ def consulta(db: Session, usuario, filtros: dict):
                      Ncps.local.ilike(f"%{texto}%")]
         if texto.isdigit():
             condicoes.append(Ncps.id == int(texto))
+        codigo = normalizar_codigo(texto)
+        if len(codigo) == cat.TAMANHO_CODIGO:
+            condicoes.append(Ncps.codigo_hash == hash_codigo(codigo))
         q = q.where(or_(*condicoes))
     return q.order_by(Ncps.registrado_em.desc(), Ncps.id.desc())
 

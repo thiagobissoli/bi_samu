@@ -19,7 +19,9 @@ O que acontece:
 - Coordenador e notificante são casados pelo **e-mail** do usuário. Quem
   não existir aqui fica registrado pelo nome no bloco "sistema anterior".
 - Datas de registro estavam no horário de Brasília sem fuso; aqui viram UTC.
-- O código de acompanhamento das sigilosas é guardado só como hash.
+- O código de acompanhamento das sigilosas é mantido; as demais (que lá
+  eram consultadas pelo protocolo) recebem um código novo, visível na
+  lista de NCPS para a equipe informar a quem notificou.
 - Excluídas no sistema antigo não são importadas.
 """
 
@@ -113,6 +115,7 @@ def importar(origem: str, empresa_id: int = 1, aplicar: bool = False) -> dict:
             return novo, u.get("name")
 
         cache: dict[tuple, int] = {}
+        codigos_usados: set[str] = set()
 
         def por_nome(modelo, nome, contador):
             nome = (nome or "").strip()[:120]
@@ -204,8 +207,6 @@ def importar(origem: str, empresa_id: int = 1, aplicar: bool = False) -> dict:
                 notificante_id=notif_id,
                 anonima=bool(leg.get("anonima")) or not leg.get("notificante_id"),
                 confidencial=bool(leg.get("confidencial")),
-                codigo_hash=service.hash_codigo(service.normalizar_codigo(
-                    leg["codigo_acompanhamento"])) if leg.get("codigo_acompanhamento") else None,
                 status=_codigo(leg.get("status")),
                 procedente=_codigo(leg.get("procedente")),
                 local_id=por_nome(NcpsLocal, (local_leg.get(leg.get("local_padronizado_id")) or {}).get("nome"), "locais_criados"),
@@ -222,6 +223,15 @@ def importar(origem: str, empresa_id: int = 1, aplicar: bool = False) -> dict:
                 legado_id=leg["id"],
                 legado=json.dumps(extras, ensure_ascii=False) if extras else None,
             )
+            # A consulta pública é só pelo código: quem não tinha (lá só as
+            # sigilosas tinham) recebe um, que a equipe vê na lista de NCPS
+            codigo = service.normalizar_codigo(leg.get("codigo_acompanhamento"))
+            if len(codigo) != cat.TAMANHO_CODIGO or codigo in codigos_usados:
+                codigo = service.novo_codigo(db)
+                while codigo in codigos_usados:
+                    codigo = service.novo_codigo(db)
+            codigos_usados.add(codigo)
+            service.aplicar_codigo(n, codigo)
             if leg["id"] in ocupados:
                 rel["id_trocado"].append(leg["id"])
             else:

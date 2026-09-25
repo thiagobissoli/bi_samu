@@ -118,8 +118,12 @@ class Ncps(BaseModel):
     anonima: Mapped[bool] = mapped_column(default=False)
     # Violência/assédio: só a Comissão de Integridade vê
     confidencial: Mapped[bool] = mapped_column(default=False, index=True)
-    # Hash SHA-256 do código de acompanhamento (o código só é mostrado uma vez)
-    codigo_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Código de acompanhamento: a consulta pública é feita só por ele.
+    # O hash localiza a notificação; a versão cifrada (Fernet, chave do
+    # sistema) permite exibi-lo na lista para quem pode ver a NCPS.
+    codigo_hash: Mapped[str | None] = mapped_column(String(64), nullable=True,
+                                                    index=True)
+    codigo_cifrado: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Triagem
     status: Mapped[str] = mapped_column(String(2), default="0", index=True)

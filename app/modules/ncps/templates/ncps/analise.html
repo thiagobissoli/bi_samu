@@ -62,6 +62,7 @@
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     {{ badge.natureza(n) }} {{ badge.status(n, cat) }}
     <span class="text-body-secondary small">
+        {% if codigo %}código de acompanhamento <span class="font-monospace fw-semibold">{{ codigo }}</span> ·{% endif %}
         registrada em {{ n.registrado_em | localdt }} ·
         {{ 'notificação anônima' if n.anonima or not n.notificante else 'por ' ~ n.notificante.nome }}
     </span>
