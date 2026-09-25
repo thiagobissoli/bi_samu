@@ -73,6 +73,10 @@
     </span>
     <div class="ms-auto d-flex gap-2">
         <a class="btn btn-outline-secondary btn-sm" href="/ncps/"><i class="fa-solid fa-chevron-left"></i> Voltar</a>
+        {% if 'investigacao.visualizar' in usuario_logado.permissoes and not n.confidencial %}
+        <a class="btn btn-outline-primary btn-sm" href="/investigacao/?ncps={{ n.id }}">
+            <i class="fa-solid fa-magnifying-glass-chart"></i> Investigar evento</a>
+        {% endif %}
         {% if pode_triar %}
         <form method="post" action="/ncps/{{ n.id }}/excluir" onsubmit="return confirm('Excluir a NCPS #{{ n.id }}?')">
             <button class="btn btn-outline-danger btn-sm"><i class="fa-solid fa-trash"></i> Excluir</button>

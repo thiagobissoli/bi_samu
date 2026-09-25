@@ -297,7 +297,7 @@ class InvestigacaoService:
             "veredito": veredito,
         }
 
-    def dossie(self, db, numero: str) -> dict:
+    def dossie(self, db, numero: str, usuario=None) -> dict:
         """Tudo que se sabe da ocorrência, para a tela e para a IA.
 
         Reúne: a investigação de disponibilidade, os indicadores medidos
@@ -311,6 +311,14 @@ class InvestigacaoService:
         from app.modules.investigacao.ia_analise import (cronologia_do_sistema,
                                                          historico,
                                                          ultima_analise)
+
+        from app.modules.investigacao import ncps_vinculo
+        from app.modules.investigacao.ncps_vinculo import da_ocorrencia
+
+        # RAC de uma NCPS sem ocorrência no vSky ("NCPS-123")
+        ncps_id = ncps_vinculo.id_da_chave(numero)
+        if ncps_id is not None:
+            return ncps_vinculo.dossie(db, usuario, ncps_id)
 
         inv = self.investigar(numero)
         if inv.get("erro"):
@@ -357,6 +365,8 @@ class InvestigacaoService:
             "cronologia": cronologia_do_sistema(inv),
             "analise_ia": ultima_analise(db, self.empresa_id, numero),
             "relatos": _relatos_da_ocorrencia(db, self.empresa_id, numero),
+            # NCPS que citam esta ocorrência (só as que o usuário pode ver)
+            "ncps": da_ocorrencia(db, usuario, numero),
             "versoes": [{
                 "id": v.id, "versao": v.versao, "status": v.status,
                 "gerado_em": v.gerado_em.strftime("%d/%m/%Y %H:%M")

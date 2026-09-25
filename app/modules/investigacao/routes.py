@@ -27,6 +27,7 @@ def _params(request: Request) -> dict:
         "municipios": q.getlist("municipio"),
         "unidades": q.getlist("unidade"),
         "ocorrencia": q.get("ocorrencia", "").strip(),
+        "ncps": q.get("ncps", "").strip().lstrip("#"),
     }
 
 
@@ -41,11 +42,36 @@ def index(
     opcoes = service.opcoes()
     dia = p["dia"] or opcoes.get("dia_max") or ""
 
-    dossie = service.dossie(db, p["ocorrencia"]) if p["ocorrencia"] else None
+    # Investigação a partir de uma NCPS: se ela cita a ocorrência, segue por
+    # ela; senão, mostra a notificação e permite vincular a ocorrência.
+    ncps_origem = ncps_erro = None
+    pode_vincular = False
+    from app.modules.investigacao import ncps_vinculo
+    # voltar de uma ação do RAC de NCPS (?ocorrencia=NCPS-12) reabre a NCPS
+    if not p["ncps"] and ncps_vinculo.id_da_chave(p["ocorrencia"]) is not None:
+        p["ncps"] = str(ncps_vinculo.id_da_chave(p["ocorrencia"]))
+    if p["ncps"]:
+        from app.modules.ncps.permissions import pode_tratar
+
+        n, ncps_erro = ncps_vinculo.carregar(db, usuario, p["ncps"])
+        if n is not None:
+            ncps_origem = ncps_vinculo.resumo(n)
+            pode_vincular = pode_tratar(n, usuario)
+            if not p["ocorrencia"]:
+                # sem ocorrência vinculada, o RAC é da própria NCPS
+                p["ocorrencia"] = (ncps_origem["id_ocorrencia"]
+                                   or ncps_vinculo.chave_rac(n.id))
+
+    dossie = service.dossie(db, p["ocorrencia"], usuario) if p["ocorrencia"] else None
+    if (ncps_origem and dossie and dossie["investigacao"].get("erro")
+            and ncps_vinculo.id_da_chave(p["ocorrencia"]) is None):
+        # a ocorrência citada pela NCPS não está no vSky: segue pela NCPS
+        dossie = service.dossie(db, ncps_vinculo.chave_rac(ncps_origem["id"]),
+                                usuario)
     investigacao = dossie["investigacao"] if dossie else None
     # Investigar uma ocorrência posiciona a timeline no dia dela
     if investigacao and not investigacao.get("erro") and not p["dia"]:
-        dia = investigacao["dia"]
+        dia = investigacao.get("dia") or dia
 
     from app.modules.investigacao.constants import (CONSEQUENCIA, GRAVIDADES,
                                                     PROBABILIDADE)
@@ -56,6 +82,9 @@ def index(
         timeline=service.timeline_dia(dia, p["municipios"], p["unidades"]),
         cruzamentos=service.cruzamentos(dia),
         investigacao=investigacao, dossie=dossie,
+        ncps_origem=ncps_origem, ncps_erro=ncps_erro,
+        pode_vincular=pode_vincular,
+        ve_ncps="ncps.listar" in usuario.permissoes,
         ia_config=ia.configuracao(db, usuario.empresa_id),
         erro_ia=request.query_params.get("erro_ia"),
         # escalas do formulário FOR.SAMU.038, para desenhar a matriz
@@ -65,6 +94,46 @@ def index(
         time_padrao=get_config(db, "rac_time_investigacao",
                                empresa_id=usuario.empresa_id) or "",
         opcoes=opcoes, filtros={**p, "dia": dia})
+
+
+@router.post("/vincular-ncps", include_in_schema=False)
+def vincular_ncps(
+    request: Request,
+    ncps: str = Form(...),
+    ocorrencia: str = Form(...),
+    usuario: Usuario = Depends(require_permission("investigacao.visualizar")),
+    db: Session = Depends(get_session),
+):
+    """Registra na NCPS o número da ocorrência do vSky e segue a investigação."""
+    from urllib.parse import urlencode
+
+    from app.modules.investigacao import ncps_vinculo
+    from app.modules.ncps.permissions import pode_tratar
+
+    n, erro = ncps_vinculo.carregar(db, usuario, ncps)
+    numero = ncps_vinculo.normalizar_ocorrencia(ocorrencia)
+    destino = {"ncps": ncps}
+    if n is None:
+        destino["erro_ia"] = erro
+    elif not pode_tratar(n, usuario):
+        destino["erro_ia"] = ("Só quem faz a triagem ou o coordenador "
+                              "responsável pode vincular a ocorrência.")
+    elif not numero or InvestigacaoService(usuario.empresa_id).investigar(
+            numero).get("erro"):
+        destino["erro_ia"] = (f"Ocorrência {ocorrencia.strip() or '—'} não "
+                              "encontrada nos dados importados do vSky.")
+    else:
+        anterior = n.id_ocorrencia
+        n.id_ocorrencia = numero
+        n.updated_by = usuario.id
+        db.commit()
+        record_audit(db, tabela="ncps", acao="UPDATE", registro_id=n.id,
+                     valor_anterior={"id_ocorrencia": anterior},
+                     valor_novo={"id_ocorrencia": numero,
+                                 "origem": "investigacao"},
+                     usuario=usuario, request=request)
+    return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
+                            status_code=303)
 
 
 @router.post("/analisar", include_in_schema=False)
@@ -82,7 +151,7 @@ def analisar(
     from app.modules.investigacao.ia_analise import analisar as rodar_analise
 
     service = InvestigacaoService(usuario.empresa_id)
-    dossie = service.dossie(db, ocorrencia.strip())
+    dossie = service.dossie(db, ocorrencia.strip(), usuario)
     inv = dossie["investigacao"]
     destino = {"ocorrencia": ocorrencia.strip()}
 
@@ -92,11 +161,11 @@ def analisar(
                                 status_code=303)
 
     texto = ""
-    if incluir_prontuario:
+    if incluir_prontuario and inv.get("origem") != "ncps":
         try:                       # baixa do vSky se ainda não houver
             from app.modules.download_vsky.service import obter_prontuario
             obter_prontuario(db, usuario.empresa_id, ocorrencia.strip())
-            dossie = service.dossie(db, ocorrencia.strip())
+            dossie = service.dossie(db, ocorrencia.strip(), usuario)
         except ValueError as exc:
             destino["erro_ia"] = f"Prontuário indisponível: {exc}"
             return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
@@ -315,7 +384,7 @@ def aprovar(
 
     # PDF do documento aprovado — imutável, guardado no próprio banco
     service = InvestigacaoService(usuario.empresa_id)
-    dossie = service.dossie(db, numero)
+    dossie = service.dossie(db, numero, usuario)
     atual.pdf = gerar_rac_pdf(dossie, logo_path=_logo(db, usuario.empresa_id))
     db.commit()
 
@@ -362,7 +431,7 @@ def salvar_relatos(
     db.commit()
 
     if atual.status == STATUS_APROVADO and atual.pdf:
-        dossie = InvestigacaoService(usuario.empresa_id).dossie(db, numero)
+        dossie = InvestigacaoService(usuario.empresa_id).dossie(db, numero, usuario)
         atual.pdf = gerar_rac_pdf(dossie,
                                   logo_path=_logo(db, usuario.empresa_id))
         db.commit()
@@ -418,7 +487,7 @@ def salvar_dados_gerais(
     db.commit()
 
     if atual.status == STATUS_APROVADO and atual.pdf:
-        dossie = InvestigacaoService(usuario.empresa_id).dossie(db, numero)
+        dossie = InvestigacaoService(usuario.empresa_id).dossie(db, numero, usuario)
         atual.pdf = gerar_rac_pdf(dossie,
                                   logo_path=_logo(db, usuario.empresa_id))
         db.commit()
@@ -456,7 +525,7 @@ def ajustar(
                                 status_code=303)
 
     service = InvestigacaoService(usuario.empresa_id)
-    dossie = service.dossie(db, numero)
+    dossie = service.dossie(db, numero, usuario)
     if dossie["investigacao"].get("erro"):
         destino["erro_ia"] = dossie["investigacao"]["erro"]
         return RedirectResponse(f"/investigacao/?{urlencode(destino)}",
@@ -517,7 +586,7 @@ def rac_pdf(
         conteudo = alvo.pdf
     else:
         service = InvestigacaoService(usuario.empresa_id)
-        conteudo = gerar_rac_pdf(service.dossie(db, numero),
+        conteudo = gerar_rac_pdf(service.dossie(db, numero, usuario),
                                  logo_path=_logo(db, usuario.empresa_id))
     nome = f"RAC_{numero}_v{alvo.versao}.pdf"
     return Response(content=conteudo, media_type="application/pdf",

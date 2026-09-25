@@ -182,3 +182,23 @@ analisar o texto integral, o indicado é o **Ollama local**. Ao usar
 provedor externo, a anonimização vem ligada por padrão: remove nome do
 paciente, CPF, CNS e telefone — mas não garante que a narrativa deixe de
 identificar alguém, e a tela diz isso.
+
+## Investigação a partir de uma NCPS
+
+A tela começa **por ocorrência** (nº do vSky) ou **por notificação NCPS**
+(protocolo), em abas.
+
+- NCPS que informa a ocorrência → a investigação segue pela ocorrência
+  (cadeia do chamado, indicadores, prontuário) e o relato da notificação
+  entra no dossiê e no material da IA.
+- NCPS sem ocorrência (ou com número que não está no vSky) → o RAC
+  FOR.SAMU.038 é gerado da própria notificação: relato, classificação,
+  análise/causas/ações já registradas na NCPS e relatos dos envolvidos. O
+  relatório fica guardado com o identificador `NCPS-<protocolo>` e segue o
+  mesmo fluxo de ajuste, aprovação e PDF. Quem tria ou coordena a NCPS pode
+  vincular a ocorrência depois, pela própria tela.
+- Investigando uma ocorrência, as NCPS que a citam aparecem no dossiê.
+- NCPS sigilosas (violência/assédio) nunca entram numa investigação, e só
+  aparecem NCPS que o usuário pode ver pelas regras do módulo NCPS.
+
+Código: `ncps_vinculo.py`.

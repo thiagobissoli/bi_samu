@@ -189,6 +189,8 @@ def _bloco_cadeia(inv: dict) -> str:
 def montar_prompt(dossie: dict, texto_prontuario: str = "") -> str:
     """Monta o material da análise a partir do dossiê já calculado."""
     inv = dossie["investigacao"]
+    if inv.get("origem") == "ncps":
+        return _prompt_ncps(dossie)
     com_empenho = inv.get("com_empenho", True)
     partes = [
         "# Ocorrência sob análise",
@@ -252,12 +254,12 @@ def montar_prompt(dossie: dict, texto_prontuario: str = "") -> str:
             "como evidência dos fatores contribuintes, sem atribuir culpa "
             "individual e sem citar nomes na análise de causa.",
             relatos[:12000]]
+    from app.modules.investigacao.ncps_vinculo import bloco_prompt
+    partes += bloco_prompt(dossie.get("ncps") or [])
     if texto_prontuario:
         partes += ["", "# Prontuário do atendimento (texto extraído do PDF)",
                    texto_prontuario[:12000]]
-    partes += [
-        "",
-        "# Tarefa",
+    partes += _tarefa(
         ("Este chamado NÃO teve viatura despachada: analise a condução na "
          "central e o desfecho. Se todas as viaturas do município estavam "
          "ocupadas, considere a hipótese de a decisão ter sido condicionada "
@@ -270,7 +272,16 @@ def montar_prompt(dossie: dict, texto_prontuario: str = "") -> str:
          "rota, acesso), origem da viatura, indisponibilidade das viaturas "
          "locais e atrasos nas etapas de processo (P1 a P4.1). Use os "
          "fatores já apurados acima — eles vêm com o número que os sustenta "
-         "— e diga quais são evitáveis pelo serviço e quais são estruturais."),
+         "— e diga quais são evitáveis pelo serviço e quais são estruturais."))
+    return "\n".join(partes)
+
+
+def _tarefa(foco: str) -> list[str]:
+    """Pedido do formulário FOR.SAMU.038 — igual para ocorrência e NCPS."""
+    return [
+        "",
+        "# Tarefa",
+        foco,
         "",
         "Redija o formulário FOR.SAMU.038 — Relatório de Evento Adverso "
         "com Investigação de Causa Raiz (RAC), pelo Protocolo de Londres. "
@@ -292,6 +303,39 @@ def montar_prompt(dossie: dict, texto_prontuario: str = "") -> str:
         "Responda no formato JSON abaixo, preenchendo todos os campos:",
         ESQUEMA,
     ]
+
+
+def _prompt_ncps(dossie: dict) -> str:
+    """Evento notificado por NCPS sem ocorrência no vSky: o material é a
+    notificação e o que a equipe já registrou na tratativa."""
+    from app.modules.investigacao.ncps_vinculo import bloco_prompt
+
+    inv = dossie["investigacao"]
+    partes = [
+        "# Evento sob análise",
+        f"Origem: notificação NCPS #{inv.get('ncps_id')} — não há ocorrência "
+        "do vSky vinculada, então não existem marcações de horário, "
+        "indicadores de tempo nem dados de viatura. Não invente esses dados.",
+        f"Data do evento: {inv.get('momento') or 'não informada'}",
+        f"Local informado: {inv.get('endereco') or 'não informado'}",
+    ]
+    partes += bloco_prompt(dossie.get("ncps") or [])
+    tratativa = (dossie.get("tratativa_ncps") or "").strip()
+    if tratativa:
+        partes += ["", "# Análise já registrada pela equipe na NCPS", tratativa[:12000]]
+    relatos = (dossie.get("relatos") or "").strip()
+    if relatos:
+        partes += [
+            "", "# Relato dos envolvidos (colhido pela equipe de investigação)",
+            "Estes relatos são FATOS declarados pelos profissionais. Use-os "
+            "como evidência dos fatores contribuintes, sem atribuir culpa "
+            "individual e sem citar nomes na análise de causa.",
+            relatos[:12000]]
+    partes += _tarefa(
+        "Analise o evento a partir do relato da notificação, da tratativa "
+        "já registrada e dos relatos dos envolvidos. Onde faltar evidência, "
+        "diga o que precisa ser levantado (em informacoes_a_coletar) em vez "
+        "de supor.")
     return "\n".join(partes)
 
 
