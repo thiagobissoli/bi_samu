@@ -377,7 +377,10 @@ def _salvar_triagem(db: Session, n: Ncps, form, usuario) -> None:
         if natureza == "trabalhador" and not n.ocupacional:
             n.ocupacional = NcpsOcupacional(empresa_id=n.empresa_id)
     n.procedente = _escolha(form, "procedente", cat.PROCEDENTE) or n.procedente
+    status_anterior = n.status
     n.status = _escolha(form, "status", cat.STATUS) or n.status
+    if n.status != status_anterior and n.notificante_id and not n.anonima:
+        _avisar_notificante(db, n)
 
     local_id, gestor_id = _inteiro(form, "local_id"), _inteiro(form, "gestor_id")
     n.local_id = local_id if local_id and db.scalar(select(NcpsLocal.id).where(
@@ -399,6 +402,18 @@ def _salvar_triagem(db: Session, n: Ncps, form, usuario) -> None:
                "notificação. Acesse NCPS para registrar a análise.",
                tipo="warning", empresa_id=n.empresa_id)
     n.coordenador_id = novo
+
+
+def _avisar_notificante(db: Session, n: Ncps) -> None:
+    """Retorno a quem notificou de forma identificada: a situação mudou."""
+    from app.core.notifications import notify
+
+    rotulo, texto, _etapa = cat.SITUACAO_ACOMPANHAMENTO.get(
+        n.status, ("Em análise", "", 2))
+    db.flush()
+    notify(db, n.notificante_id, f"Sua NCPS #{n.id}: {rotulo}", texto,
+           tipo="success" if n.status in ("2", "3", "4") else "info",
+           empresa_id=n.empresa_id)
 
 
 def _salvar_classificacao(db: Session, n: Ncps, form) -> None:

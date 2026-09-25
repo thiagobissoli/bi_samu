@@ -1,7 +1,154 @@
 {% extends "base.html" %}
 
+{% block styles %}
+<style>
+    .alerta { border-left: 4px solid var(--bs-border-color); }
+    .alerta-danger { border-left-color: var(--bs-danger); }
+    .alerta-warning { border-left-color: var(--bs-warning); }
+    .alerta-info { border-left-color: var(--bs-info); }
+    .alerta-success { border-left-color: var(--bs-success); }
+    .alerta a.stretched-link:focus { outline: none; }
+    .gestao-kpi .valor { font-size: 1.45rem; font-weight: 700; }
+    .gestao-kpi .tendencia.melhor { color: var(--bs-success); }
+    .gestao-kpi .tendencia.pior { color: var(--bs-danger); }
+</style>
+{% endblock %}
+
 {% block content %}
+{# ------------------------------------------------ boas-vindas #}
+<div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+    <div>
+        <h2 class="h4 mb-0">{{ boas_vindas.saudacao }}!</h2>
+        <span class="text-body-secondary">{{ boas_vindas.data }} · Qualidade SAMU</span>
+    </div>
+    {% if 'ncps.notificar' in usuario_logado.permissoes %}
+    <a href="/ncps/notificar" class="btn btn-primary btn-sm ms-auto">
+        <i class="fa-solid fa-bullhorn me-1"></i> Notificar evento
+    </a>
+    {% endif %}
+</div>
+
 <div class="row g-3">
+    {# ------------------------------------------------ alertas #}
+    <div class="col-xl-8">
+        <div class="card h-100">
+            <div class="card-header d-flex align-items-center">
+                <h3 class="card-title mb-0"><i class="fa-solid fa-bell me-2"></i>Seus alertas</h3>
+                {% if alertas %}<span class="badge text-bg-secondary ms-2">{{ alertas | length }}</span>{% endif %}
+            </div>
+            <div class="card-body">
+                {% if alertas %}
+                <div class="d-grid gap-2">
+                    {% for a in alertas %}
+                    <div class="alerta alerta-{{ a.nivel }} position-relative border rounded p-2 ps-3 d-flex align-items-start gap-3">
+                        <i class="fa-solid {{ a.icone }} fa-lg mt-1 text-{{ a.nivel }}" aria-hidden="true"></i>
+                        <div class="flex-grow-1">
+                            <div class="fw-semibold">{{ a.titulo }}</div>
+                            {% if a.texto %}<div class="small text-body-secondary">{{ a.texto }}</div>{% endif %}
+                        </div>
+                        {% if a.link %}
+                        <a href="{{ a.link }}" class="stretched-link small text-nowrap align-self-center">Abrir <i class="fa-solid fa-arrow-right"></i></a>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-body-secondary mb-0"><i class="fa-solid fa-circle-check text-success me-1"></i>
+                    Nenhuma pendência para você no momento.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ------------------------------------------------ dados do usuário #}
+    <div class="col-xl-4">
+        <div class="card h-100">
+            <div class="card-header"><h3 class="card-title mb-0"><i class="fa-solid fa-id-card me-2"></i>Seus dados</h3></div>
+            <div class="card-body">
+                <dl class="row small mb-2">
+                    <dt class="col-5">Nome</dt><dd class="col-7">{{ perfil.nome }}</dd>
+                    <dt class="col-5">E-mail</dt><dd class="col-7 text-break">{{ perfil.email }}</dd>
+                    {% if perfil.telefone %}<dt class="col-5">Telefone</dt><dd class="col-7">{{ perfil.telefone }}</dd>{% endif %}
+                    <dt class="col-5">Perfis</dt>
+                    <dd class="col-7">{% for p in perfil.perfis %}<span class="badge text-bg-light border me-1">{{ p }}</span>{% else %}—{% endfor %}</dd>
+                    <dt class="col-5">Acesso atual</dt>
+                    <dd class="col-7">{{ perfil.ultimo_login | localdt }}{% if perfil.ultimo_ip %}<br><span class="text-body-secondary">IP {{ perfil.ultimo_ip }}</span>{% endif %}</dd>
+                    <dt class="col-5">Duas etapas</dt>
+                    <dd class="col-7">{% if perfil.mfa %}<span class="text-success"><i class="fa-solid fa-shield-halved"></i> ativa</span>{% else %}<span class="text-body-secondary">inativa</span>{% endif %}</dd>
+                </dl>
+                <div class="d-flex gap-2">
+                    <a href="/alterar-senha" class="btn btn-outline-secondary btn-sm">Alterar senha</a>
+                    <a href="/mfa" class="btn btn-outline-secondary btn-sm">Duas etapas</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ------------------------------------------------ gestão (carregado à parte) #}
+    {% if ve_gestao %}
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex align-items-center">
+                <h3 class="card-title mb-0"><i class="fa-solid fa-chart-line me-2"></i>Indicadores de gestão</h3>
+                <span class="ms-2 small text-body-secondary" id="gestao-semana"></span>
+                <a href="/painel_gestao/" class="ms-auto small">Painel de Gestão <i class="fa-solid fa-arrow-right"></i></a>
+            </div>
+            <div class="card-body">
+                <div class="row g-3" id="gestao-kpis" aria-live="polite">
+                    <div class="col-12 text-body-secondary small"><span class="spinner-border spinner-border-sm me-2"></span>Calculando os indicadores da última semana…</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ------------------------------------------------ respostas das minhas NCPS #}
+    {% if respostas %}
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header"><h3 class="card-title mb-0"><i class="fa-solid fa-reply me-2"></i>Retorno das suas notificações</h3></div>
+            <ul class="list-group list-group-flush">
+                {% for r in respostas %}
+                <li class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong>NCPS #{{ r.id }}</strong>
+                        <span class="badge text-bg-{{ 'success' if r.etapa == 3 else 'primary' }}">{{ r.situacao }}</span>
+                    </div>
+                    <div class="small text-body-secondary text-truncate">{{ r.resumo }}</div>
+                    <div class="small">{{ r.texto }}
+                        {% if r.acoes %} · {{ r.acoes_concluidas }} de {{ r.acoes }} ação(ões) concluída(s){% endif %}
+                        · <span class="text-body-secondary">{{ r.atualizada_em | localdt("%d/%m %H:%M") }}</span></div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ------------------------------------------------ notificações recentes #}
+    {% if recentes %}
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header d-flex">
+                <h3 class="card-title mb-0"><i class="fa-regular fa-bell me-2"></i>Notificações recentes</h3>
+                <a href="/notificacoes/" class="ms-auto small">Ver todas</a>
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for n in recentes %}
+                <li class="list-group-item {{ 'fw-semibold' if not n.lida }}">
+                    <div class="d-flex justify-content-between">
+                        <span>{{ n.titulo }}</span>
+                        <small class="text-body-secondary fw-normal">{{ n.created_at | localdt("%d/%m %H:%M") }}</small>
+                    </div>
+                    <div class="small text-body-secondary fw-normal">{{ n.mensagem }}</div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ------------------------------------------------ administração #}
     {% if widgets.usuarios is defined %}
     <div class="col-lg-3 col-6">
         <div class="small-box text-bg-primary">
@@ -45,7 +192,7 @@
             <div class="card-header">
                 <h3 class="card-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>Últimas atividades</h3>
             </div>
-            <div class="card-body p-0">
+            <div class="card-body p-0 table-responsive">
                 <table class="table table-striped table-sm mb-0">
                     <thead><tr><th>Data</th><th>Usuário</th><th>Ação</th><th>Módulo</th><th>Registro</th></tr></thead>
                     <tbody>
@@ -68,14 +215,57 @@
         </div>
     </div>
     {% endif %}
-
-    {% if not widgets %}
-    <div class="col-12">
-        <div class="card"><div class="card-body">
-            <p class="mb-0">Bem-vindo! Seu perfil ainda não possui widgets liberados —
-               fale com o administrador para receber permissões (§10).</p>
-        </div></div>
-    </div>
-    {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if ve_gestao %}
+<script>
+(function () {
+    var alvo = document.getElementById('gestao-kpis');
+    function el(tag, cls, texto) {
+        var e = document.createElement(tag);
+        if (cls) e.className = cls;
+        if (texto !== undefined) e.textContent = texto;
+        return e;
+    }
+    fetch('/inicio/api/gestao', { headers: { accept: 'application/json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (resp) {
+            var d = resp.data || {};
+            alvo.innerHTML = '';
+            if (!d.kpis || !d.kpis.length) {
+                alvo.append(el('div', 'col-12 text-body-secondary small', 'Sem semana completa nos dados importados.'));
+                return;
+            }
+            document.getElementById('gestao-semana').textContent = 'semana de ' + d.semana + ' × anterior';
+            d.kpis.forEach(function (k) {
+                var col = el('div', 'col-6 col-md-4 col-xl-2');
+                var a = el('a', 'card h-100 text-decoration-none gestao-kpi');
+                a.href = k.link;
+                var body = el('div', 'card-body py-2 px-3');
+                body.append(el('div', 'small text-body-secondary', k.rotulo),
+                            el('div', 'valor text-body', k.valor));
+                if (k.tendencia) {
+                    var t = k.tendencia, cls = 'small tendencia';
+                    if (t.melhorou === true) cls += ' melhor';
+                    else if (t.melhorou === false) cls += ' pior';
+                    var linha = el('div', cls);
+                    var seta = el('i', 'fa-solid ' + (t.subiu ? 'fa-arrow-up' : 'fa-arrow-down') + ' me-1');
+                    seta.setAttribute('aria-hidden', 'true');
+                    linha.append(seta, t.variacao + ' vs ' + k.anterior);
+                    body.append(linha);
+                }
+                a.append(body);
+                col.append(a);
+                alvo.append(col);
+            });
+        })
+        .catch(function () {
+            alvo.innerHTML = '';
+            alvo.append(el('div', 'col-12 text-danger small', 'Não foi possível calcular os indicadores agora.'));
+        });
+})();
+</script>
+{% endif %}
 {% endblock %}

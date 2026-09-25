@@ -93,8 +93,19 @@ def dashboard(
             select(func.count()).select_from(Log).where(Log.nivel.in_(["ERROR", "CRITICAL"]))
         )
 
+    from app.core.config import settings as _settings
+    from app.core.config_service import get_config
+    from app.modules.inicio import service as inicio
+
+    tz = get_config(db, "timezone", _settings.timezone, usuario.empresa_id) or "UTC"
     return render(request, "dashboard/index.html", usuario,
-                  page_title="Dashboard", widgets=widgets)
+                  page_title="Início", widgets=widgets,
+                  boas_vindas=inicio.boas_vindas(usuario, tz),
+                  perfil=inicio.dados_usuario(usuario),
+                  alertas=inicio.alertas(db, usuario),
+                  respostas=inicio.respostas_ncps(db, usuario),
+                  recentes=inicio.notificacoes_recentes(db, usuario),
+                  ve_gestao="indicadores.visualizar" in permissoes)
 
 
 def _banner_inicializacao() -> None:

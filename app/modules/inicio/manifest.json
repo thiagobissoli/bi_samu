@@ -1,0 +1,9 @@
+{
+    "name": "Início",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [],
+    "permissions": [],
+    "menu": [],
+    "routes": ["/inicio"]
+}
