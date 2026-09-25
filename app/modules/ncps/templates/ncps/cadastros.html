@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/ncps/">NCPS</a></li>
+<li class="breadcrumb-item active">Cadastros</li>
+{% endblock %}
+
+{% block content %}
+{% if msg %}<div class="alert alert-success alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if erro %}<div class="alert alert-danger alert-dismissible fade show">{{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+
+<div class="row g-3">
+    {% for tipo, titulo, rotulo in [('gestores', 'Gestores', 'gestor'), ('locais', 'Locais padronizados', 'local')] %}
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header"><h3 class="card-title mb-0">{{ titulo }}</h3></div>
+            <div class="card-body">
+                <form method="post" action="/ncps/cadastros/{{ tipo }}" class="d-flex gap-2 mb-3">
+                    <input class="form-control" name="nome" maxlength="120" required placeholder="Novo {{ rotulo }}">
+                    <button class="btn btn-primary text-nowrap"><i class="fa-solid fa-plus"></i> Adicionar</button>
+                </form>
+                {% if listas[tipo] %}
+                <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Nome</th><th class="text-center">Uso</th><th></th></tr></thead>
+                    <tbody>
+                    {% for item in listas[tipo] %}
+                    <tr class="{{ 'text-body-secondary' if not item.ativo }}">
+                        <td>
+                            <form method="post" action="/ncps/cadastros/{{ tipo }}" class="d-flex gap-1">
+                                <input type="hidden" name="id" value="{{ item.id }}">
+                                <input class="form-control form-control-sm" name="nome" value="{{ item.nome }}" maxlength="120" required
+                                       aria-label="Nome">
+                                <button class="btn btn-sm btn-outline-primary" title="Renomear"><i class="fa-solid fa-check"></i></button>
+                            </form>
+                        </td>
+                        <td class="text-center small">{{ usos[tipo].get(item.id, 0) }}</td>
+                        <td class="text-end text-nowrap">
+                            <form method="post" action="/ncps/cadastros/{{ tipo }}" class="d-inline">
+                                <input type="hidden" name="id" value="{{ item.id }}">
+                                <button name="acao" value="alternar" class="btn btn-sm btn-outline-secondary">{{ 'Desativar' if item.ativo else 'Ativar' }}</button>
+                                {% if not usos[tipo].get(item.id) %}
+                                <button name="acao" value="excluir" class="btn btn-sm btn-outline-danger" onclick="return confirm('Excluir?')"><i class="fa-solid fa-trash"></i></button>
+                                {% endif %}
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}<p class="text-body-secondary small mb-0">Nenhum {{ rotulo }} cadastrado.</p>{% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title mb-0"><i class="fa-solid fa-chart-simple me-1"></i> Integração com o Power BI</h3></div>
+            <div class="card-body">
+                <p class="small">Fonte de dados Web: <code>GET {{ request.base_url }}ncps/api/powerbi</code> com o header
+                    <code>Authorization: Bearer &lt;token&gt;</code>. Devolve todas as notificações, <strong>exceto as sigilosas</strong>,
+                    com as mesmas colunas da planilha.</p>
+                {% if token_novo %}
+                <div class="alert alert-warning">
+                    <strong>Novo token:</strong> <code class="user-select-all">{{ token_novo }}</code><br>
+                    <small>Copie agora — ele não será exibido de novo. O token anterior deixou de valer.</small>
+                </div>
+                {% endif %}
+                <form method="post" action="/ncps/cadastros-token"
+                      onsubmit="return {{ 'confirm(\'Gerar um novo token? O atual deixará de funcionar no Power BI.\')' if token_configurado else 'true' }}">
+                    <button class="btn btn-outline-primary btn-sm">
+                        <i class="fa-solid fa-key"></i> {{ 'Gerar novo token' if token_configurado else 'Gerar token' }}
+                    </button>
+                    <span class="small text-body-secondary ms-2">{{ 'Há um token configurado.' if token_configurado else 'Nenhum token configurado.' }}</span>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

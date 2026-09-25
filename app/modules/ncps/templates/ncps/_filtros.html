@@ -1,0 +1,66 @@
+{# Filtros comuns à lista e ao painel. Espera: filtros, cat, gestores, locais, acao #}
+<form method="get" action="{{ acao }}" class="card mb-3">
+    <div class="card-body row g-2 align-items-end">
+        <div class="col-md-2">
+            <label class="form-label small mb-1" for="f-nat">Natureza</label>
+            <select class="form-select form-select-sm" id="f-nat" name="natureza">
+                <option value="">Todas</option>
+                {% for v, r in cat.NATUREZA.items() %}<option value="{{ v }}" {{ 'selected' if filtros.natureza == v }}>{{ r }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1" for="f-st">Status</label>
+            <select class="form-select form-select-sm" id="f-st" name="status">
+                <option value="">Todos</option>
+                {% for v, r in cat.STATUS.items() %}<option value="{{ v }}" {{ 'selected' if filtros.status == v }}>{{ r }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1" for="f-ge">Gestor</label>
+            <select class="form-select form-select-sm" id="f-ge" name="gestor_id">
+                <option value="">Todos</option>
+                {% for g in gestores %}<option value="{{ g.id }}" {{ 'selected' if filtros.gestor_id == g.id|string }}>{{ g.nome }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1" for="f-lo">Local</label>
+            <select class="form-select form-select-sm" id="f-lo" name="local_id">
+                <option value="">Todos</option>
+                {% for l in locais %}<option value="{{ l.id }}" {{ 'selected' if filtros.local_id == l.id|string }}>{{ l.nome }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1" for="f-ini">Registrada de</label>
+            <input type="date" class="form-control form-control-sm" id="f-ini" name="inicio" value="{{ filtros.inicio }}">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small mb-1" for="f-fim">até</label>
+            <input type="date" class="form-control form-control-sm" id="f-fim" name="fim" value="{{ filtros.fim }}">
+        </div>
+        {% if com_busca %}
+        <div class="col-md-4">
+            <label class="form-label small mb-1" for="f-q">Buscar</label>
+            <input type="search" class="form-control form-control-sm" id="f-q" name="q" value="{{ filtros.q }}"
+                   placeholder="Protocolo, descrição, local ou nº da ocorrência">
+        </div>
+        {% endif %}
+        <div class="col-md-auto">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="atribuidas" value="1" id="f-atr" {{ 'checked' if filtros.atribuidas }}>
+                <label class="form-check-label small" for="f-atr">Atribuídas a mim</label>
+            </div>
+        </div>
+        {% if 'ncps.sigilosas' in usuario_logado.permissoes %}
+        <div class="col-md-auto">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="sigilosas" value="1" id="f-sig" {{ 'checked' if filtros.sigilosas }}>
+                <label class="form-check-label small" for="f-sig">Só sigilosas</label>
+            </div>
+        </div>
+        {% endif %}
+        <div class="col-md-auto ms-auto d-flex gap-2">
+            <button class="btn btn-primary btn-sm"><i class="fa-solid fa-filter"></i> Filtrar</button>
+            <a href="{{ acao }}" class="btn btn-outline-secondary btn-sm">Limpar</a>
+        </div>
+    </div>
+</form>

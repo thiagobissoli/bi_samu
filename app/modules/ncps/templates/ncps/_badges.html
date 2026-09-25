@@ -1,0 +1,16 @@
+{# Badges reutilizados na lista e na análise #}
+{% macro natureza(n) -%}
+{% if n.natureza == 'trabalhador' %}<span class="badge text-bg-warning"><i class="fa-solid fa-helmet-safety"></i> Trabalhador</span>
+{%- else %}<span class="badge text-bg-primary"><i class="fa-solid fa-hospital-user"></i> Paciente</span>{% endif %}
+{%- if n.confidencial %} <span class="badge text-bg-danger"><i class="fa-solid fa-lock"></i> Sigilosa</span>{% endif %}
+{%- endmacro %}
+
+{% macro status(n, cat) -%}
+{%- set cores = {'0': 'secondary', '1': 'info', '2': 'success', '3': 'dark', '4': 'light'} -%}
+<span class="badge text-bg-{{ cores.get(n.status, 'secondary') }}">{{ cat.STATUS.get(n.status, 'Sem status') }}</span>
+{%- endmacro %}
+
+{% macro risco(nv) -%}
+{%- set cores = {'critico': 'danger', 'alto': 'warning', 'medio': 'info', 'baixo': 'success', 'irrelevante': 'secondary'} -%}
+{% if nv %}<span class="badge text-bg-{{ cores[nv.cor] }}">{{ nv.rotulo }} · {{ nv.classe }}</span>{% else %}<span class="text-body-secondary small">Não avaliado</span>{% endif %}
+{%- endmacro %}

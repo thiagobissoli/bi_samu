@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "ncps/_form_notificacao.html" import form_notificacao with context %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Notificar evento</li>
+{% endblock %}
+
+{% block content %}
+{% include "ncps/_enviada.html" %}
+<div class="row">
+    <div class="col-xl-8">
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">Nova notificação</h3></div>
+            <div class="card-body">
+                <p class="text-body-secondary small">
+                    A notificação serve para aprender com o evento, não para punir. Relate o que aconteceu
+                    com o máximo de detalhes que puder.
+                    Link público (sem login) para compartilhar com a equipe:
+                    <a href="/ncps/publico">/ncps/publico</a>.
+                </p>
+                {{ form_notificacao("/ncps/notificar") }}
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Minhas notificações</h3></div>
+            <div class="card-body p-0">
+                {% if minhas %}
+                <ul class="list-group list-group-flush">
+                    {% for n in minhas %}
+                    {%- set sit = cat.SITUACAO_ACOMPANHAMENTO.get(n.status, ('Recebida', '', 1)) -%}
+                    <li class="list-group-item">
+                        <div class="d-flex justify-content-between">
+                            <strong>#{{ n.id }}</strong>
+                            <span class="badge text-bg-{{ 'secondary' if sit[2] == 1 else ('primary' if sit[2] == 2 else 'success') }}">{{ sit[0] }}</span>
+                        </div>
+                        <small class="text-body-secondary">{{ n.registrado_em | localdt }} · {{ cat.NATUREZA[n.natureza] }}</small>
+                        <div class="small text-truncate">{{ n.descricao }}</div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-body-secondary small p-3 mb-0">Você ainda não registrou notificações identificadas.
+                    As anônimas não aparecem aqui — acompanhe-as pelo protocolo e código.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

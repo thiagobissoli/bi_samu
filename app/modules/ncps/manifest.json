@@ -1,0 +1,30 @@
+{
+    "name": "NCPS",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [],
+    "permissions": [
+        "ncps.notificar",
+        "ncps.listar",
+        "ncps.triar_paciente",
+        "ncps.triar_trabalhador",
+        "ncps.sigilosas",
+        "ncps.coordenar",
+        "ncps.exportar",
+        "ncps.cadastros",
+        "ncps.pgr"
+    ],
+    "menu": [
+        {"label": "Notificar evento (NCPS)", "url": "/ncps/notificar",
+         "icon": "fa-bullhorn", "permission": "ncps.notificar", "order": 26},
+        {"label": "NCPS", "url": "/ncps",
+         "icon": "fa-clipboard-check", "permission": "ncps.listar", "order": 27},
+        {"label": "Indicadores NCPS", "url": "/ncps/painel",
+         "icon": "fa-chart-pie", "permission": "ncps.listar", "order": 28},
+        {"label": "Cadastros NCPS", "url": "/ncps/cadastros",
+         "icon": "fa-list-check", "permission": "ncps.cadastros", "order": 29},
+        {"label": "PGR (GHE e perigos)", "url": "/ncps/pgr",
+         "icon": "fa-helmet-safety", "permission": "ncps.pgr", "order": 30}
+    ],
+    "routes": ["/ncps"]
+}

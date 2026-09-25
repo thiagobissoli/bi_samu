@@ -1,0 +1,128 @@
+{# Formulário de notificação — usado pela tela interna e pela pública.
+   Espera: cat, ghes, dados (valores já digitados), erros (campo → mensagem). #}
+{% macro erro(campo) -%}
+{% if erros.get(campo) %}<div class="invalid-feedback d-block">{{ erros[campo] }}</div>{% endif %}
+{%- endmacro %}
+
+{% macro form_notificacao(action, publico=False) -%}
+<form method="post" action="{{ action }}" class="ncps-form" novalidate>
+    {% if erros.get('geral') %}<div class="alert alert-danger">{{ erros.geral }}</div>{% endif %}
+
+    <fieldset class="mb-4">
+        <legend class="fs-6 fw-semibold"><span class="badge text-bg-primary me-2">1</span>Sobre o que é a notificação?</legend>
+        <div class="row g-2">
+            {% set info = {
+                'paciente': ('fa-hospital-user', 'primary', 'Incidentes, eventos adversos, riscos ou falhas no cuidado ao paciente.'),
+                'trabalhador': ('fa-helmet-safety', 'warning', 'Acidentes, doenças, quase-acidentes, condições inseguras, violência ou assédio com profissionais (NR-1).')} %}
+            {% for valor, rotulo in cat.NATUREZA.items() %}
+            {% set ic = info[valor] %}
+            <div class="col-md-6">
+                <input type="radio" class="btn-check" name="natureza" id="nat-{{ valor }}"
+                       value="{{ valor }}" autocomplete="off" {{ 'checked' if dados.get('natureza') == valor }}>
+                <label class="btn btn-outline-{{ ic[1] }} w-100 h-100 text-start p-3" for="nat-{{ valor }}">
+                    <i class="fa-solid {{ ic[0] }} fa-lg me-2"></i><strong>{{ rotulo }}</strong>
+                    <small class="d-block mt-1 opacity-75">{{ ic[2] }}</small>
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+        {{ erro('natureza') }}
+    </fieldset>
+
+    <fieldset class="mb-4 nf-trabalhador" hidden>
+        <legend class="fs-6 fw-semibold"><span class="badge text-bg-primary me-2">2</span>Sobre o evento com o trabalhador</legend>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="f-tipo">Tipo de evento</label>
+                <select class="form-select" id="f-tipo" name="tipo_evento_trab">
+                    <option value="">Selecione…</option>
+                    {% for v, r in cat.TIPO_EVENTO_TRABALHADOR.items() %}
+                    <option value="{{ v }}" {{ 'selected' if dados.get('tipo_evento_trab') == v }}>{{ r }}</option>
+                    {% endfor %}
+                </select>
+                {{ erro('tipo_evento_trab') }}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="f-lesao">Houve lesão ou adoecimento?</label>
+                <select class="form-select" id="f-lesao" name="houve_lesao">
+                    <option value="">Não sei</option>
+                    <option value="sim" {{ 'selected' if dados.get('houve_lesao') == 'sim' }}>Sim</option>
+                    <option value="nao" {{ 'selected' if dados.get('houve_lesao') == 'nao' }}>Não</option>
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="f-ghe">Setor / grupo de trabalho (GHE)</label>
+                <select class="form-select" id="f-ghe" name="ghe_id">
+                    <option value="">Não sei / prefiro não informar</option>
+                    {% for g in ghes %}
+                    <option value="{{ g.id }}" {{ 'selected' if dados.get('ghe_id') == g.id|string }}>{{ g.rotulo }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="alert alert-info mt-3 mb-0 nf-sigilo" hidden>
+            <i class="fa-solid fa-lock me-1"></i>
+            <strong>Tratamento sigiloso.</strong> Notificações de violência, agressão ou assédio são vistas
+            somente pela Comissão de Integridade.
+            {% if not publico %}
+            <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" name="anonima" value="1" id="f-anon"
+                       {{ 'checked' if dados.get('anonima') }}>
+                <label class="form-check-label" for="f-anon">Notificar de forma anônima (seu nome não será registrado)</label>
+            </div>
+            {% endif %}
+        </div>
+    </fieldset>
+
+    <fieldset class="mb-4">
+        <legend class="fs-6 fw-semibold"><span class="badge text-bg-primary me-2 nf-num-relato">2</span>Relato</legend>
+        <div class="mb-3">
+            <label class="form-label" for="f-desc">O que aconteceu?</label>
+            <textarea class="form-control {{ 'is-invalid' if erros.get('descricao') }}" id="f-desc" name="descricao" rows="5"
+                      placeholder="Descreva o que aconteceu, quem foi afetado (sem nomes, se preferir) e as circunstâncias.">{{ dados.get('descricao', '') }}</textarea>
+            {{ erro('descricao') }}
+        </div>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label" for="f-local">Local</label>
+                <input class="form-control" id="f-local" name="local" maxlength="100"
+                       placeholder="Ex.: base, viatura, setor" value="{{ dados.get('local', '') }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="f-oc">Nº da ocorrência (vSky)</label>
+                <input class="form-control" id="f-oc" name="id_ocorrencia" maxlength="100"
+                       placeholder="Se houver" value="{{ dados.get('id_ocorrencia', '') }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="f-dh">Data e hora do evento</label>
+                <input type="datetime-local" class="form-control" id="f-dh" name="data_hora_ocorrencia"
+                       value="{{ dados.get('data_hora_ocorrencia', '') }}">
+                {{ erro('data_hora_ocorrencia') }}
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="f-sug">Ação realizada / sugestão</label>
+                <textarea class="form-control" id="f-sug" name="sugestao" rows="3">{{ dados.get('sugestao', '') }}</textarea>
+            </div>
+        </div>
+    </fieldset>
+
+    <button type="submit" class="btn btn-primary btn-lg">
+        <i class="fa-solid fa-paper-plane me-1"></i> Enviar notificação
+    </button>
+</form>
+<script>
+(function () {
+    var f = document.currentScript.previousElementSibling;
+    var trab = f.querySelector('.nf-trabalhador'), sigilo = f.querySelector('.nf-sigilo');
+    var tipo = f.querySelector('[name="tipo_evento_trab"]'), num = f.querySelector('.nf-num-relato');
+    function atualizar() {
+        var nat = (f.querySelector('[name="natureza"]:checked') || {}).value;
+        trab.hidden = nat !== 'trabalhador';
+        num.textContent = nat === 'trabalhador' ? '3' : '2';
+        sigilo.hidden = trab.hidden || tipo.value !== 'violencia_assedio';
+    }
+    f.addEventListener('change', atualizar);
+    atualizar();
+})();
+</script>
+{%- endmacro %}

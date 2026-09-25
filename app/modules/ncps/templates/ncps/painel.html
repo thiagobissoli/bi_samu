@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/ncps/">NCPS</a></li>
+<li class="breadcrumb-item active">Indicadores</li>
+{% endblock %}
+
+{% macro tile(valor, rotulo, icone, detalhe=None, alerta=False) -%}
+<div class="col-6 col-md-4 col-xl-2">
+    <div class="card h-100">
+        <div class="card-body py-3">
+            <div class="text-body-secondary small"><i class="fa-solid {{ icone }} me-1"></i>{{ rotulo }}</div>
+            <div class="fs-3 fw-bold {{ 'text-danger' if alerta and valor }}">{{ valor }}</div>
+            {% if detalhe %}<div class="small text-body-secondary">{{ detalhe }}</div>{% endif %}
+        </div>
+    </div>
+</div>
+{%- endmacro %}
+
+{# Lista ranqueada: barras de uma só cor (magnitude), valor em texto ao lado #}
+{% macro ranking(titulo, itens, vazio='Sem dados no período.', link=None) -%}
+<div class="card h-100">
+    <div class="card-header"><h3 class="card-title fs-6 mb-0">{{ titulo }}</h3></div>
+    <div class="card-body">
+        {% if itens %}
+        {%- set maximo = itens | map(attribute='total') | max -%}
+        <table class="table table-sm table-borderless mb-0 rank">
+            <tbody>
+            {% for i in itens %}
+            <tr title="{{ i.rotulo }}: {{ i.total }}">
+                <td class="small ps-0" style="width: 45%">{{ i.rotulo }}</td>
+                <td class="align-middle"><div class="rank-bar" style="width: {{ (i.total / maximo * 100) | round(1) }}%"></div></td>
+                <td class="small text-end pe-0 fw-semibold" style="width: 3rem">{{ i.total }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}<p class="text-body-secondary small mb-0">{{ vazio }}</p>{% endif %}
+    </div>
+</div>
+{%- endmacro %}
+
+{% block styles %}
+<style>
+    :root { --ncps-s1: #2a78d6; --ncps-s2: #eb6834; }
+    [data-bs-theme=dark] { --ncps-s1: #3987e5; --ncps-s2: #d95926; }
+    .rank-bar { height: 10px; min-width: 2px; background: var(--ncps-s1); border-radius: 0 4px 4px 0; }
+    .rank td { vertical-align: middle; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set acao = "/ncps/painel" %}{% set com_busca = False %}
+{% include "ncps/_filtros.html" %}
+
+<div class="row g-3 mb-3">
+    {{ tile(ind.total, 'Notificações', 'fa-clipboard-list', ind.paciente ~ ' paciente · ' ~ ind.trabalhador ~ ' trabalhador') }}
+    {{ tile(ind.aguardando_triagem, 'Aguardando triagem', 'fa-inbox', alerta=True) }}
+    {{ tile(ind.abertas, 'Em aberto', 'fa-hourglass-half', ind.abertas_30d ~ ' há mais de 30 dias') }}
+    {{ tile(ind.sem_coordenador, 'Abertas sem coordenador', 'fa-user-slash', alerta=True) }}
+    {{ tile(ind.acoes.atrasadas, 'Ações atrasadas', 'fa-circle-exclamation', ind.acoes.abertas ~ ' de ' ~ ind.acoes.total ~ ' em aberto', alerta=True) }}
+    {{ tile(ind.eventos_adversos, 'Eventos adversos', 'fa-triangle-exclamation', ind.danos_graves ~ ' com dano grave/óbito · ' ~ ind.sentinelas ~ ' sentinela') }}
+</div>
+
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center">
+        <h3 class="card-title fs-6 mb-0">Notificações por mês de registro</h3>
+        <a class="ms-auto small" href="/ncps/{{ '?' ~ qs if qs }}">ver a lista</a>
+    </div>
+    <div class="card-body">
+        {% if ind.por_mes %}
+        <div style="position: relative; height: 260px"><canvas id="g-mes" aria-label="Notificações por mês, paciente e trabalhador" role="img"></canvas></div>
+        <details class="mt-2"><summary class="small text-body-secondary">Ver em tabela</summary>
+            <table class="table table-sm small mt-2 mb-0"><thead><tr><th>Mês</th><th class="text-end">Paciente</th><th class="text-end">Trabalhador</th></tr></thead>
+                <tbody>{% for m in ind.por_mes %}<tr><td>{{ m.mes[5:] }}/{{ m.mes[:4] }}</td><td class="text-end">{{ m.paciente }}</td><td class="text-end">{{ m.trabalhador }}</td></tr>{% endfor %}</tbody></table>
+        </details>
+        {% else %}<p class="text-body-secondary small mb-0">Sem notificações no período.</p>{% endif %}
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-4">{{ ranking('Status', ind.por_status) }}</div>
+    <div class="col-lg-4">{{ ranking('Nível de risco inicial (matriz PGR)', ind.por_risco, 'Nenhuma avaliação de risco registrada.') }}</div>
+    <div class="col-lg-4">{{ ranking('Eficácia das ações concluídas', ind.acoes.eficacia, 'Nenhuma ação concluída.') }}</div>
+</div>
+
+<h5 class="mt-4 mb-3"><i class="fa-solid fa-hospital-user me-1"></i> Segurança do paciente</h5>
+<div class="row g-3 mb-3">
+    <div class="col-lg-4">{{ ranking('Classificação do incidente', ind.por_classificacao, 'Nenhuma classificada.') }}</div>
+    <div class="col-lg-4">{{ ranking('Grau do dano', ind.por_dano, 'Nenhuma classificada.') }}</div>
+    <div class="col-lg-4">{{ ranking('Meta de segurança do paciente', ind.por_meta, 'Nenhuma classificada.') }}</div>
+    <div class="col-lg-6">{{ ranking('Macroprocesso', ind.por_macroprocesso, 'Nenhuma classificada.') }}</div>
+    <div class="col-lg-6">{{ ranking('Eventos sentinela', ind.por_sentinela, 'Nenhum evento sentinela.') }}</div>
+</div>
+
+<h5 class="mt-4 mb-3"><i class="fa-solid fa-helmet-safety me-1"></i> Saúde e segurança do trabalhador</h5>
+<div class="row g-3 mb-3">
+    {{ tile(ind.ocupacional.afastamentos, 'Com afastamento', 'fa-bed', ind.ocupacional.dias_afastamento ~ ' dias no total') }}
+    {{ tile(ind.ocupacional.cats, 'CATs emitidas', 'fa-file-medical') }}
+    {{ tile(ind.ocupacional.pgr_pendente, 'Revisão do PGR pendente', 'fa-clipboard-check', 'NR-1 1.5.4.4.6 "d"', alerta=True) }}
+    {% if 'ncps.sigilosas' in usuario_logado.permissoes %}{{ tile(ind.sigilosas, 'Sigilosas (assédio/violência)', 'fa-lock') }}{% endif %}
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-lg-6">{{ ranking('Tipo de evento com o trabalhador', ind.por_tipo_trabalhador) }}</div>
+    <div class="col-lg-3">{{ ranking('Locais (top 10)', ind.por_local, 'Nenhum local padronizado atribuído.') }}</div>
+    <div class="col-lg-3">{{ ranking('Gestores (top 10)', ind.por_gestor, 'Nenhum gestor atribuído.') }}</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if ind.por_mes %}
+<script src="{{ url_for('static', path='vendor/chartjs/chart.umd.js') }}"></script>
+<script>
+(function () {
+    var dados = {{ ind.por_mes | tojson }};
+    var css = getComputedStyle(document.documentElement);
+    var cor = function (v) { return css.getPropertyValue(v).trim(); };
+    var superficie = cor('--bs-body-bg') || '#fff';
+    var texto = cor('--bs-secondary-color') || '#6c757d';
+    var grade = cor('--bs-border-color-translucent') || 'rgba(0,0,0,.1)';
+    function serie(rotulo, campo, v) {
+        return { label: rotulo, data: dados.map(function (d) { return d[campo]; }),
+                 backgroundColor: cor(v), borderColor: superficie, borderWidth: 2,
+                 borderRadius: 4, borderSkipped: 'start', maxBarThickness: 36 };
+    }
+    new Chart(document.getElementById('g-mes'), {
+        type: 'bar',
+        data: {
+            labels: dados.map(function (d) { return d.mes.slice(5) + '/' + d.mes.slice(2, 4); }),
+            datasets: [serie('Paciente', 'paciente', '--ncps-s1'),
+                       serie('Trabalhador', 'trabalhador', '--ncps-s2')]
+        },
+        options: {
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { position: 'top', align: 'start', labels: { color: texto, boxWidth: 12 } },
+                       tooltip: { callbacks: { footer: function (itens) {
+                           return 'Total: ' + itens.reduce(function (s, i) { return s + i.parsed.y; }, 0); } } } },
+            scales: {
+                x: { stacked: true, grid: { display: false }, ticks: { color: texto } },
+                y: { stacked: true, beginAtZero: true, ticks: { color: texto, precision: 0 },
+                     grid: { color: grade }, border: { display: false } }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,37 @@
+{# Situação de uma NCPS para quem notificou. Não mostra o relato nem o conteúdo das ações. #}
+{%- set sit = cat.SITUACAO_ACOMPANHAMENTO.get(ncp.status, ('Recebida', 'A notificação foi registrada e aguarda análise.', 1)) -%}
+{%- set acoes = ncp.acoes | rejectattr('status', 'equalto', 'cancelada') | list -%}
+{%- set concluidas = acoes | selectattr('status', 'equalto', 'concluida') | list -%}
+<div class="card">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <small class="text-body-secondary">Protocolo {{ ncp.id }}</small>
+                <h4 class="mb-1">{{ sit[0] }}</h4>
+                <p class="text-body-secondary">{{ sit[1] }}</p>
+            </div>
+            {% if ncp.confidencial %}<span class="badge text-bg-danger"><i class="fa-solid fa-lock"></i> Sigilosa</span>{% endif %}
+        </div>
+        <div class="progress mb-3" role="progressbar" aria-label="Etapa {{ sit[2] }} de 3"
+             aria-valuenow="{{ sit[2] }}" aria-valuemin="0" aria-valuemax="3" style="height:.5rem">
+            <div class="progress-bar" style="width: {{ (sit[2] / 3 * 100)|round }}%"></div>
+        </div>
+        <div class="d-flex justify-content-between small text-body-secondary mb-3">
+            <span>Recebida</span><span>Em análise</span><span>Concluída</span>
+        </div>
+        <dl class="row mb-0">
+            <dt class="col-sm-4">Tipo</dt><dd class="col-sm-8">{{ cat.NATUREZA.get(ncp.natureza, '—') }}</dd>
+            <dt class="col-sm-4">Registrada em</dt><dd class="col-sm-8">{{ ncp.registrado_em | localdt }}</dd>
+            <dt class="col-sm-4">Responsável</dt>
+            <dd class="col-sm-8">{{ 'Comissão de Integridade' if ncp.confidencial else (ncp.coordenador.nome if ncp.coordenador else 'Ainda não atribuído') }}</dd>
+            <dt class="col-sm-4">Plano de ação</dt>
+            <dd class="col-sm-8">
+                {%- if acoes -%}{{ concluidas|length }} de {{ acoes|length }} ação(ões) concluída(s)
+                {%- else -%}Ainda não definido{%- endif -%}
+            </dd>
+        </dl>
+        {% if ncp.confidencial %}
+        <p class="small text-body-secondary mt-2 mb-0"><i class="fa-solid fa-lock"></i> Por sigilo, os detalhes da apuração não são exibidos nesta consulta.</p>
+        {% endif %}
+    </div>
+</div>

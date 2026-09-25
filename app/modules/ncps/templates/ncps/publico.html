@@ -1,0 +1,15 @@
+{% extends "ncps/_publico_base.html" %}
+{% from "ncps/_form_notificacao.html" import form_notificacao with context %}
+
+{% block title %}Notificar evento{% endblock %}
+{% block heading %}Notificação de evento (NCPS){% endblock %}
+{% block subheading %}Segurança do paciente e saúde do trabalhador. Esta notificação é <strong>anônima</strong>: seu nome não é registrado.{% endblock %}
+
+{% block content %}
+{% include "ncps/_enviada.html" %}
+<div class="card">
+    <div class="card-body">
+        {{ form_notificacao("/ncps/publico", publico=True) }}
+    </div>
+</div>
+{% endblock %}

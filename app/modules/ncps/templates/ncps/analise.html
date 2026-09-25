@@ -1,0 +1,474 @@
+{% extends "base.html" %}
+{% import "ncps/_badges.html" as badge %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/ncps/">NCPS</a></li>
+<li class="breadcrumb-item active">#{{ n.id }}</li>
+{% endblock %}
+
+{% macro select(nome, rotulo, opcoes, atual, vazio=None, classe='col-md-4') -%}
+<div class="{{ classe }}">
+    <label class="form-label" for="f-{{ nome }}">{{ rotulo }}</label>
+    <select class="form-select" id="f-{{ nome }}" name="{{ nome }}">
+        {% if vazio is not none %}<option value="">{{ vazio }}</option>{% endif %}
+        {% for valor, texto in opcoes %}
+        <option value="{{ valor }}" {{ 'selected' if valor|string == atual|string }}>{{ texto }}</option>
+        {% endfor %}
+    </select>
+</div>
+{%- endmacro %}
+
+{% macro sim_nao(nome, rotulo, atual, classe='col-md-3') -%}
+{{ select(nome, rotulo, [('sim', 'Sim'), ('nao', 'Não')], 'sim' if atual == true else ('nao' if atual == false else ''), 'Não informado', classe) }}
+{%- endmacro %}
+
+{% block styles %}
+<style>
+    .rm { display: grid; grid-template-columns: 7.5rem repeat(4, 1fr); gap: 3px; font-size: .75rem; }
+    .rm-h { font-weight: 600; text-align: center; align-self: end; padding: .15rem; }
+    .rm-r { font-weight: 600; display: flex; align-items: center; }
+    .rm-c { position: relative; border-radius: 6px; padding: .4rem .2rem; text-align: center; cursor: pointer;
+            border: 2px solid transparent; margin: 0; line-height: 1.15; }
+    .rm-c input { position: absolute; opacity: 0; pointer-events: none; }
+    .rm-c:has(input:checked) { border-color: var(--bs-body-color); box-shadow: 0 0 0 2px var(--bs-body-bg) inset; }
+    .rm-c .pts { font-weight: 700; font-size: .95rem; display: block; }
+    .risk-critico { background: #f8d7da; color: #58151c; }
+    .risk-alto { background: #ffe5d0; color: #6a2e05; }
+    .risk-medio { background: #fff3cd; color: #664d03; }
+    .risk-baixo { background: #d1e7dd; color: #0a3622; }
+    .risk-irrelevante { background: #e2e3e5; color: #2b2f32; }
+    [data-bs-theme=dark] .rm-c { filter: brightness(.85); }
+    .fator { border: 1px solid var(--bs-border-color); border-radius: .5rem; padding: .6rem .75rem; height: 100%; }
+    .fator.vazio { opacity: .6; }
+    .fator h6 { font-size: .8rem; font-weight: 700; margin-bottom: .4rem; }
+    .fishbone { position: relative; min-height: 360px; }
+    .fishbone svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .fishbone svg line, .fishbone svg polygon { stroke: var(--bs-secondary-color); stroke-width: 2; fill: var(--bs-secondary-color); }
+    .fb-cat { position: absolute; width: 24%; font-size: .75rem; }
+    .fb-cat ul { padding-left: 1rem; margin: 0; }
+    .fb-cat li.raiz { color: var(--bs-danger); font-weight: 600; }
+    .fb-top { top: 0; } .fb-bottom { bottom: 0; }
+    .fb-col0 { left: 4%; } .fb-col1 { left: 29%; } .fb-col2 { left: 54%; }
+    .fb-head { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 18%;
+               border: 2px solid var(--bs-danger); border-radius: .5rem; padding: .4rem; font-size: .75rem; }
+    .acao.atrasada { border-left: 4px solid var(--bs-danger) !important; }
+    @media (max-width: 767px) { .fishbone { min-height: 0; } .fishbone svg, .fb-head { display: none; }
+        .fb-cat { position: static; width: auto; margin-bottom: .5rem; } }
+</style>
+{% endblock %}
+
+{% block content %}
+{%- set trab = n.natureza == 'trabalhador' -%}
+{%- set o = n.ocupacional -%}
+{%- set acoes_abertas = n.acoes | selectattr('status', 'in', ['pendente', 'andamento']) | list -%}
+
+{% if msg %}<div class="alert alert-success alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if erro %}<div class="alert alert-danger alert-dismissible fade show">{{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    {{ badge.natureza(n) }} {{ badge.status(n, cat) }}
+    <span class="text-body-secondary small">
+        registrada em {{ n.registrado_em | localdt }} ·
+        {{ 'notificação anônima' if n.anonima or not n.notificante else 'por ' ~ n.notificante.nome }}
+    </span>
+    <div class="ms-auto d-flex gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="/ncps/"><i class="fa-solid fa-chevron-left"></i> Voltar</a>
+        {% if pode_triar %}
+        <form method="post" action="/ncps/{{ n.id }}/excluir" onsubmit="return confirm('Excluir a NCPS #{{ n.id }}?')">
+            <button class="btn btn-outline-danger btn-sm"><i class="fa-solid fa-trash"></i> Excluir</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header d-flex">
+        <h3 class="card-title mb-0">Relato</h3>
+        {% if trab and n.tipo_evento_trab %}<span class="ms-auto text-body-secondary small">{{ cat.TIPO_EVENTO_TRABALHADOR[n.tipo_evento_trab] }}</span>{% endif %}
+    </div>
+    <div class="card-body">
+        <p style="white-space: pre-line">{{ n.descricao }}</p>
+        <div class="row small g-2">
+            <div class="col-sm-3"><span class="text-body-secondary d-block">Local informado</span>{{ n.local or '—' }}</div>
+            <div class="col-sm-3"><span class="text-body-secondary d-block">Data do evento</span>{{ n.data_hora_ocorrencia.strftime('%d/%m/%Y %H:%M') if n.data_hora_ocorrencia else '—' }}</div>
+            <div class="col-sm-3"><span class="text-body-secondary d-block">Ocorrência (vSky)</span>
+                {% if n.id_ocorrencia %}{{ n.id_ocorrencia }}
+                    {% if tem_vsky and 'investigacao.visualizar' in usuario_logado.permissoes %}
+                    <a href="/investigacao/?ocorrencia={{ n.id_ocorrencia | urlencode }}" class="ms-1" title="Abrir o dossiê da ocorrência">
+                        <i class="fa-solid fa-magnifying-glass-chart"></i> investigar</a>
+                    {% elif not tem_vsky %}<span class="text-body-secondary">(não encontrada nos dados importados)</span>{% endif %}
+                {% else %}—{% endif %}
+            </div>
+            {% if trab %}<div class="col-sm-3"><span class="text-body-secondary d-block">GHE</span>{{ n.ghe.rotulo if n.ghe else '—' }}</div>{% endif %}
+        </div>
+        {% if n.sugestao %}<p class="mt-3 mb-0"><strong>Ação realizada / sugestão:</strong> {{ n.sugestao }}</p>{% endif %}
+    </div>
+</div>
+
+<ul class="nav nav-tabs" role="tablist" id="abas">
+    {% for id, rotulo in [('triagem', 'Triagem'), ('classificacao', 'Classificação'), ('risco', 'Matriz de risco'),
+                          ('analise', 'Análise NR-1' if trab else 'Protocolo de Londres'), ('ishikawa', 'Ishikawa'),
+                          ('acoes', 'Plano de ação' ~ (' (' ~ acoes_abertas|length ~ ')' if acoes_abertas else ''))] %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-{{ id }}" data-aba="{{ id }}" type="button" role="tab">{{ rotulo }}</button>
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="tab-content border border-top-0 rounded-bottom p-3 mb-3 bg-body">
+
+{# ============================================================ TRIAGEM #}
+<div class="tab-pane fade" id="tab-triagem" role="tabpanel">
+    <p class="text-body-secondary small">Feita pela {{ 'Comissão de Integridade' if n.confidencial else ('Segurança do Trabalho (SESMT)' if trab else 'Qualidade') }}:
+        confirma a natureza e a procedência e atribui o coordenador responsável pela tratativa
+        (ele é avisado nas notificações do sistema).</p>
+    <form method="post"><input type="hidden" name="secao" value="triagem">
+        <fieldset {{ 'disabled' if not pode_triar }}>
+            <div class="row g-3 mb-3">
+                {% if not n.confidencial %}{{ select('natureza', 'Natureza', cat.NATUREZA.items(), n.natureza) }}{% endif %}
+                {{ select('procedente', 'Procedente', cat.PROCEDENTE.items(), n.procedente) }}
+                {{ select('status', 'Status', cat.STATUS.items(), n.status) }}
+            </div>
+            <div class="row g-3 mb-3">
+                {{ select('local_id', 'Local padronizado', locais | map(attribute='id') | zip(locais | map(attribute='nome')), n.local_id, 'Não definido') }}
+                {{ select('gestor_id', 'Gestor', gestores | map(attribute='id') | zip(gestores | map(attribute='nome')), n.gestor_id, 'Não definido') }}
+                {% if not n.confidencial %}
+                {{ select('coordenador_id', 'Coordenador responsável', coordenadores | map(attribute='id') | zip(coordenadores | map(attribute='nome')), n.coordenador_id, 'Não atribuído') }}
+                {% endif %}
+            </div>
+            {% if not locais or not gestores %}
+            <p class="small text-body-secondary">Locais e gestores são cadastrados em <a href="/ncps/cadastros">Cadastros NCPS</a>.</p>
+            {% endif %}
+            {% if not coordenadores and not n.confidencial %}
+            <p class="small text-body-secondary">Nenhum usuário com a permissão <code>ncps.coordenar</code> — atribua-a a um perfil em Perfis.</p>
+            {% endif %}
+            {% if pode_triar %}<button class="btn btn-primary">Salvar triagem</button>{% endif %}
+        </fieldset>
+    </form>
+</div>
+
+{# ============================================================ CLASSIFICAÇÃO #}
+<div class="tab-pane fade" id="tab-classificacao" role="tabpanel">
+    <form method="post"><input type="hidden" name="secao" value="classificacao">
+    <fieldset {{ 'disabled' if not pode_tratar }}>
+    {% if not trab %}
+        <p class="text-body-secondary small">Classificação do incidente de segurança do paciente.</p>
+        <div class="row g-3 mb-3">
+            {% for campo, (rotulo, opcoes) in cat.CLASSIFICACAO_PACIENTE.items() %}
+            {{ select(campo, rotulo, opcoes.items(), n[campo], classe='col-md-6' if loop.index <= 2 else 'col-md-4') }}
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-body-secondary small">Caracterização do evento conforme o PGR (NR-1): perigo, lesão, afastamento e CAT.</p>
+        <div class="row g-3 mb-3">
+            {% if n.confidencial %}
+            <div class="col-md-4"><label class="form-label">Tipo de evento</label>
+                <input class="form-control" value="{{ cat.TIPO_EVENTO_TRABALHADOR[n.tipo_evento_trab] }}" readonly></div>
+            {% else %}
+            {{ select('tipo_evento_trab', 'Tipo de evento', cat.TIPO_EVENTO_TRABALHADOR.items() | rejectattr('0', 'equalto', 'violencia_assedio'), n.tipo_evento_trab) }}
+            {% endif %}
+            {{ select('ghe_id', 'GHE do trabalhador', ghes | map(attribute='id') | zip(ghes | map(attribute='rotulo')), n.ghe_id, 'Não informado', 'col-md-5') }}
+            {{ sim_nao('houve_lesao', 'Houve lesão/agravo?', n.houve_lesao) }}
+        </div>
+        <div class="row g-3 mb-3">
+            {{ select('grupo_risco', 'Grupo de risco', cat.GRUPO_RISCO.items(), o.grupo_risco if o, 'Selecione') }}
+            <div class="col-md-8">
+                <label class="form-label" for="f-perigo_id">Perigo / fator de risco (inventário do PGR)</label>
+                <select class="form-select" id="f-perigo_id" name="perigo_id">
+                    <option value="">Não identificado / outro</option>
+                    {% for grupo, itens in perigos | groupby('grupo') %}
+                    <optgroup label="{{ cat.GRUPO_RISCO.get(grupo, grupo) }}">
+                        {% for p in itens %}<option value="{{ p.id }}" data-grupo="{{ p.grupo }}" {{ 'selected' if o and o.perigo_id == p.id }}>{{ p.nome }}{{ ' — ' ~ p.dano if p.dano }}</option>{% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="row g-3 mb-3">
+            <div class="col-md-5"><label class="form-label" for="f-nl">Natureza da lesão / agravo</label>
+                <input class="form-control" id="f-nl" name="natureza_lesao" maxlength="150" value="{{ o.natureza_lesao or '' if o }}"
+                       placeholder="Ex.: corte, contusão, exposição a material biológico"></div>
+            {{ select('parte_corpo', 'Parte do corpo atingida', cat.PARTE_CORPO | zip(cat.PARTE_CORPO), o.parte_corpo if o, 'Não informada') }}
+        </div>
+        <div class="row g-3 mb-3">
+            {{ sim_nao('afastamento', 'Houve afastamento?', o.afastamento if o) }}
+            <div class="col-md-3"><label class="form-label" for="f-dias">Dias de afastamento</label>
+                <input type="number" min="0" class="form-control" id="f-dias" name="dias_afastamento"
+                       value="{{ o.dias_afastamento if o and o.dias_afastamento is not none else '' }}"></div>
+            {{ sim_nao('cat_emitida', 'CAT emitida?', o.cat_emitida if o, 'col-md-2') }}
+            <div class="col-md-2"><label class="form-label" for="f-catn">Nº da CAT</label>
+                <input class="form-control" id="f-catn" name="cat_numero" maxlength="40" value="{{ o.cat_numero or '' if o }}"></div>
+            <div class="col-md-2"><label class="form-label" for="f-catd">Data da CAT</label>
+                <input type="date" class="form-control" id="f-catd" name="cat_data" value="{{ o.cat_data.isoformat() if o and o.cat_data else '' }}"></div>
+        </div>
+        <div class="alert {{ 'alert-warning' if o and o.revisar_pgr and not o.pgr_revisado_em else 'alert-info' }}">
+            <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="f-rp" name="revisar_pgr" value="1" {{ 'checked' if o and o.revisar_pgr }}>
+                <label class="form-check-label" for="f-rp"><strong>Revisar a avaliação de riscos do PGR</strong> — obrigatório após acidente
+                    ou doença relacionada ao trabalho (NR-1, 1.5.4.4.6 "d"); marcado automaticamente nesses casos.</label>
+            </div>
+            <div class="d-flex align-items-center gap-2 mt-2">
+                <label for="f-rev" class="mb-0 small">Inventário revisado em</label>
+                <input type="date" class="form-control form-control-sm w-auto" id="f-rev" name="pgr_revisado_em"
+                       value="{{ o.pgr_revisado_em.isoformat() if o and o.pgr_revisado_em else '' }}">
+            </div>
+        </div>
+    {% endif %}
+    {% if pode_tratar %}<button class="btn btn-primary">Salvar classificação</button>{% endif %}
+    </fieldset>
+    </form>
+</div>
+
+{# ============================================================ MATRIZ DE RISCO #}
+<div class="tab-pane fade" id="tab-risco" role="tabpanel">
+    <form method="post"><input type="hidden" name="secao" value="risco">
+    <fieldset {{ 'disabled' if not pode_tratar }}>
+    <div class="row g-3">
+        {% for momento, rotulo in cat.MOMENTO_RISCO.items() %}
+        {%- set r = n.risco(momento) -%}
+        <div class="col-xl-6">
+            <div class="card h-100">
+                <div class="card-header d-flex"><h3 class="card-title mb-0">{{ rotulo }}</h3>
+                    <span class="ms-auto">{{ badge.risco(r.nivel if r) }}</span></div>
+                <div class="card-body">
+                    <p class="small text-body-secondary">{{ 'Antes das ações: chance de o evento se repetir e gravidade do pior dano plausível.' if momento == 'inicial' else 'Depois de implantadas as ações do plano (reavaliação exigida pelo PGR).' }}</p>
+                    <div class="rm" role="radiogroup" aria-label="{{ rotulo }}: probabilidade × severidade">
+                        <div class="rm-h text-start">Prob. ↓ · Sev. →</div>
+                        {% for s, (sn, _d) in cat.SEVERIDADE.items() %}<div class="rm-h">{{ sn }}</div>{% endfor %}
+                        {% for p, (pn, pdesc) in cat.PROBABILIDADE.items() | reverse %}
+                        <div class="rm-r" title="{{ pdesc }}">{{ pn }}</div>
+                        {% for s, (sn, _d) in cat.SEVERIDADE.items() %}
+                        {%- set nv = cat.nivel_risco(p, s) -%}
+                        <label class="rm-c risk-{{ nv.cor }}" title="{{ pn }} × {{ sn }} = {{ nv.pontos }} ({{ nv.rotulo }})">
+                            <input type="radio" name="{{ momento }}_ps" value="{{ p }}-{{ s }}" {{ 'checked' if r and r.probabilidade == p and r.severidade == s }}>
+                            <span class="pts">{{ nv.pontos }}</span>{{ nv.rotulo }}
+                        </label>
+                        {% endfor %}
+                        {% endfor %}
+                    </div>
+                    <div class="small mt-2 rm-result" data-momento="{{ momento }}">
+                        {% if r %}<strong>{{ r.nivel.rotulo }} ({{ r.nivel.classe }})</strong> — {{ r.nivel.conduta }}{% else %}Selecione uma célula da matriz.{% endif %}</div>
+                    <label class="form-label mt-3" for="f-{{ momento }}-j">Justificativa</label>
+                    <textarea class="form-control" id="f-{{ momento }}-j" name="{{ momento }}_justificativa" rows="2">{{ r.justificativa or '' if r }}</textarea>
+                    {% if r and pode_tratar %}
+                    <div class="form-check mt-2"><input type="checkbox" class="form-check-input" id="f-{{ momento }}-l" name="{{ momento }}_limpar" value="1">
+                        <label class="form-check-label small" for="f-{{ momento }}-l">Remover esta avaliação</label></div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <details class="mt-3">
+        <summary class="text-body-secondary small">Critérios da matriz (PGR · SESI 2022)</summary>
+        <div class="row small mt-2">
+            <div class="col-md-6"><strong>Probabilidade</strong><ul>{% for k, (nome, d) in cat.PROBABILIDADE.items() %}<li><strong>{{ nome }} ({{ k }})</strong> — {{ d }}</li>{% endfor %}</ul></div>
+            <div class="col-md-6"><strong>Severidade</strong><ul>{% for k, (nome, d) in cat.SEVERIDADE.items() %}<li><strong>{{ nome }} ({{ k }})</strong> — {{ d }}</li>{% endfor %}</ul></div>
+        </div>
+        <ul class="small list-unstyled">{% for minimo, rot, cl, cor, conduta in cat.NIVEIS_RISCO %}<li class="mb-1"><span class="badge risk-{{ cor }}">{{ rot }} · {{ cl }}</span> {{ conduta }}</li>{% endfor %}</ul>
+    </details>
+    {% if pode_tratar %}<button class="btn btn-primary mt-3">Salvar avaliação de risco</button>{% endif %}
+    </fieldset>
+    </form>
+</div>
+
+{# ============================================================ ANÁLISE SISTÊMICA #}
+{%- set londres = n.causas | selectattr('metodo', 'equalto', 'londres') | list -%}
+{%- set a = n.analise -%}
+<div class="tab-pane fade" id="tab-analise" role="tabpanel">
+    <p class="text-body-secondary small">
+        {% if trab %}Análise do acidente, doença ou incidente conforme a NR-1 (1.5.5.5): situações geradoras, fontes consultadas e evidências para revisar as medidas de prevenção. Abordagem sistêmica, sem busca de culpados.
+        {% else %}Protocolo de Londres: reconstruir a cronologia, identificar os problemas na assistência e os fatores contribuintes e recomendar melhorias. Abordagem sistêmica, sem busca de culpados.{% endif %}
+    </p>
+    <form method="post" class="mb-4"><input type="hidden" name="secao" value="analise">
+        <fieldset {{ 'disabled' if not pode_tratar }}>
+            <div class="mb-3"><label class="form-label" for="f-cro">Cronologia dos fatos</label>
+                <textarea class="form-control" id="f-cro" name="cronologia" rows="4" placeholder="Sequência do que aconteceu, com horários quando possível.">{{ a.cronologia or '' if a }}</textarea></div>
+            <div class="mb-3"><label class="form-label" for="f-pro">{{ 'Situações geradoras do evento (atividade real, ambiente, materiais, organização do trabalho)' if trab else 'Problemas na assistência (ações ou omissões que levaram ao evento)' }}</label>
+                <textarea class="form-control" id="f-pro" name="problemas" rows="4">{{ a.problemas or '' if a }}</textarea></div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6"><label class="form-label" for="f-fon">Fontes consultadas (registros, entrevistas, dados)</label>
+                    <textarea class="form-control" id="f-fon" name="fontes" rows="3">{{ a.fontes or '' if a }}</textarea></div>
+                <div class="col-md-6"><label class="form-label" for="f-bar">Barreiras — o que falhou e o que impediu um dano maior</label>
+                    <textarea class="form-control" id="f-bar" name="barreiras" rows="3">{{ a.barreiras or '' if a }}</textarea></div>
+            </div>
+            <div class="mb-3"><label class="form-label" for="f-rec">Recomendações / conclusões</label>
+                <textarea class="form-control" id="f-rec" name="recomendacoes" rows="3">{{ a.recomendacoes or '' if a }}</textarea></div>
+            {% if pode_tratar %}<button class="btn btn-primary">Salvar análise</button>{% endif %}
+        </fieldset>
+    </form>
+
+    <h6 class="fw-semibold">Fatores contribuintes (Protocolo de Londres) <small class="text-body-secondary fw-normal">{{ londres|length }} registrado(s)</small></h6>
+    <div class="row g-2">
+        {% for cod, nome in cat.FATORES_LONDRES.items() %}
+        {%- set itens = londres | selectattr('categoria', 'equalto', cod) | list -%}
+        <div class="col-md-6 col-xl-4">
+            <div class="fator {{ 'vazio' if not itens }}">
+                <h6>{{ nome }}</h6>
+                {% for c in itens %}
+                <div class="d-flex align-items-start gap-1 small mb-1">
+                    <span class="flex-grow-1">{% if c.causa_raiz %}<span class="badge text-bg-danger">Causa raiz</span> {% endif %}{{ c.descricao }}</span>
+                    {% if pode_tratar %}
+                    <form method="post" class="d-flex"><input type="hidden" name="causa_id" value="{{ c.id }}">
+                        <button name="secao" value="causa_raiz" class="btn btn-sm btn-link p-0 px-1" title="{{ 'Desmarcar' if c.causa_raiz else 'Marcar' }} como causa raiz"><i class="fa-solid fa-bullseye"></i></button>
+                        <button name="secao" value="causa_del" class="btn btn-sm btn-link text-danger p-0 px-1" title="Remover" onclick="return confirm('Remover este fator?')"><i class="fa-solid fa-trash"></i></button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% else %}<span class="small text-body-secondary">—</span>{% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% if pode_tratar %}
+    <form method="post" class="row g-2 align-items-end mt-2"><input type="hidden" name="secao" value="causa_add"><input type="hidden" name="metodo" value="londres">
+        {{ select('categoria', 'Categoria', cat.FATORES_LONDRES.items(), '') }}
+        <div class="col-md-5"><label class="form-label" for="f-fd">Fator contribuinte</label><input class="form-control" id="f-fd" name="descricao" required maxlength="2000"></div>
+        <div class="col-md-1"><div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="f-fr" name="causa_raiz" value="1"><label class="form-check-label" for="f-fr">Raiz</label></div></div>
+        <div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Adicionar</button></div>
+    </form>
+    {% endif %}
+</div>
+
+{# ============================================================ ISHIKAWA #}
+{%- set ishi = n.causas | selectattr('metodo', 'equalto', 'ishikawa') | list -%}
+<div class="tab-pane fade" id="tab-ishikawa" role="tabpanel">
+    <div class="fishbone mb-3" role="img" aria-label="Diagrama de causa e efeito com {{ ishi|length }} causas">
+        <svg viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true">
+            <line x1="20" y1="200" x2="790" y2="200" />
+            <polygon points="790,190 808,200 790,210" />
+            {% for i in range(3) %}
+            <line x1="{{ 130 + i * 250 }}" y1="20" x2="{{ 230 + i * 250 }}" y2="200" />
+            <line x1="{{ 130 + i * 250 }}" y1="380" x2="{{ 230 + i * 250 }}" y2="200" />
+            {% endfor %}
+        </svg>
+        {% for cod, nome in cat.CATEGORIAS_ISHIKAWA.items() %}
+        {%- set itens = ishi | selectattr('categoria', 'equalto', cod) | list -%}
+        <div class="fb-cat fb-{{ 'top' if loop.index0 < 3 else 'bottom' }} fb-col{{ loop.index0 % 3 }}">
+            <strong>{{ nome }}</strong>
+            <ul>{% for c in itens %}<li class="{{ 'raiz' if c.causa_raiz }}" title="{{ c.descricao }}">{{ c.descricao | truncate(60) }}</li>{% else %}<li class="text-body-secondary">—</li>{% endfor %}</ul>
+        </div>
+        {% endfor %}
+        <div class="fb-head"><strong class="d-block text-danger">Efeito</strong>{{ (n.descricao or '') | truncate(90) }}</div>
+    </div>
+
+    {% if ishi %}
+    <div class="table-responsive"><table class="table table-sm align-middle">
+        <thead><tr><th>Categoria</th><th>Causa</th><th></th></tr></thead>
+        <tbody>{% for c in ishi %}<tr>
+            <td class="small">{{ cat.CATEGORIAS_ISHIKAWA[c.categoria] }}</td>
+            <td class="small">{% if c.causa_raiz %}<span class="badge text-bg-danger">Causa raiz</span> {% endif %}{{ c.descricao }}</td>
+            <td class="text-end text-nowrap">{% if pode_tratar %}
+                <form method="post" class="d-inline"><input type="hidden" name="causa_id" value="{{ c.id }}">
+                    <button name="secao" value="causa_raiz" class="btn btn-sm btn-outline-primary">{{ 'Desmarcar raiz' if c.causa_raiz else 'Marcar raiz' }}</button>
+                    <button name="secao" value="causa_del" class="btn btn-sm btn-outline-danger" onclick="return confirm('Remover esta causa?')"><i class="fa-solid fa-trash"></i></button>
+                </form>{% endif %}</td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+    {% endif %}
+
+    {% if pode_tratar %}
+    <form method="post" class="row g-2 align-items-end"><input type="hidden" name="secao" value="causa_add"><input type="hidden" name="metodo" value="ishikawa">
+        {{ select('categoria', 'Categoria (6M)', cat.CATEGORIAS_ISHIKAWA.items(), '', classe='col-md-3') }}
+        <div class="col-md-6"><label class="form-label" for="f-id">Causa</label><input class="form-control" id="f-id" name="descricao" required maxlength="2000"></div>
+        <div class="col-md-1"><div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="f-ir" name="causa_raiz" value="1"><label class="form-check-label" for="f-ir">Raiz</label></div></div>
+        <div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Adicionar</button></div>
+    </form>
+    {% endif %}
+</div>
+
+{# ============================================================ PLANO DE AÇÃO #}
+<div class="tab-pane fade" id="tab-acoes" role="tabpanel">
+    <p class="text-body-secondary small">{{ 'Priorize pela hierarquia de controle da NR-1: eliminação → proteção coletiva → medidas administrativas → EPI (último recurso).' if trab else 'Cada ação com responsável, prazo e verificação de eficácia.' }}
+        {{ n.acoes|length }} ação(ões) · {{ acoes_abertas|length }} em aberto.</p>
+    {% for ac in n.acoes %}
+    {%- set atrasada = ac.prazo and ac.prazo < hoje and ac.status in ('pendente', 'andamento') -%}
+    <div class="acao border rounded p-3 mb-2 {{ 'atrasada' if atrasada }}">
+        <strong style="white-space: pre-line">{{ ac.descricao }}</strong>
+        <div class="small text-body-secondary d-flex flex-wrap gap-3 mt-1">
+            {% if ac.tipo %}<span>{{ cat.TIPO_ACAO.get(ac.tipo, ac.tipo) }}</span>{% endif %}
+            <span><i class="fa-solid fa-user"></i> {{ ac.responsavel or 'Sem responsável' }}</span>
+            <span><i class="fa-solid fa-calendar"></i> {{ ac.prazo.strftime('%d/%m/%Y') if ac.prazo else 'Sem prazo' }}</span>
+            {% if atrasada %}<span class="text-danger fw-semibold"><i class="fa-solid fa-circle-exclamation"></i> Atrasada</span>{% endif %}
+            {% if ac.concluida_em %}<span><i class="fa-solid fa-check"></i> concluída em {{ ac.concluida_em.strftime('%d/%m/%Y') }}</span>{% endif %}
+        </div>
+        <form method="post" class="row g-2 align-items-end mt-1"><input type="hidden" name="acao_id" value="{{ ac.id }}">
+            <fieldset class="row g-2 align-items-end m-0 p-0" {{ 'disabled' if not pode_tratar }}>
+                {{ select('status', 'Status', cat.STATUS_ACAO.items(), ac.status, classe='col-md-3') }}
+                {{ select('eficacia', 'Eficácia', cat.EFICACIA_ACAO.items(), ac.eficacia, classe='col-md-3') }}
+                <div class="col-md-4"><label class="form-label">Observação</label><input class="form-control" name="observacao" value="{{ ac.observacao or '' }}" maxlength="2000"></div>
+                {% if pode_tratar %}
+                <div class="col-md-2 d-flex gap-1">
+                    <button name="secao" value="acao_update" class="btn btn-primary flex-fill">Salvar</button>
+                    <button name="secao" value="acao_del" class="btn btn-outline-danger" title="Excluir ação" onclick="return confirm('Excluir esta ação?')"><i class="fa-solid fa-trash"></i></button>
+                </div>
+                {% endif %}
+            </fieldset>
+        </form>
+    </div>
+    {% else %}
+    <p class="text-body-secondary">Nenhuma ação registrada.</p>
+    {% endfor %}
+
+    {% if pode_tratar %}
+    <h6 class="fw-semibold mt-4">Nova ação</h6>
+    <form method="post"><input type="hidden" name="secao" value="acao_add">
+        <div class="mb-3"><label class="form-label" for="f-ad">O que será feito</label>
+            <textarea class="form-control" id="f-ad" name="descricao" rows="2" required maxlength="2000"></textarea></div>
+        <div class="row g-3 mb-3">
+            {{ select('tipo', 'Tipo de ação', cat.TIPO_ACAO.items(), '', 'Selecione', 'col-md-5') }}
+            <div class="col-md-4"><label class="form-label" for="f-ar">Responsável</label><input class="form-control" id="f-ar" name="responsavel" maxlength="120"></div>
+            <div class="col-md-3"><label class="form-label" for="f-ap">Prazo</label><input type="date" class="form-control" id="f-ap" name="prazo"></div>
+        </div>
+        <button class="btn btn-primary">Adicionar ação</button>
+    </form>
+    {% endif %}
+
+    {% if legado %}
+    <details class="mt-4"><summary class="text-body-secondary small">Registro do formulário do sistema anterior</summary>
+        <dl class="row small mt-2 mb-0">
+            {% for k, v in legado.items() if v %}<dt class="col-sm-3">{{ k }}</dt><dd class="col-sm-9" style="white-space: pre-line">{{ v }}</dd>{% endfor %}
+        </dl>
+    </details>
+    {% endif %}
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    // A âncora da URL escolhe a aba (preserva a aba depois de salvar)
+    var botoes = document.querySelectorAll('#abas [data-aba]');
+    function mostrar(id) {
+        var alvo = document.querySelector('#abas [data-aba="' + id + '"]') || botoes[0];
+        bootstrap.Tab.getOrCreateInstance(alvo).show();
+    }
+    botoes.forEach(function (b) {
+        b.addEventListener('shown.bs.tab', function () { history.replaceState(null, '', '#' + b.dataset.aba); });
+    });
+    mostrar(location.hash.slice(1));
+
+    // Matriz: a célula escolhida atualiza o texto do nível
+    var niveis = {{ cat.NIVEIS_RISCO | tojson }};
+    document.querySelectorAll('.rm input[type=radio]').forEach(function (inp) {
+        inp.addEventListener('change', function () {
+            var m = inp.name.replace('_ps', ''), ps = inp.value.split('-'), pts = ps[0] * ps[1];
+            var nv = niveis.find(function (x) { return pts >= x[0]; });
+            var alvo = document.querySelector('.rm-result[data-momento="' + m + '"]');
+            alvo.innerHTML = '';
+            var forte = document.createElement('strong');
+            forte.textContent = nv[1] + ' (' + nv[2] + ')';
+            alvo.append(forte, ' — ' + nv[4]);
+        });
+    });
+
+    // Perigo escolhido define o grupo de risco
+    var perigo = document.getElementById('f-perigo_id'), grupo = document.getElementById('f-grupo_risco');
+    if (perigo && grupo) perigo.addEventListener('change', function () {
+        var g = perigo.selectedOptions[0] && perigo.selectedOptions[0].dataset.grupo;
+        if (g) grupo.value = g;
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/ncps/">NCPS</a></li>
+<li class="breadcrumb-item active">PGR</li>
+{% endblock %}
+
+{% block content %}
+{% if msg %}<div class="alert alert-success alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if erro %}<div class="alert alert-danger alert-dismissible fade show">{{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+
+<p class="text-body-secondary small">Catálogos do Programa de Gerenciamento de Riscos usados nas notificações do trabalhador.
+    Itens já usados em notificações não podem ser excluídos — desative-os, para preservar o histórico do inventário (NR-1).</p>
+
+{% set e = editando if editar_tipo == 'ghe' else None %}
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title mb-0">Grupos Homogêneos de Exposição (GHE)</h3></div>
+    <div class="card-body">
+        <form method="post" action="/ncps/pgr/ghe" class="row g-2 align-items-end mb-3 border rounded p-2 {{ 'border-primary' if e }}">
+            {% if e %}<input type="hidden" name="id" value="{{ e.id }}">{% endif %}
+            <div class="col-md-1"><label class="form-label small">Código</label><input class="form-control form-control-sm" name="codigo" maxlength="10" required value="{{ e.codigo if e }}"></div>
+            <div class="col-md-3"><label class="form-label small">Nome do grupo</label><input class="form-control form-control-sm" name="nome" maxlength="100" required value="{{ e.nome if e }}"></div>
+            <div class="col-md-5"><label class="form-label small">Cargos / funções</label><input class="form-control form-control-sm" name="cargos" value="{{ e.cargos or '' if e }}"></div>
+            <div class="col-md-1"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="ativo" value="1" id="g-at" {{ 'checked' if not e or e.ativo }}><label class="form-check-label small" for="g-at">Ativo</label></div></div>
+            <div class="col-md-2 d-flex gap-1"><button class="btn btn-primary btn-sm flex-fill">{{ 'Salvar' if e else 'Adicionar' }}</button>
+                {% if e %}<a href="/ncps/pgr" class="btn btn-outline-secondary btn-sm">Cancelar</a>{% endif %}</div>
+        </form>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Código</th><th>Nome</th><th>Cargos</th><th class="text-center">Uso</th><th></th></tr></thead>
+            <tbody>{% for g in ghes %}
+            <tr class="{{ 'text-body-secondary' if not g.ativo }}">
+                <td>{{ g.codigo }}</td><td>{{ g.nome }}{% if not g.ativo %} <span class="badge text-bg-secondary">inativo</span>{% endif %}</td>
+                <td class="small">{{ g.cargos or '' }}</td><td class="text-center small">{{ usos_ghe.get(g.id, 0) }}</td>
+                <td class="text-end text-nowrap">
+                    <a href="/ncps/pgr?editar=ghe&id={{ g.id }}" class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-pen"></i></a>
+                    {% if not usos_ghe.get(g.id) %}
+                    <form method="post" action="/ncps/pgr/ghe" class="d-inline"><input type="hidden" name="id" value="{{ g.id }}">
+                        <button name="acao" value="excluir" class="btn btn-sm btn-outline-danger" onclick="return confirm('Excluir o GHE {{ g.codigo }}?')"><i class="fa-solid fa-trash"></i></button></form>
+                    {% endif %}
+                </td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+    </div>
+</div>
+
+{% set e = editando if editar_tipo == 'perigo' else None %}
+<div class="card">
+    <div class="card-header"><h3 class="card-title mb-0">Perigos / fatores de risco (inventário)</h3></div>
+    <div class="card-body">
+        <form method="post" action="/ncps/pgr/perigo" class="row g-2 align-items-end mb-3 border rounded p-2 {{ 'border-primary' if e }}">
+            {% if e %}<input type="hidden" name="id" value="{{ e.id }}">{% endif %}
+            <div class="col-md-2"><label class="form-label small">Grupo</label>
+                <select class="form-select form-select-sm" name="grupo" required>
+                    {% for v, r in cat.GRUPO_RISCO.items() %}<option value="{{ v }}" {{ 'selected' if e and e.grupo == v }}>{{ r }}</option>{% endfor %}
+                </select></div>
+            <div class="col-md-3"><label class="form-label small">Perigo</label><input class="form-control form-control-sm" name="nome" maxlength="150" required value="{{ e.nome if e }}"></div>
+            <div class="col-md-2"><label class="form-label small">Fontes / circunstâncias</label><input class="form-control form-control-sm" name="fonte" maxlength="255" value="{{ e.fonte or '' if e }}"></div>
+            <div class="col-md-2"><label class="form-label small">Possíveis lesões</label><input class="form-control form-control-sm" name="dano" maxlength="255" value="{{ e.dano or '' if e }}"></div>
+            <div class="col-md-1"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="ativo" value="1" id="p-at" {{ 'checked' if not e or e.ativo }}><label class="form-check-label small" for="p-at">Ativo</label></div></div>
+            <div class="col-md-2 d-flex gap-1"><button class="btn btn-primary btn-sm flex-fill">{{ 'Salvar' if e else 'Adicionar' }}</button>
+                {% if e %}<a href="/ncps/pgr" class="btn btn-outline-secondary btn-sm">Cancelar</a>{% endif %}</div>
+        </form>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Grupo</th><th>Perigo</th><th>Fontes</th><th>Possíveis lesões</th><th class="text-center">Uso</th><th></th></tr></thead>
+            <tbody>{% for p in perigos %}
+            <tr class="{{ 'text-body-secondary' if not p.ativo }}">
+                <td class="small">{{ cat.GRUPO_RISCO.get(p.grupo, p.grupo) }}</td>
+                <td>{{ p.nome }}{% if not p.ativo %} <span class="badge text-bg-secondary">inativo</span>{% endif %}</td>
+                <td class="small">{{ p.fonte or '' }}</td><td class="small">{{ p.dano or '' }}</td>
+                <td class="text-center small">{{ usos_perigo.get(p.id, 0) }}</td>
+                <td class="text-end text-nowrap">
+                    <a href="/ncps/pgr?editar=perigo&id={{ p.id }}" class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-pen"></i></a>
+                    {% if not usos_perigo.get(p.id) %}
+                    <form method="post" action="/ncps/pgr/perigo" class="d-inline"><input type="hidden" name="id" value="{{ p.id }}">
+                        <button name="acao" value="excluir" class="btn btn-sm btn-outline-danger" onclick="return confirm('Excluir este perigo?')"><i class="fa-solid fa-trash"></i></button></form>
+                    {% endif %}
+                </td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+    </div>
+</div>
+{% endblock %}

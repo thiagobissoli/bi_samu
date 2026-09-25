@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% import "ncps/_badges.html" as badge %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">NCPS</li>
+{% endblock %}
+
+{% block content %}
+{% if msg %}<div class="alert alert-success alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if erro %}<div class="alert alert-danger alert-dismissible fade show">{{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+
+{% set acao = "/ncps/" %}{% set com_busca = True %}
+{% include "ncps/_filtros.html" %}
+
+<div class="card">
+    <div class="card-header d-flex align-items-center">
+        <h3 class="card-title mb-0">Notificações <small class="text-body-secondary">({{ pg.total }})</small></h3>
+        <div class="ms-auto d-flex gap-2">
+            <a href="/ncps/painel{{ '?' ~ qs[1:] if qs }}" class="btn btn-outline-secondary btn-sm">
+                <i class="fa-solid fa-chart-pie"></i> Indicadores</a>
+            {% if 'ncps.exportar' in usuario_logado.permissoes %}
+            <a href="/ncps/exportar{{ '?' ~ qs[1:] if qs }}" class="btn btn-outline-success btn-sm">
+                <i class="fa-solid fa-file-excel"></i> Exportar Excel</a>
+            {% endif %}
+            <a href="/ncps/notificar" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Notificar</a>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {% if pg["items"] %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th>#</th><th>Registrada</th><th>Natureza</th><th>Relato</th><th>Local</th>
+                    <th>Coordenador</th><th>Status</th><th class="text-center">Ações</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for n in pg["items"] %}
+                {%- set abertas = n.acoes | selectattr('status', 'in', ['pendente', 'andamento']) | list -%}
+                {%- set atras = atrasadas(n, hoje) -%}
+                <tr style="cursor:pointer" onclick="location.href='/ncps/{{ n.id }}'">
+                    <td><a href="/ncps/{{ n.id }}" class="fw-semibold">{{ n.id }}</a></td>
+                    <td class="text-nowrap small">{{ n.registrado_em | localdt }}</td>
+                    <td>{{ badge.natureza(n) }}</td>
+                    <td class="small" style="max-width: 360px">
+                        <div class="text-truncate">{{ n.descricao }}</div>
+                        {% if n.id_ocorrencia %}<span class="text-body-secondary">Ocorrência {{ n.id_ocorrencia }}</span>{% endif %}
+                    </td>
+                    <td class="small">{{ n.local_padronizado.nome if n.local_padronizado else (n.local or '—') }}</td>
+                    <td class="small">{{ n.coordenador.nome if n.coordenador else '—' }}</td>
+                    <td>{{ badge.status(n, cat) }}</td>
+                    <td class="text-center small text-nowrap">
+                        {% if n.acoes %}{{ abertas|length }}/{{ n.acoes|length }} abertas{% else %}—{% endif %}
+                        {% if atras %}<span class="badge text-bg-danger ms-1" title="Ações com prazo vencido">{{ atras|length }} atrasada(s)</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-body-secondary text-center py-5 mb-0">
+            <i class="fa-regular fa-folder-open fa-2x d-block mb-2"></i>
+            Nenhuma notificação encontrada com estes filtros.
+        </p>
+        {% endif %}
+    </div>
+    <div class="card-footer">{% include "components/pagination.html" %}</div>
+</div>
+{% endblock %}

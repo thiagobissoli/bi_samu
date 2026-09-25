@@ -64,8 +64,10 @@ def limpar_registros_criados():
     from app.core.database import SessionLocal
     from app.modules.download_vsky.models import VskyProntuario
     from app.modules.investigacao.models import AnaliseOcorrencia
+    from app.modules.ncps.models import Ncps, NcpsGestor, NcpsLocal
 
-    tabelas = [AnaliseOcorrencia, VskyProntuario]
+    # Ncps antes dos cadastros que ela referencia (filhas saem em cascata)
+    tabelas = [AnaliseOcorrencia, VskyProntuario, Ncps, NcpsGestor, NcpsLocal]
     db = SessionLocal()
     try:
         marcos = {m: (db.scalar(select(func.max(m.id))) or 0) for m in tabelas}

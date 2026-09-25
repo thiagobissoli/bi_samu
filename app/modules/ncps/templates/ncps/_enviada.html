@@ -1,0 +1,15 @@
+{# Confirmação exibida uma única vez após registrar a notificação #}
+{% if enviada %}
+<div class="alert alert-success" role="status">
+    <h5 class="alert-heading"><i class="fa-solid fa-circle-check me-1"></i> Notificação registrada</h5>
+    <p class="mb-2">Anote os dois dados abaixo para acompanhar o andamento em
+        <a href="/ncps/acompanhar" class="alert-link">/ncps/acompanhar</a>:</p>
+    <div class="d-flex flex-wrap gap-4 mb-2">
+        <div><small class="d-block text-body-secondary">Protocolo</small>
+            <span class="fs-4 fw-bold">{{ enviada.id }}</span></div>
+        <div><small class="d-block text-body-secondary">Código de acompanhamento</small>
+            <span class="fs-4 fw-bold font-monospace" style="letter-spacing:.15em">{{ enviada.codigo }}</span></div>
+    </div>
+    <p class="small mb-0">Guarde o código agora — por segurança ele não será exibido novamente.</p>
+</div>
+{% endif %}

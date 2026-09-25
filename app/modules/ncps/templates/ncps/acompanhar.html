@@ -1,0 +1,29 @@
+{% extends "ncps/_publico_base.html" %}
+
+{% block title %}Acompanhar notificação{% endblock %}
+{% block heading %}Acompanhar notificação{% endblock %}
+{% block subheading %}Informe o protocolo e o código de acompanhamento recebidos ao notificar.{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+    <div class="card-body">
+        {% if erro %}<div class="alert alert-warning py-2">{{ erro }}</div>{% endif %}
+        <form method="post" action="/ncps/acompanhar" class="row g-2 align-items-end">
+            <div class="col-sm-4">
+                <label class="form-label" for="f-prot">Protocolo</label>
+                <input class="form-control" id="f-prot" name="protocolo" inputmode="numeric"
+                       required value="{{ protocolo }}">
+            </div>
+            <div class="col-sm-5">
+                <label class="form-label" for="f-cod">Código de acompanhamento</label>
+                <input class="form-control font-monospace text-uppercase" id="f-cod" name="codigo"
+                       maxlength="12" autocomplete="off">
+            </div>
+            <div class="col-sm-3 d-grid">
+                <button class="btn btn-primary"><i class="fa-solid fa-magnifying-glass me-1"></i> Consultar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% if ncp %}{% include "ncps/_acompanhamento.html" %}{% endif %}
+{% endblock %}
