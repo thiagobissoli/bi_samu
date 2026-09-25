@@ -2,11 +2,24 @@
     "name": "Notificacoes",
     "version": "1.0.0",
     "author": "Framework SaaS",
-    "dependencies": ["usuarios"],
-    "permissions": ["notificacao.listar", "notificacao.enviar"],
-    "menu": [
-        {"label": "Notificações", "url": "/notificacoes", "icon": "fa-bell",
-         "permission": "notificacao.listar", "order": 20}
+    "dependencies": [
+        "usuarios"
     ],
-    "routes": ["/notificacoes"]
+    "permissions": [
+        "notificacao.listar",
+        "notificacao.enviar"
+    ],
+    "menu": [
+        {
+            "label": "Notificações",
+            "url": "/notificacoes",
+            "icon": "fa-bell",
+            "permission": "notificacao.listar",
+            "order": 62,
+            "group": "sistema"
+        }
+    ],
+    "routes": [
+        "/notificacoes"
+    ]
 }

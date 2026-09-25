@@ -3,10 +3,23 @@
     "version": "1.0.0",
     "author": "Framework SaaS",
     "dependencies": [],
-    "permissions": ["empresa.listar", "empresa.criar", "empresa.editar", "empresa.excluir"],
-    "menu": [
-        {"label": "Empresas", "url": "/empresas", "icon": "fa-building",
-         "permission": "empresa.listar", "order": 10}
+    "permissions": [
+        "empresa.listar",
+        "empresa.criar",
+        "empresa.editar",
+        "empresa.excluir"
     ],
-    "routes": ["/empresas"]
+    "menu": [
+        {
+            "label": "Empresas",
+            "url": "/empresas",
+            "icon": "fa-building",
+            "permission": "empresa.listar",
+            "order": 53,
+            "group": "acesso"
+        }
+    ],
+    "routes": [
+        "/empresas"
+    ]
 }

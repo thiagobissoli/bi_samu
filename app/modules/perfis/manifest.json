@@ -3,10 +3,23 @@
     "version": "1.0.0",
     "author": "Framework SaaS",
     "dependencies": [],
-    "permissions": ["perfil.listar", "perfil.criar", "perfil.editar", "perfil.excluir"],
-    "menu": [
-        {"label": "Perfis", "url": "/perfis", "icon": "fa-id-badge",
-         "permission": "perfil.listar", "order": 12}
+    "permissions": [
+        "perfil.listar",
+        "perfil.criar",
+        "perfil.editar",
+        "perfil.excluir"
     ],
-    "routes": ["/perfis"]
+    "menu": [
+        {
+            "label": "Perfis",
+            "url": "/perfis",
+            "icon": "fa-id-badge",
+            "permission": "perfil.listar",
+            "order": 51,
+            "group": "acesso"
+        }
+    ],
+    "routes": [
+        "/perfis"
+    ]
 }

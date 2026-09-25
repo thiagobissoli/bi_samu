@@ -15,16 +15,48 @@
         "ncps.pgr"
     ],
     "menu": [
-        {"label": "Notificar evento (NCPS)", "url": "/ncps/notificar",
-         "icon": "fa-bullhorn", "permission": "ncps.notificar", "order": 26},
-        {"label": "NCPS", "url": "/ncps",
-         "icon": "fa-clipboard-check", "permission": "ncps.listar", "order": 27},
-        {"label": "Indicadores NCPS", "url": "/ncps/painel",
-         "icon": "fa-chart-pie", "permission": "ncps.listar", "order": 28},
-        {"label": "Cadastros NCPS", "url": "/ncps/cadastros",
-         "icon": "fa-list-check", "permission": "ncps.cadastros", "order": 29},
-        {"label": "PGR (GHE e perigos)", "url": "/ncps/pgr",
-         "icon": "fa-helmet-safety", "permission": "ncps.pgr", "order": 30}
+        {
+            "label": "Notificar evento",
+            "url": "/ncps/notificar",
+            "icon": "fa-bullhorn",
+            "permission": "ncps.notificar",
+            "order": 30,
+            "group": "qualidade"
+        },
+        {
+            "label": "Lista de NCPS",
+            "url": "/ncps",
+            "icon": "fa-clipboard-check",
+            "permission": "ncps.listar",
+            "order": 31,
+            "group": "qualidade"
+        },
+        {
+            "label": "Indicadores NCPS",
+            "url": "/ncps/painel",
+            "icon": "fa-chart-pie",
+            "permission": "ncps.listar",
+            "order": 32,
+            "group": "qualidade"
+        },
+        {
+            "label": "Cadastros NCPS",
+            "url": "/ncps/cadastros",
+            "icon": "fa-list-check",
+            "permission": "ncps.cadastros",
+            "order": 35,
+            "group": "qualidade"
+        },
+        {
+            "label": "PGR (GHE e perigos)",
+            "url": "/ncps/pgr",
+            "icon": "fa-helmet-safety",
+            "permission": "ncps.pgr",
+            "order": 36,
+            "group": "qualidade"
+        }
     ],
-    "routes": ["/ncps"]
+    "routes": [
+        "/ncps"
+    ]
 }

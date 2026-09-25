@@ -2,14 +2,23 @@
     "name": "Reunião de Indicadores",
     "version": "1.0.0",
     "author": "Framework SaaS",
-    "dependencies": ["Indicadores"],
+    "dependencies": [
+        "Indicadores"
+    ],
     "permissions": [
         "reuniao_indicadores.visualizar"
     ],
     "menu": [
-        {"label": "Reunião de Indicadores", "url": "/reuniao_indicadores",
-         "icon": "fa-person-chalkboard",
-         "permission": "reuniao_indicadores.visualizar", "order": 21}
+        {
+            "label": "Reunião de Indicadores",
+            "url": "/reuniao_indicadores",
+            "icon": "fa-person-chalkboard",
+            "permission": "reuniao_indicadores.visualizar",
+            "order": 22,
+            "group": "indicadores"
+        }
     ],
-    "routes": ["/reuniao_indicadores"]
+    "routes": [
+        "/reuniao_indicadores"
+    ]
 }

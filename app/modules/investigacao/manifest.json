@@ -16,14 +16,16 @@
             "url": "/investigacao",
             "icon": "fa-magnifying-glass-chart",
             "permission": "investigacao.visualizar",
-            "order": 24
+            "order": 33,
+            "group": "qualidade"
         },
         {
             "label": "Relatórios RAC",
             "url": "/investigacao/relatorios",
             "icon": "fa-file-shield",
             "permission": "investigacao.visualizar",
-            "order": 25
+            "order": 34,
+            "group": "qualidade"
         }
     ],
     "routes": [

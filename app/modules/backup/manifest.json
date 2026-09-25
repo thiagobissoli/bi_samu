@@ -8,8 +8,16 @@
         "backup.executar"
     ],
     "menu": [
-        {"label": "Backup", "url": "/backup", "icon": "fa-database",
-         "permission": "backup.visualizar", "order": 90}
+        {
+            "label": "Backup",
+            "url": "/backup",
+            "icon": "fa-database",
+            "permission": "backup.visualizar",
+            "order": 42,
+            "group": "dados"
+        }
     ],
-    "routes": ["/backup"]
+    "routes": [
+        "/backup"
+    ]
 }

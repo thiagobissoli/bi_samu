@@ -20,6 +20,7 @@ from sqlalchemy import (Date, DateTime, ForeignKey, Integer,
                         String, Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+import app.models  # noqa: F401 — registra Usuario, alvo dos relacionamentos
 from app.core.database import BaseModel
 
 

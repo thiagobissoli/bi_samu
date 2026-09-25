@@ -124,14 +124,32 @@
                             <p>Dashboard</p>
                         </a>
                     </li>
-                    {% for item in menu | default([]) %}
+                    {% for no in menu_arvore | default([]) %}
+                    {% if no.tipo == "grupo" %}
+                    <li class="nav-item {% if no.aberto %}menu-open{% endif %}">
+                        <a href="#" class="nav-link {% if no.aberto %}active{% endif %}">
+                            <i class="nav-icon fa-solid {{ no.icon }}"></i>
+                            <p>{{ no.label }}<i class="nav-arrow fa-solid fa-chevron-right"></i></p>
+                        </a>
+                        <ul class="nav nav-treeview">
+                            {% for item in no.itens %}
+                            <li class="nav-item">
+                                <a href="{{ item.url }}" class="nav-link {% if item.ativo %}active{% endif %}">
+                                    <i class="nav-icon fa-solid {{ item.icon | default('fa-circle') }}"></i>
+                                    <p>{{ item.label }}</p>
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                    {% else %}
                     <li class="nav-item">
-                        <a href="{{ item.url }}"
-                           class="nav-link {% if request.url.path.startswith(item.url) %}active{% endif %}">
-                            <i class="nav-icon fa-solid {{ item.icon | default('fa-folder') }}"></i>
-                            <p>{{ item.label }}</p>
+                        <a href="{{ no.url }}" class="nav-link {% if no.ativo %}active{% endif %}">
+                            <i class="nav-icon fa-solid {{ no.icon | default('fa-folder') }}"></i>
+                            <p>{{ no.label }}</p>
                         </a>
                     </li>
+                    {% endif %}
                     {% endfor %}
                 </ul>
             </nav>

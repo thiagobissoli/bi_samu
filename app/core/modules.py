@@ -46,6 +46,44 @@ def discover_modules(app: FastAPI) -> None:
     _menu.sort(key=lambda i: (i.get("order", 50), i.get("label", "")))
 
 
+# Grupos do menu lateral (seções recolhíveis). Cada item de menu do manifest
+# escolhe o seu com a chave "group"; item sem grupo fica solto, no topo.
+MENU_GRUPOS = {
+    "indicadores": {"label": "Indicadores", "icon": "fa-chart-line", "order": 10},
+    "qualidade": {"label": "Qualidade", "icon": "fa-shield-heart", "order": 20},
+    "dados": {"label": "Dados", "icon": "fa-database", "order": 30},
+    "acesso": {"label": "Usuários e Acesso", "icon": "fa-users-gear", "order": 40},
+    "sistema": {"label": "Sistema", "icon": "fa-gears", "order": 50},
+}
+
+
+def agrupar_menu(itens: list[dict], caminho: str = "") -> list[dict]:
+    """Monta a árvore do menu: itens soltos e grupos com seus filhos.
+
+    Marca como ativo só o item de URL mais específica que casa com o
+    caminho atual (senão /ncps e /ncps/painel acenderiam juntos), e abre
+    o grupo que o contém. Grupo sem nenhum item visível não aparece.
+    """
+    candidatos = [i["url"] for i in itens
+                  if caminho == i["url"] or caminho.startswith(i["url"].rstrip("/") + "/")]
+    ativo = max(candidatos, key=len) if candidatos else None
+
+    soltos, grupos = [], {}
+    for item in itens:
+        entrada = {**item, "ativo": item["url"] == ativo}
+        chave = item.get("group")
+        if chave in MENU_GRUPOS:
+            grupos.setdefault(chave, []).append(entrada)
+        else:
+            soltos.append(entrada)
+
+    arvore = [{"tipo": "item", **i} for i in soltos]
+    for chave, filhos in sorted(grupos.items(), key=lambda g: MENU_GRUPOS[g[0]]["order"]):
+        arvore.append({"tipo": "grupo", "chave": chave, **MENU_GRUPOS[chave],
+                       "itens": filhos, "aberto": any(f["ativo"] for f in filhos)})
+    return arvore
+
+
 def get_menu(usuario=None) -> list[dict]:
     """Itens de menu visíveis — filtrados pelas permissões do usuário."""
     if usuario is None:

@@ -10,8 +10,16 @@
         "download_vsky.configurar"
     ],
     "menu": [
-        {"label": "Download vSky", "url": "/download_vsky", "icon": "fa-cloud-arrow-down",
-         "permission": "download_vsky.listar", "order": 22}
+        {
+            "label": "Download vSky",
+            "url": "/download_vsky",
+            "icon": "fa-cloud-arrow-down",
+            "permission": "download_vsky.listar",
+            "order": 40,
+            "group": "dados"
+        }
     ],
-    "routes": ["/download_vsky"]
+    "routes": [
+        "/download_vsky"
+    ]
 }

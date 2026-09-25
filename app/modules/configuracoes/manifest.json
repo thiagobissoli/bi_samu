@@ -3,12 +3,30 @@
     "version": "1.0.0",
     "author": "Framework SaaS",
     "dependencies": [],
-    "permissions": ["configuracao.listar", "configuracao.editar", "configuracao.excluir"],
-    "menu": [
-        {"label": "Configurações", "url": "/configuracoes", "icon": "fa-cog",
-         "permission": "configuracao.listar", "order": 90},
-        {"label": "Aparência", "url": "/configuracoes/aparencia", "icon": "fa-palette",
-         "permission": "configuracao.editar", "order": 89}
+    "permissions": [
+        "configuracao.listar",
+        "configuracao.editar",
+        "configuracao.excluir"
     ],
-    "routes": ["/configuracoes"]
+    "menu": [
+        {
+            "label": "Configurações",
+            "url": "/configuracoes",
+            "icon": "fa-cog",
+            "permission": "configuracao.listar",
+            "order": 60,
+            "group": "sistema"
+        },
+        {
+            "label": "Aparência",
+            "url": "/configuracoes/aparencia",
+            "icon": "fa-palette",
+            "permission": "configuracao.editar",
+            "order": 61,
+            "group": "sistema"
+        }
+    ],
+    "routes": [
+        "/configuracoes"
+    ]
 }

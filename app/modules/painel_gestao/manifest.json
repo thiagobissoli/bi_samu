@@ -2,14 +2,24 @@
     "name": "Painel de Gestão",
     "version": "1.0.0",
     "author": "Framework SaaS",
-    "dependencies": ["Indicadores"],
+    "dependencies": [
+        "Indicadores"
+    ],
     "permissions": [
         "painel_gestao.visualizar",
         "painel_gestao.configurar"
     ],
     "menu": [
-        {"label": "Painel de Gestão", "url": "/painel_gestao", "icon": "fa-gauge-high",
-         "permission": "painel_gestao.visualizar", "order": 20}
+        {
+            "label": "Painel de Gestão",
+            "url": "/painel_gestao",
+            "icon": "fa-gauge-high",
+            "permission": "painel_gestao.visualizar",
+            "order": 20,
+            "group": "indicadores"
+        }
     ],
-    "routes": ["/painel_gestao"]
+    "routes": [
+        "/painel_gestao"
+    ]
 }

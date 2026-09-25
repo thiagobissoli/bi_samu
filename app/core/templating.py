@@ -40,7 +40,7 @@ templates.env.filters["localdt"] = localdt
 def render(request: Request, name: str, usuario=None, **context):
     """Resposta HTML padrão: injeta menu (filtrado por permissão), usuário,
     notificações não lidas (§21) e o fuso da empresa (§22)."""
-    from app.core.modules import get_menu
+    from app.core.modules import agrupar_menu, get_menu
 
     from app.core.appearance import default_appearance, get_appearance
 
@@ -63,6 +63,7 @@ def render(request: Request, name: str, usuario=None, **context):
 
     ctx = {
         "menu": get_menu(usuario),
+        "menu_arvore": agrupar_menu(get_menu(usuario), request.url.path),
         "usuario_logado": usuario,
         "notificacoes_nao_lidas": nao_lidas,
         "tz": tz,
