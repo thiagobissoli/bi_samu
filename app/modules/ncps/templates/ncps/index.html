@@ -32,7 +32,7 @@
                 <thead class="table-light">
                 <tr>
                     <th>#</th><th>Registrada</th><th>Natureza</th><th>Relato</th><th>Local</th>
-                    <th>Coordenador</th><th>Status</th><th class="text-center">Ações</th>
+                    <th>Setor</th><th>Status</th><th class="text-center">Ações</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -48,7 +48,7 @@
                         {% if n.id_ocorrencia %}<span class="text-body-secondary">Ocorrência {{ n.id_ocorrencia }}</span>{% endif %}
                     </td>
                     <td class="small">{{ n.local_padronizado.nome if n.local_padronizado else (n.local or '—') }}</td>
-                    <td class="small">{{ n.coordenador.nome if n.coordenador else '—' }}</td>
+                    <td class="small">{{ n.setor.nome if n.setor else (n.coordenador.nome if n.coordenador else '—') }}</td>
                     <td>{{ badge.status(n, cat) }}</td>
                     <td class="text-center small text-nowrap">
                         {% if n.acoes %}{{ abertas|length }}/{{ n.acoes|length }} abertas{% else %}—{% endif %}

@@ -23,7 +23,7 @@
             <dt class="col-sm-4">Tipo</dt><dd class="col-sm-8">{{ cat.NATUREZA.get(ncp.natureza, '—') }}</dd>
             <dt class="col-sm-4">Registrada em</dt><dd class="col-sm-8">{{ ncp.registrado_em | localdt }}</dd>
             <dt class="col-sm-4">Responsável</dt>
-            <dd class="col-sm-8">{{ 'Comissão de Integridade' if ncp.confidencial else (ncp.coordenador.nome if ncp.coordenador else 'Ainda não atribuído') }}</dd>
+            <dd class="col-sm-8">{{ 'Comissão de Integridade' if ncp.confidencial else (('Setor ' ~ ncp.setor.nome) if ncp.setor else (ncp.coordenador.nome if ncp.coordenador else 'Ainda não encaminhada')) }}</dd>
             <dt class="col-sm-4">Plano de ação</dt>
             <dd class="col-sm-8">
                 {%- if acoes -%}{{ concluidas|length }} de {{ acoes|length }} ação(ões) concluída(s)

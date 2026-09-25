@@ -29,7 +29,7 @@ from app.models import Usuario
 from app.modules.ncps import constants as cat
 from app.modules.ncps import service
 from app.modules.ncps.models import (Ncps, NcpsGestor, NcpsGhe, NcpsLocal,
-                                     NcpsOcupacional, NcpsPerigo)
+                                     NcpsOcupacional, NcpsPerigo, NcpsSetor)
 from app.modules.ncps.permissions import (naturezas_triagem, pode_tratar,
                                           pode_triar, pode_ver)
 
@@ -289,7 +289,7 @@ def analise(
                                 if n.ocupacional else None),
         gestores=service.cadastro(db, NcpsGestor, emp, n.gestor_id),
         locais=service.cadastro(db, NcpsLocal, emp, n.local_id),
-        coordenadores=service.coordenadores(db, emp),
+        setores=service.setores(db, emp, n.setor_id),
         legado=service.dados_legados(n),
         tem_vsky=_ocorrencia_no_vsky(db, emp, n.id_ocorrencia),
         msg=request.query_params.get("msg"), erro=request.query_params.get("erro"))
@@ -318,7 +318,7 @@ async def analise_salvar(
     form = await request.form()
     n = _carregar(db, usuario, ncps_id)
     secao = form.get("secao", "")
-    antes = {"status": n.status, "coordenador_id": n.coordenador_id,
+    antes = {"status": n.status, "setor_id": n.setor_id,
              "natureza": n.natureza}
     try:
         aba = service.salvar_secao(db, n, secao, form, usuario)
@@ -330,7 +330,7 @@ async def analise_salvar(
     record_audit(db, tabela="ncps", acao="UPDATE", registro_id=n.id,
                  valor_anterior=antes,
                  valor_novo={"secao": secao, "status": n.status,
-                             "coordenador_id": n.coordenador_id,
+                             "setor_id": n.setor_id,
                              "natureza": n.natureza},
                  usuario=usuario, request=request)
     return RedirectResponse(
@@ -375,7 +375,10 @@ def _tela_cadastros(request, db, usuario, token_novo=None):
         request, "ncps/cadastros.html", usuario, page_title="Cadastros NCPS",
         listas={t: service.cadastro(db, m, emp, so_ativos=False)
                 for t, (m, _r) in CADASTROS.items()},
-        usos=usos, token_configurado=bool(get_config(
+        usos=usos, setores=service.setores(db, emp, so_ativos=False),
+        analistas=service.analistas(db, emp),
+        usos_setor=_usos(db, Ncps.setor_id, emp),
+        token_configurado=bool(get_config(
             db, CONFIG_TOKEN_POWERBI, empresa_id=EMPRESA_PUBLICA)),
         token_novo=token_novo, msg=request.query_params.get("msg"),
         erro=request.query_params.get("erro"))
@@ -431,6 +434,57 @@ async def cadastro_salvar(
     db.commit()
     record_audit(db, tabela=modelo.__tablename__, acao="UPDATE",
                  registro_id=item.id, valor_novo={"acao": acao, "nome": item.nome},
+                 usuario=usuario, request=request)
+    return _redirecionar("/ncps/cadastros", msg=msg)
+
+
+@router.post("/setores", include_in_schema=False)
+async def setor_salvar(
+    request: Request,
+    usuario: Usuario = Depends(require_permission("ncps.cadastros")),
+    db: Session = Depends(get_session),
+):
+    """Cria, renomeia, ativa/desativa ou exclui um setor e define quem
+    analisa por ele (usuários com ncps.coordenar)."""
+    from app.models import Usuario as U
+
+    form = await request.form()
+    acao = form.get("acao", "salvar")
+    emp = usuario.empresa_id
+    setor_id = service._inteiro(form, "id")
+    setor = db.scalar(select(NcpsSetor).where(
+        NcpsSetor.id == setor_id, NcpsSetor.empresa_id == emp,
+        NcpsSetor.deleted_at.is_(None))) if setor_id else None
+    nome = (form.get("nome") or "").strip()[:120]
+
+    if acao == "excluir" and setor:
+        if _usos(db, Ncps.setor_id, emp).get(setor.id):
+            return _redirecionar("/ncps/cadastros", erro=f"O setor \"{setor.nome}\" "
+                                 "tem NCPS encaminhadas; desative-o em vez de excluir.")
+        setor.deleted_at, setor.deleted_by = utcnow(), usuario.id
+        setor.usuarios = []
+        msg = f"Setor \"{setor.nome}\" excluído."
+    elif acao == "alternar" and setor:
+        setor.ativo = not setor.ativo
+        msg = f"Setor \"{setor.nome}\" {'ativado' if setor.ativo else 'desativado'}."
+    elif nome:
+        if setor is None:
+            setor = NcpsSetor(empresa_id=emp, created_by=usuario.id)
+            db.add(setor)
+        setor.nome = nome
+        setor.updated_by = usuario.id
+        # só quem tem permissão de analisar pode ser vinculado
+        validos = {u.id for u in service.analistas(db, emp)}
+        ids = [int(x) for x in form.getlist("usuarios") if str(x).isdigit()]
+        setor.usuarios = list(db.scalars(select(U).where(
+            U.id.in_([i for i in ids if i in validos])))) if ids else []
+        msg = f"Setor \"{nome}\" salvo com {len(setor.usuarios)} analista(s)."
+    else:
+        return _redirecionar("/ncps/cadastros", erro="Informe o nome do setor.")
+    db.commit()
+    record_audit(db, tabela="ncps_setores", acao="UPDATE", registro_id=setor.id,
+                 valor_novo={"acao": acao, "nome": setor.nome,
+                             "usuarios": [u.id for u in setor.usuarios]},
                  usuario=usuario, request=request)
     return _redirecionar("/ncps/cadastros", msg=msg)
 

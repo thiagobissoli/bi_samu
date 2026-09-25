@@ -3,8 +3,10 @@
 Portados do sistema Flask anterior mantendo os **mesmos códigos**, para que
 as notificações importadas de lá continuem com o significado original.
 
-Matriz de risco, GHE e perigos seguem o PGR do SAMU 192 ES (metodologia
-SESI 2022): probabilidade e severidade de 2 a 5; nível = P × S.
+A matriz de risco é a do formulário FOR.SAMU.038 — a mesma que a IA usa
+na Investigação de Eventos: probabilidade de 1 a 5, consequência 1, 2, 4,
+8 ou 16 e classificação C = A × B. GHE e perigos seguem o PGR do SAMU 192
+ES.
 """
 
 # ------------------------------------------------------------------ natureza
@@ -30,7 +32,7 @@ EVENTO_CONFIDENCIAL = "violencia_assedio"
 # ------------------------------------------------------------------ status
 STATUS = {
     "0": "Aguardando análise da qualidade",
-    "1": "Analisando pelo coordenador",
+    "1": "Analisando evento",
     "2": "Análise concluída",
     "3": "Arquivada",
     "4": "Encaminhada ao gestor competente de outra instituição",
@@ -147,55 +149,47 @@ PARTE_CORPO = [
     "Sistema nervoso / saúde mental", "Não se aplica",
 ]
 
-# ------------------------------------------------------------------ matriz de risco (PGR, Quadros 5 e 6)
-PROBABILIDADE = {
-    2: ("Improvável", "Exposição rara ou controles adequados e mantidos; sem "
-        "histórico de ocorrência."),
-    3: ("Pouco provável", "Exposição ocasional; controles adequados, mas sem "
-        "garantia de manutenção."),
-    4: ("Provável", "Exposição frequente ou controles com desvios; há "
-        "histórico de ocorrências."),
-    5: ("Altamente provável", "Exposição contínua; controles inexistentes ou "
-        "inadequados."),
-}
-SEVERIDADE = {
-    2: ("Mínima", "Sem dano ou dano leve e reversível, sem afastamento / sem "
-        "prolongar o cuidado."),
-    3: ("Mediana", "Dano moderado reversível; afastamento até 15 dias / "
-        "intervenção adicional."),
-    4: ("Considerável", "Dano grave ou irreversível; afastamento acima de 15 "
-        "dias / dano permanente."),
-    5: ("Crítica", "Incapacidade permanente ou óbito."),
-}
-# (nível mínimo do produto, rótulo, classificação, cor, conduta)
+# ------------------------------------------------------------------ matriz de risco (FOR.SAMU.038)
+# Mesma escala e faixas da matriz gerada pela IA na Investigação de Eventos
+# (app/modules/investigacao/constants.py) — uma avaliação feita aqui e outra
+# lá são comparáveis.
+from app.modules.investigacao.constants import (  # noqa: E402
+    CONSEQUENCIA as _CONSEQUENCIA,
+    PROBABILIDADE as _PROBABILIDADE,
+    nivel_de_risco as _nivel_de_risco,
+)
+
+# valor -> (rótulo, descrição), em ordem decrescente como no formulário
+PROBABILIDADE = {v: (nome, desc) for v, nome, desc in _PROBABILIDADE}
+CONSEQUENCIA = {v: (nome, desc) for v, nome, desc in _CONSEQUENCIA}
+# (pontuação mínima, nível, cor de fundo) — cores do formulário impresso
 NIVEIS_RISCO = [
-    (25, "Crítico", "PR1", "critico",
-     "Ações corretivas imediatas pelo plano de ação; reavaliar o risco após "
-     "implantá-las."),
-    (15, "Alto", "PR2", "alto",
-     "Reavaliar rotinas e implantar novas medidas de controle."),
-    (10, "Médio", "PR3", "medio",
-     "Monitorar as medidas existentes e avaliar a necessidade de novas "
-     "medidas."),
-    (6, "Baixo", "PR4", "baixo",
-     "Manter o controle; avaliar medidas adicionais e monitoramento."),
-    (4, "Irrelevante", "NA", "irrelevante",
-     "Nenhuma nova medida; manter as existentes."),
+    (20, "Extremo", "#e74c3c"),
+    (10, "Elevado", "#e67e22"),
+    (4, "Moderado", "#f4d03f"),
+    (1, "Baixo", "#a9d18e"),
 ]
-MOMENTO_RISCO = {"inicial": "Risco inicial",
-                 "residual": "Risco residual (após as ações)"}
+MOMENTO_RISCO = {
+    "inicial": "Avaliação do risco geral antes da investigação",
+    "residual": "Avaliação do risco geral pós investigação "
+                "(risco residual com o plano executado)",
+}
 
 
-def nivel_risco(probabilidade, severidade) -> dict | None:
-    """Classificação do risco pela matriz do PGR; None se incompleto."""
-    if not probabilidade or not severidade:
+def nivel_risco(probabilidade, consequencia) -> dict | None:
+    """Classificação C = A × B do FOR.SAMU.038; None se incompleto/inválido."""
+    try:
+        p, c = int(probabilidade), int(consequencia)
+    except (TypeError, ValueError):
         return None
-    pontos = int(probabilidade) * int(severidade)
-    for minimo, rotulo, classe, cor, conduta in NIVEIS_RISCO:
-        if pontos >= minimo:
-            return {"pontos": pontos, "rotulo": rotulo, "classe": classe,
-                    "cor": cor, "conduta": conduta}
-    return None
+    if p not in PROBABILIDADE or c not in CONSEQUENCIA:
+        return None
+    pontos = p * c
+    rotulo, _cor_bootstrap = _nivel_de_risco(pontos)
+    fundo = next(cor for minimo, _r, cor in NIVEIS_RISCO if pontos >= minimo)
+    return {"pontos": pontos, "rotulo": rotulo, "fundo": fundo,
+            "probabilidade": p, "probabilidade_rotulo": PROBABILIDADE[p][0],
+            "consequencia": c, "consequencia_rotulo": CONSEQUENCIA[c][0]}
 
 
 # ------------------------------------------------------------------ análise de causas

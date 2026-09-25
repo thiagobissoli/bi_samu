@@ -109,14 +109,25 @@ def _alertas_ncps(db, usuario, perms) -> list[dict]:
                 "Notificações recebidas que ainda não passaram pela triagem.",
                 "/ncps/?status=0", n, "ncps"))
 
-    # 2. atribuídas a mim para tratativa
-    minhas = list(db.scalars(base.where(Ncps.coordenador_id == usuario.id,
+    # 2. encaminhadas ao(s) meu(s) setor(es) para análise
+    from sqlalchemy import or_ as _ou
+
+    from app.modules.ncps.permissions import setores_do_usuario
+
+    meus = setores_do_usuario(usuario)
+    condicoes = [Ncps.coordenador_id == usuario.id]
+    if meus:
+        condicoes.append(Ncps.setor_id.in_(meus))
+    minhas = list(db.scalars(base.where(_ou(*condicoes),
+                                        Ncps.confidencial.is_(False),
                                         Ncps.status.in_(cat.STATUS_ABERTOS))))
     if minhas:
+        nomes = sorted({n.setor.nome for n in minhas if n.setor})
         lista.append(_alerta(
-            "warning", "fa-user-check",
-            f"{len(minhas)} NCPS atribuída(s) a você",
-            "Você é o coordenador responsável pela análise e pelo plano de ação.",
+            "warning", "fa-users-gear",
+            f"{len(minhas)} NCPS aguardando análise do seu setor",
+            ("Setor " + ", ".join(nomes) + ". " if nomes else "")
+            + "Registre a análise e o plano de ação.",
             "/ncps/?atribuidas=1", len(minhas), "ncps"))
 
     # 3. ações do plano com prazo vencido, nas NCPS que posso tratar

@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block styles %}<link rel="stylesheet" href="{{ url_for('static', path='vendor/select2/select2.min.css') }}">{% endblock %}
+
 {% block breadcrumb %}
 <li class="breadcrumb-item"><a href="/ncps/">NCPS</a></li>
 <li class="breadcrumb-item active">Cadastros</li>
@@ -8,6 +10,67 @@
 {% block content %}
 {% if msg %}<div class="alert alert-success alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
 {% if erro %}<div class="alert alert-danger alert-dismissible fade show">{{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+
+{# ------------------------------------------------ setores de análise #}
+{% set vinculados = setores | map(attribute='usuarios') | sum(start=[]) | map(attribute='id') | list %}
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title mb-0"><i class="fa-solid fa-users-gear me-1"></i> Setores de análise</h3></div>
+    <div class="card-body">
+        <p class="small text-body-secondary">A triagem encaminha cada NCPS a um setor; os analistas vinculados a ele
+            (usuários com a permissão <code>ncps.coordenar</code>) fazem a análise e o plano de ação e são avisados
+            quando uma notificação chega ao setor. Um analista pode estar em mais de um setor.</p>
+        {% set sem_setor = analistas | rejectattr('id', 'in', vinculados) | list %}
+        {% if not analistas %}
+        <div class="alert alert-warning small">Nenhum usuário tem a permissão <code>ncps.coordenar</code>. Atribua-a a um
+            perfil (ex.: Coordenador) em <a href="/perfis/">Perfis</a> para poder vincular analistas.</div>
+        {% elif sem_setor %}
+        <div class="alert alert-info small py-2">Analistas ainda sem setor: {{ sem_setor | map(attribute='nome') | join(', ') }}.</div>
+        {% endif %}
+
+        {% macro form_setor(setor=None) -%}
+        <form method="post" action="/ncps/setores" class="row g-2 align-items-end">
+            {% if setor %}<input type="hidden" name="id" value="{{ setor.id }}">{% endif %}
+            <div class="col-md-4">
+                <label class="form-label small mb-1">Setor</label>
+                <input class="form-control form-control-sm" name="nome" maxlength="120" required
+                       value="{{ setor.nome if setor }}" placeholder="Ex.: Regulação, Frota, Enfermagem">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small mb-1">Analistas</label>
+                <select class="form-select form-select-sm select2-analistas" name="usuarios" multiple>
+                    {% set membros = setor.usuarios | map(attribute='id') | list if setor else [] %}
+                    {% for u in analistas %}<option value="{{ u.id }}" {{ 'selected' if u.id in membros }}>{{ u.nome }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-1">
+                <button class="btn btn-sm {{ 'btn-outline-primary' if setor else 'btn-primary' }} flex-fill">
+                    {% if setor %}<i class="fa-solid fa-check"></i> Salvar{% else %}<i class="fa-solid fa-plus"></i> Adicionar{% endif %}</button>
+            </div>
+        </form>
+        {%- endmacro %}
+
+        {% for setor in setores %}
+        <div class="border rounded p-2 mb-2 {{ 'opacity-75' if not setor.ativo }}">
+            {{ form_setor(setor) }}
+            <div class="d-flex align-items-center gap-2 mt-2 small">
+                <span class="text-body-secondary">{{ usos_setor.get(setor.id, 0) }} NCPS encaminhada(s)</span>
+                {% if not setor.ativo %}<span class="badge text-bg-secondary">inativo</span>{% endif %}
+                <form method="post" action="/ncps/setores" class="ms-auto d-flex gap-1">
+                    <input type="hidden" name="id" value="{{ setor.id }}">
+                    <button name="acao" value="alternar" class="btn btn-sm btn-outline-secondary">{{ 'Desativar' if setor.ativo else 'Ativar' }}</button>
+                    {% if not usos_setor.get(setor.id) %}
+                    <button name="acao" value="excluir" class="btn btn-sm btn-outline-danger" onclick="return confirm('Excluir o setor?')"><i class="fa-solid fa-trash"></i></button>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+        <div class="border border-primary-subtle rounded p-2">
+            <div class="small fw-semibold mb-1">Novo setor</div>
+            {{ form_setor() }}
+        </div>
+    </div>
+</div>
 
 <div class="row g-3">
     {% for tipo, titulo, rotulo in [('gestores', 'Gestores', 'gestor'), ('locais', 'Locais padronizados', 'local')] %}
@@ -77,4 +140,14 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='vendor/select2/select2.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/select2/pt-BR.js') }}"></script>
+<script>
+$(function () {
+    $(".select2-analistas").select2({ width: "100%", placeholder: "Nenhum analista", language: "pt-BR", closeOnSelect: false });
+});
+</script>
 {% endblock %}

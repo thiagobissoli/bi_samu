@@ -116,7 +116,7 @@ def vincular_ncps(
     if n is None:
         destino["erro_ia"] = erro
     elif not pode_tratar(n, usuario):
-        destino["erro_ia"] = ("Só quem faz a triagem ou o coordenador "
+        destino["erro_ia"] = ("Só quem faz a triagem ou os analistas do setor "
                               "responsável pode vincular a ocorrência.")
     elif not numero or InvestigacaoService(usuario.empresa_id).investigar(
             numero).get("erro"):

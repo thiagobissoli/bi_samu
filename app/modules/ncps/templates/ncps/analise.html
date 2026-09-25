@@ -24,20 +24,14 @@
 
 {% block styles %}
 <style>
-    .rm { display: grid; grid-template-columns: 7.5rem repeat(4, 1fr); gap: 3px; font-size: .75rem; }
-    .rm-h { font-weight: 600; text-align: center; align-self: end; padding: .15rem; }
-    .rm-r { font-weight: 600; display: flex; align-items: center; }
-    .rm-c { position: relative; border-radius: 6px; padding: .4rem .2rem; text-align: center; cursor: pointer;
-            border: 2px solid transparent; margin: 0; line-height: 1.15; }
-    .rm-c input { position: absolute; opacity: 0; pointer-events: none; }
-    .rm-c:has(input:checked) { border-color: var(--bs-body-color); box-shadow: 0 0 0 2px var(--bs-body-bg) inset; }
-    .rm-c .pts { font-weight: 700; font-size: .95rem; display: block; }
-    .risk-critico { background: #f8d7da; color: #58151c; }
-    .risk-alto { background: #ffe5d0; color: #6a2e05; }
-    .risk-medio { background: #fff3cd; color: #664d03; }
-    .risk-baixo { background: #d1e7dd; color: #0a3622; }
-    .risk-irrelevante { background: #e2e3e5; color: #2b2f32; }
-    [data-bs-theme=dark] .rm-c { filter: brightness(.85); }
+    .matriz-rac { font-size: .74rem; }
+    .matriz-rac th { vertical-align: middle; }
+    .matriz-rac td { padding: 0; color: #111; }
+    .matriz-rac label { display: block; margin: 0; padding: .45rem .2rem; cursor: pointer; font-weight: 600; }
+    .matriz-rac input { position: absolute; opacity: 0; pointer-events: none; }
+    .matriz-rac label:has(input:checked) { outline: 3px solid #111; outline-offset: -3px; font-weight: 800; }
+    .matriz-rac label:has(input:checked)::after { content: " ◀"; }
+    .matriz-rac label:has(input:focus-visible) { outline: 3px dashed #111; outline-offset: -3px; }
     .fator { border: 1px solid var(--bs-border-color); border-radius: .5rem; padding: .6rem .75rem; height: 100%; }
     .fator.vazio { opacity: .6; }
     .fator h6 { font-size: .8rem; font-weight: 700; margin-bottom: .4rem; }
@@ -124,8 +118,8 @@
 {# ============================================================ TRIAGEM #}
 <div class="tab-pane fade" id="tab-triagem" role="tabpanel">
     <p class="text-body-secondary small">Feita pela {{ 'Comissão de Integridade' if n.confidencial else ('Segurança do Trabalho (SESMT)' if trab else 'Qualidade') }}:
-        confirma a natureza e a procedência e atribui o coordenador responsável pela tratativa
-        (ele é avisado nas notificações do sistema).</p>
+        confirma a natureza e a procedência e encaminha a notificação ao <strong>setor</strong> que fará a
+        análise (os analistas do setor são avisados nas notificações do sistema).</p>
     <form method="post"><input type="hidden" name="secao" value="triagem">
         <fieldset {{ 'disabled' if not pode_triar }}>
             <div class="row g-3 mb-3">
@@ -137,14 +131,22 @@
                 {{ select('local_id', 'Local padronizado', locais | map(attribute='id') | zip(locais | map(attribute='nome')), n.local_id, 'Não definido') }}
                 {{ select('gestor_id', 'Gestor', gestores | map(attribute='id') | zip(gestores | map(attribute='nome')), n.gestor_id, 'Não definido') }}
                 {% if not n.confidencial %}
-                {{ select('coordenador_id', 'Coordenador responsável', coordenadores | map(attribute='id') | zip(coordenadores | map(attribute='nome')), n.coordenador_id, 'Não atribuído') }}
+                {{ select('setor_id', 'Setor', setores | map(attribute='id') | zip(setores | map(attribute='nome')), n.setor_id, 'Não encaminhada') }}
                 {% endif %}
             </div>
+            {% if not n.confidencial and n.setor %}
+            <p class="small text-body-secondary mb-2"><i class="fa-solid fa-users"></i> Analistas do setor {{ n.setor.nome }}:
+                {{ n.setor.usuarios | map(attribute='nome') | join(', ') or 'nenhum usuário vinculado' }}</p>
+            {% endif %}
+            {% if n.coordenador %}
+            <p class="small text-body-secondary mb-2">Coordenador no sistema anterior: {{ n.coordenador.nome }}</p>
+            {% endif %}
             {% if not locais or not gestores %}
             <p class="small text-body-secondary">Locais e gestores são cadastrados em <a href="/ncps/cadastros">Cadastros NCPS</a>.</p>
             {% endif %}
-            {% if not coordenadores and not n.confidencial %}
-            <p class="small text-body-secondary">Nenhum usuário com a permissão <code>ncps.coordenar</code> — atribua-a a um perfil em Perfis.</p>
+            {% if not setores and not n.confidencial %}
+            <p class="small text-body-secondary">Nenhum setor cadastrado — crie os setores e vincule os analistas em
+                <a href="/ncps/cadastros">Cadastros NCPS</a>.</p>
             {% endif %}
             {% if pode_triar %}<button class="btn btn-primary">Salvar triagem</button>{% endif %}
         </fieldset>
@@ -227,49 +229,69 @@
 <div class="tab-pane fade" id="tab-risco" role="tabpanel">
     <form method="post"><input type="hidden" name="secao" value="risco">
     <fieldset {{ 'disabled' if not pode_tratar }}>
-    <div class="row g-3">
-        {% for momento, rotulo in cat.MOMENTO_RISCO.items() %}
-        {%- set r = n.risco(momento) -%}
-        <div class="col-xl-6">
-            <div class="card h-100">
-                <div class="card-header d-flex"><h3 class="card-title mb-0">{{ rotulo }}</h3>
-                    <span class="ms-auto">{{ badge.risco(r.nivel if r) }}</span></div>
-                <div class="card-body">
-                    <p class="small text-body-secondary">{{ 'Antes das ações: chance de o evento se repetir e gravidade do pior dano plausível.' if momento == 'inicial' else 'Depois de implantadas as ações do plano (reavaliação exigida pelo PGR).' }}</p>
-                    <div class="rm" role="radiogroup" aria-label="{{ rotulo }}: probabilidade × severidade">
-                        <div class="rm-h text-start">Prob. ↓ · Sev. →</div>
-                        {% for s, (sn, _d) in cat.SEVERIDADE.items() %}<div class="rm-h">{{ sn }}</div>{% endfor %}
-                        {% for p, (pn, pdesc) in cat.PROBABILIDADE.items() | reverse %}
-                        <div class="rm-r" title="{{ pdesc }}">{{ pn }}</div>
-                        {% for s, (sn, _d) in cat.SEVERIDADE.items() %}
-                        {%- set nv = cat.nivel_risco(p, s) -%}
-                        <label class="rm-c risk-{{ nv.cor }}" title="{{ pn }} × {{ sn }} = {{ nv.pontos }} ({{ nv.rotulo }})">
-                            <input type="radio" name="{{ momento }}_ps" value="{{ p }}-{{ s }}" {{ 'checked' if r and r.probabilidade == p and r.severidade == s }}>
-                            <span class="pts">{{ nv.pontos }}</span>{{ nv.rotulo }}
-                        </label>
+    <p class="small text-body-secondary">Matriz do formulário FOR.SAMU.038 — a mesma da análise por IA na
+        Investigação de Eventos. Clique na célula: <strong>C = A (probabilidade) × B (consequência)</strong>.</p>
+    {% for momento, rotulo in cat.MOMENTO_RISCO.items() %}
+    {%- set r = n.risco(momento) -%}
+    <div class="border rounded-3 mb-3">
+        <div class="bg-body-secondary px-3 py-1 fw-bold small text-uppercase d-flex">
+            {{ rotulo }}<span class="ms-auto" style="text-transform: none">{{ badge.risco(r.nivel if r) }}</span>
+        </div>
+        <div class="p-3">
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm text-center mb-2 matriz-rac" role="radiogroup"
+                       aria-label="{{ rotulo }}: probabilidade × consequência">
+                    <thead>
+                        <tr><th rowspan="2" style="width:130px">PROBABILIDADE</th><th colspan="5">CONSEQUÊNCIA</th></tr>
+                        <tr>{% for c, (cnome, cdesc) in cat.CONSEQUENCIA.items() %}<th title="{{ cdesc }}">{{ cnome }}<br><span class="text-body-secondary">({{ c }})</span></th>{% endfor %}</tr>
+                    </thead>
+                    <tbody>
+                        {% for p, (pnome, pdesc) in cat.PROBABILIDADE.items() %}
+                        <tr>
+                            <th class="text-start" title="{{ pdesc }}">{{ pnome }} <span class="text-body-secondary">({{ p }})</span></th>
+                            {% for c, (cnome, _d) in cat.CONSEQUENCIA.items() %}
+                            {%- set nv = cat.nivel_risco(p, c) -%}
+                            <td style="background: {{ nv.fundo }}">
+                                <label title="{{ pnome }} ({{ p }}) × {{ cnome }} ({{ c }}) = {{ nv.pontos }} — risco {{ nv.rotulo | lower }}">
+                                    <input type="radio" name="{{ momento }}_ps" value="{{ p }}-{{ c }}"
+                                           {{ 'checked' if r and r.probabilidade == p and r.severidade == c }}>{{ nv.pontos }}
+                                </label>
+                            </td>
+                            {% endfor %}
+                        </tr>
                         {% endfor %}
-                        {% endfor %}
-                    </div>
-                    <div class="small mt-2 rm-result" data-momento="{{ momento }}">
-                        {% if r %}<strong>{{ r.nivel.rotulo }} ({{ r.nivel.classe }})</strong> — {{ r.nivel.conduta }}{% else %}Selecione uma célula da matriz.{% endif %}</div>
-                    <label class="form-label mt-3" for="f-{{ momento }}-j">Justificativa</label>
-                    <textarea class="form-control" id="f-{{ momento }}-j" name="{{ momento }}_justificativa" rows="2">{{ r.justificativa or '' if r }}</textarea>
-                    {% if r and pode_tratar %}
-                    <div class="form-check mt-2"><input type="checkbox" class="form-check-input" id="f-{{ momento }}-l" name="{{ momento }}_limpar" value="1">
-                        <label class="form-check-label small" for="f-{{ momento }}-l">Remover esta avaliação</label></div>
-                    {% endif %}
-                </div>
+                    </tbody>
+                </table>
             </div>
+            <table class="table table-bordered table-sm text-center mb-2" style="font-size:.74rem">
+                <thead><tr><th>A — Probabilidade (1 a 5)</th><th>B — Consequência (1 a 16)</th><th>C — Classificação (A × B)</th></tr></thead>
+                <tbody><tr class="rm-result" data-momento="{{ momento }}">
+                    {% if r and r.nivel %}
+                    <td>{{ r.nivel.probabilidade }} · {{ r.nivel.probabilidade_rotulo }}</td>
+                    <td>{{ r.nivel.consequencia }} · {{ r.nivel.consequencia_rotulo }}</td>
+                    <td class="fw-bold" style="background: {{ r.nivel.fundo }}; color: #111">{{ r.nivel.pontos }} — risco {{ r.nivel.rotulo | lower }}</td>
+                    {% else %}
+                    <td>—</td><td>—</td><td class="text-body-secondary">Selecione uma célula da matriz.</td>
+                    {% endif %}
+                </tr></tbody>
+            </table>
+            <label class="form-label small mb-1" for="f-{{ momento }}-j">Justificativa</label>
+            <textarea class="form-control" id="f-{{ momento }}-j" name="{{ momento }}_justificativa" rows="2"
+                      placeholder="{{ 'por que este risco antes da investigação' if momento == 'inicial' else 'por que este risco residual' }}">{{ r.justificativa or '' if r }}</textarea>
+            {% if r and pode_tratar %}
+            <div class="form-check mt-2"><input type="checkbox" class="form-check-input" id="f-{{ momento }}-l" name="{{ momento }}_limpar" value="1">
+                <label class="form-check-label small" for="f-{{ momento }}-l">Remover esta avaliação</label></div>
+            {% endif %}
         </div>
-        {% endfor %}
     </div>
-    <details class="mt-3">
-        <summary class="text-body-secondary small">Critérios da matriz (PGR · SESI 2022)</summary>
+    {% endfor %}
+    <details class="mb-2">
+        <summary class="text-body-secondary small">Critérios do formulário FOR.SAMU.038</summary>
         <div class="row small mt-2">
-            <div class="col-md-6"><strong>Probabilidade</strong><ul>{% for k, (nome, d) in cat.PROBABILIDADE.items() %}<li><strong>{{ nome }} ({{ k }})</strong> — {{ d }}</li>{% endfor %}</ul></div>
-            <div class="col-md-6"><strong>Severidade</strong><ul>{% for k, (nome, d) in cat.SEVERIDADE.items() %}<li><strong>{{ nome }} ({{ k }})</strong> — {{ d }}</li>{% endfor %}</ul></div>
+            <div class="col-md-6"><strong>A — Probabilidade</strong><ul>{% for k, (nome, d) in cat.PROBABILIDADE.items() %}<li><strong>{{ nome }} ({{ k }})</strong> — {{ d }}</li>{% endfor %}</ul></div>
+            <div class="col-md-6"><strong>B — Consequência</strong><ul>{% for k, (nome, d) in cat.CONSEQUENCIA.items() %}<li><strong>{{ nome }} ({{ k }})</strong> — {{ d }}</li>{% endfor %}</ul></div>
         </div>
-        <ul class="small list-unstyled">{% for minimo, rot, cl, cor, conduta in cat.NIVEIS_RISCO %}<li class="mb-1"><span class="badge risk-{{ cor }}">{{ rot }} · {{ cl }}</span> {{ conduta }}</li>{% endfor %}</ul>
+        <ul class="small list-unstyled mb-0">{% for minimo, rot, cor in cat.NIVEIS_RISCO %}<li class="mb-1"><span class="badge" style="background: {{ cor }}; color: #111">{{ rot }}</span> C ≥ {{ minimo }}</li>{% endfor %}</ul>
     </details>
     {% if pode_tratar %}<button class="btn btn-primary mt-3">Salvar avaliação de risco</button>{% endif %}
     </fieldset>
@@ -453,17 +475,22 @@
     });
     mostrar(location.hash.slice(1));
 
-    // Matriz: a célula escolhida atualiza o texto do nível
-    var niveis = {{ cat.NIVEIS_RISCO | tojson }};
-    document.querySelectorAll('.rm input[type=radio]').forEach(function (inp) {
+    // Matriz: a célula escolhida atualiza A, B e C
+    var NIVEIS = {{ cat.NIVEIS_RISCO | tojson }};
+    var PROB = {{ cat.PROBABILIDADE | tojson }}, CONS = {{ cat.CONSEQUENCIA | tojson }};
+    document.querySelectorAll('.matriz-rac input[type=radio]').forEach(function (inp) {
         inp.addEventListener('change', function () {
             var m = inp.name.replace('_ps', ''), ps = inp.value.split('-'), pts = ps[0] * ps[1];
-            var nv = niveis.find(function (x) { return pts >= x[0]; });
-            var alvo = document.querySelector('.rm-result[data-momento="' + m + '"]');
-            alvo.innerHTML = '';
-            var forte = document.createElement('strong');
-            forte.textContent = nv[1] + ' (' + nv[2] + ')';
-            alvo.append(forte, ' — ' + nv[4]);
+            var nv = NIVEIS.find(function (x) { return pts >= x[0]; });
+            var linha = document.querySelector('.rm-result[data-momento="' + m + '"]');
+            linha.innerHTML = '';
+            [ps[0] + ' · ' + PROB[ps[0]][0], ps[1] + ' · ' + CONS[ps[1]][0],
+             pts + ' — risco ' + nv[1].toLowerCase()].forEach(function (t, k) {
+                var td = document.createElement('td');
+                td.textContent = t;
+                if (k === 2) { td.className = 'fw-bold'; td.style.background = nv[2]; td.style.color = '#111'; }
+                linha.appendChild(td);
+            });
         });
     });
 

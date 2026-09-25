@@ -16,12 +16,12 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import (Date, DateTime, ForeignKey, Integer,
-                        String, Text, UniqueConstraint)
+from sqlalchemy import (Column, Date, DateTime, ForeignKey, Integer,
+                        String, Table, Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 import app.models  # noqa: F401 — registra Usuario, alvo dos relacionamentos
-from app.core.database import BaseModel
+from app.core.database import Base, BaseModel
 
 
 # ------------------------------------------------------------------ cadastros
@@ -33,6 +33,28 @@ class NcpsGestor(BaseModel):
 
     nome: Mapped[str] = mapped_column(String(120), index=True)
     ativo: Mapped[bool] = mapped_column(default=True)
+
+
+# Quem analisa as NCPS de cada setor (usuários com ncps.coordenar)
+ncps_setor_usuarios = Table(
+    "ncps_setor_usuarios",
+    Base.metadata,
+    Column("setor_id", ForeignKey("ncps_setores.id"), primary_key=True),
+    Column("usuario_id", ForeignKey("usuarios.id"), primary_key=True),
+)
+
+
+class NcpsSetor(BaseModel):
+    """Setor que analisa NCPS. A triagem encaminha a notificação a um setor,
+    e todos os usuários vinculados a ele fazem a análise."""
+
+    __tablename__ = "ncps_setores"
+
+    nome: Mapped[str] = mapped_column(String(120), index=True)
+    ativo: Mapped[bool] = mapped_column(default=True)
+
+    usuarios = relationship("Usuario", secondary=ncps_setor_usuarios,
+                            lazy="selectin", order_by="Usuario.nome")
 
 
 class NcpsLocal(BaseModel):
@@ -106,6 +128,10 @@ class Ncps(BaseModel):
         ForeignKey("ncps_locais.id"), nullable=True, index=True)
     gestor_id: Mapped[int | None] = mapped_column(
         ForeignKey("ncps_gestores.id"), nullable=True, index=True)
+    # Setor que analisa (antes era um coordenador; a coluna antiga fica
+    # para o histórico importado do sistema anterior)
+    setor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ncps_setores.id"), nullable=True, index=True)
     coordenador_id: Mapped[int | None] = mapped_column(
         ForeignKey("usuarios.id"), nullable=True, index=True)
 
@@ -131,6 +157,7 @@ class Ncps(BaseModel):
 
     local_padronizado: Mapped[NcpsLocal | None] = relationship(lazy="selectin")
     gestor: Mapped[NcpsGestor | None] = relationship(lazy="selectin")
+    setor: Mapped[NcpsSetor | None] = relationship(lazy="selectin")
     ghe: Mapped[NcpsGhe | None] = relationship(lazy="selectin")
     coordenador = relationship("Usuario", foreign_keys=[coordenador_id],
                                lazy="selectin")
@@ -210,7 +237,11 @@ class NcpsCausa(BaseModel):
 
 
 class NcpsRisco(BaseModel):
-    """Avaliação na matriz de risco do PGR (inicial e residual)."""
+    """Avaliação na matriz de risco do FOR.SAMU.038 (antes e residual).
+
+    `severidade` guarda a CONSEQUÊNCIA do formulário (1, 2, 4, 8 ou 16); o
+    nome da coluna ficou da escala anterior.
+    """
 
     __tablename__ = "ncps_riscos"
     __table_args__ = (UniqueConstraint("ncps_id", "momento",
@@ -223,6 +254,10 @@ class NcpsRisco(BaseModel):
     justificativa: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     ncps: Mapped[Ncps] = relationship(back_populates="riscos")
+
+    @property
+    def consequencia(self) -> int:
+        return self.severidade
 
     @property
     def nivel(self) -> dict | None:

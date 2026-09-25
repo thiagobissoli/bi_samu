@@ -22,9 +22,10 @@ from app.core.database import utcnow
 from app.modules.ncps import constants as cat
 from app.modules.ncps.models import (Ncps, NcpsAcao, NcpsAnalise, NcpsCausa,
                                      NcpsGestor, NcpsGhe, NcpsLocal,
-                                     NcpsOcupacional, NcpsPerigo, NcpsRisco)
+                                     NcpsOcupacional, NcpsPerigo, NcpsRisco,
+                                     NcpsSetor)
 from app.modules.ncps.permissions import (filtrar_visiveis, pode_tratar,
-                                          pode_triar)
+                                          pode_triar, setores_do_usuario)
 
 
 class NcpsErro(ValueError):
@@ -150,8 +151,15 @@ def cadastro(db: Session, modelo, empresa_id: int, incluir_id=None,
     return list(db.scalars(consulta.order_by(modelo.nome)))
 
 
-def coordenadores(db: Session, empresa_id: int):
-    """Usuários que podem ser atribuídos como coordenador responsável."""
+def setores(db: Session, empresa_id: int, incluir_id: int | None = None,
+            so_ativos: bool = True):
+    """Setores de análise, em ordem alfabética."""
+    return cadastro(db, NcpsSetor, empresa_id, incluir_id, so_ativos)
+
+
+def analistas(db: Session, empresa_id: int):
+    """Usuários com permissão de analisar NCPS (ncps.coordenar) — os que
+    podem ser vinculados a setores."""
     from app.models import Perfil, Permissao, Usuario
     from app.models.entities import perfis_permissoes, usuarios_perfis
 
@@ -290,8 +298,12 @@ def consulta(db: Session, usuario, filtros: dict):
             valor = 0
         if valor:
             q = q.where(getattr(Ncps, campo) == valor)
-    if filtros.get("atribuidas"):
-        q = q.where(Ncps.coordenador_id == usuario.id)
+    if filtros.get("atribuidas"):          # "do meu setor"
+        meus = setores_do_usuario(usuario)
+        condicoes = [Ncps.coordenador_id == usuario.id]
+        if meus:
+            condicoes.append(Ncps.setor_id.in_(meus))
+        q = q.where(or_(*condicoes))
     if filtros.get("sigilosas"):
         q = q.where(Ncps.confidencial.is_(True))
 
@@ -388,20 +400,22 @@ def _salvar_triagem(db: Session, n: Ncps, form, usuario) -> None:
     n.gestor_id = gestor_id if gestor_id and db.scalar(select(NcpsGestor.id).where(
         NcpsGestor.id == gestor_id, NcpsGestor.empresa_id == n.empresa_id)) else None
 
-    coord_id = _inteiro(form, "coordenador_id")
-    validos = {u.id for u in coordenadores(db, n.empresa_id)}
-    novo = coord_id if coord_id in validos else None
+    setor_id = _inteiro(form, "setor_id")
+    setor = db.scalar(select(NcpsSetor).where(
+        NcpsSetor.id == setor_id, NcpsSetor.empresa_id == n.empresa_id,
+        NcpsSetor.deleted_at.is_(None))) if setor_id else None
     if n.confidencial:
-        novo = None           # sigilosa é tratada pela Comissão, não por coordenador
-    if novo and novo != n.coordenador_id:
+        setor = None          # sigilosa é tratada pela Comissão, não por setor
+    if setor and setor.id != n.setor_id:
         from app.core.notifications import notify
 
         db.flush()
-        notify(db, novo, f"NCPS #{n.id} atribuída a você",
-               "Você é o coordenador responsável pela tratativa desta "
-               "notificação. Acesse NCPS para registrar a análise.",
-               tipo="warning", empresa_id=n.empresa_id)
-    n.coordenador_id = novo
+        for membro in setor.usuarios:
+            notify(db, membro.id, f"NCPS #{n.id} encaminhada ao setor {setor.nome}",
+                   "Seu setor é o responsável pela análise desta notificação. "
+                   "Acesse NCPS para registrar a análise e o plano de ação.",
+                   tipo="warning", empresa_id=n.empresa_id)
+    n.setor_id = setor.id if setor else None
 
 
 def _avisar_notificante(db: Session, n: Ncps) -> None:
@@ -459,14 +473,14 @@ def _salvar_classificacao(db: Session, n: Ncps, form) -> None:
 
 def _salvar_risco(db: Session, n: Ncps, form) -> None:
     for momento in cat.MOMENTO_RISCO:
-        try:          # célula da matriz no formato "P-S"
+        try:          # célula da matriz no formato "probabilidade-consequência"
             p, s = (int(x) for x in (form.get(f"{momento}_ps") or "").split("-"))
         except ValueError:
             p = s = None
         atual = n.risco(momento)
         if form.get(f"{momento}_limpar") and atual:
             n.riscos.remove(atual)
-        elif p in cat.PROBABILIDADE and s in cat.SEVERIDADE:
+        elif p in cat.PROBABILIDADE and s in cat.CONSEQUENCIA:
             r = atual or NcpsRisco(empresa_id=n.empresa_id, momento=momento)
             r.probabilidade, r.severidade = p, s
             r.justificativa = _texto(form, f"{momento}_justificativa", 5_000)
@@ -585,7 +599,7 @@ def indicadores(db: Session, usuario, filtros: dict) -> dict:
     abertas = [n for n in lista if n.status in cat.STATUS_ABERTOS]
     ocup = [n.ocupacional for n in trabalhadores if n.ocupacional]
     riscos = [n.risco("inicial").nivel["rotulo"] for n in lista
-              if n.risco("inicial")]
+              if n.risco("inicial") and n.risco("inicial").nivel]
 
     return {
         "total": len(lista),
@@ -595,8 +609,9 @@ def indicadores(db: Session, usuario, filtros: dict) -> dict:
         "abertas": len(abertas),
         "abertas_30d": sum(1 for n in abertas if idade_dias(n) > 30),
         "aguardando_triagem": sum(1 for n in lista if n.status == "0"),
-        "sem_coordenador": sum(1 for n in abertas
-                               if not n.coordenador_id and not n.confidencial),
+        "sem_setor": sum(1 for n in abertas
+                         if not n.setor_id and not n.coordenador_id
+                         and not n.confidencial),
         "eventos_adversos": sum(1 for n in pacientes
                                 if n.classificacao_incidente == "4"),
         "danos_graves": sum(1 for n in pacientes if n.dano in ("4", "5")),
@@ -670,7 +685,8 @@ def linha_exportacao(n: Ncps, zona: ZoneInfo) -> dict:
         "Data/hora do evento": n.data_hora_ocorrencia,
         "Ação realizada / sugestão": n.sugestao,
         "Gestor": n.gestor.nome if n.gestor else None,
-        "Coordenador": n.coordenador.nome if n.coordenador else None,
+        "Setor": n.setor.nome if n.setor else None,
+        "Coordenador (sistema anterior)": n.coordenador.nome if n.coordenador else None,
         **{rotulo: opcoes.get(getattr(n, campo), getattr(n, campo))
            for campo, (rotulo, opcoes) in cat.CLASSIFICACAO_PACIENTE.items()},
         "Tipo de evento (trabalhador)": cat.TIPO_EVENTO_TRABALHADOR.get(
@@ -679,8 +695,8 @@ def linha_exportacao(n: Ncps, zona: ZoneInfo) -> dict:
         "Perigo": o.perigo.nome if o and o.perigo else None,
         "Afastamento (dias)": o.dias_afastamento if o and o.afastamento else None,
         "CAT": o.cat_numero if o and o.cat_emitida else None,
-        "Risco inicial": f"{ri.nivel['rotulo']} ({ri.nivel['classe']})" if ri else None,
-        "Risco residual": f"{rr.nivel['rotulo']} ({rr.nivel['classe']})" if rr else None,
+        "Risco antes": f"{ri.nivel['pontos']} — {ri.nivel['rotulo']}" if ri and ri.nivel else None,
+        "Risco residual": f"{rr.nivel['pontos']} — {rr.nivel['rotulo']}" if rr and rr.nivel else None,
         "Causa raiz": causa_raiz or None,
         "Ações (total)": len(acoes),
         "Ações em aberto": sum(1 for a in acoes

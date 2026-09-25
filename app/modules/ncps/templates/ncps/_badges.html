@@ -11,6 +11,5 @@
 {%- endmacro %}
 
 {% macro risco(nv) -%}
-{%- set cores = {'critico': 'danger', 'alto': 'warning', 'medio': 'info', 'baixo': 'success', 'irrelevante': 'secondary'} -%}
-{% if nv %}<span class="badge text-bg-{{ cores[nv.cor] }}">{{ nv.rotulo }} · {{ nv.classe }}</span>{% else %}<span class="text-body-secondary small">Não avaliado</span>{% endif %}
+{% if nv %}<span class="badge" style="background: {{ nv.fundo }}; color: #111">{{ nv.pontos }} — {{ nv.rotulo }}</span>{% else %}<span class="text-body-secondary small">Não avaliado</span>{% endif %}
 {%- endmacro %}

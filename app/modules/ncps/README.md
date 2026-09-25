@@ -18,7 +18,7 @@ mantendo os mesmos códigos de classificação e as mesmas regras de acesso.
 | `/ncps/` | `ncps.listar` | lista com filtros, busca e exportação para Excel |
 | `/ncps/{id}` | `ncps.listar` + regra de visibilidade | análise em abas |
 | `/ncps/painel` | `ncps.listar` | indicadores |
-| `/ncps/cadastros` | `ncps.cadastros` | gestores, locais e token do Power BI |
+| `/ncps/cadastros` | `ncps.cadastros` | setores de análise e seus analistas, gestores, locais e token do Power BI |
 | `/ncps/pgr` | `ncps.pgr` | GHE e perigos do inventário |
 | `/ncps/api/powerbi` | token Bearer | todas as notificações, exceto as sigilosas |
 
@@ -29,11 +29,22 @@ As regras ficam em `permissions.py`. Um usuário vê uma notificação quando:
 - ela é **sigilosa** (violência/assédio) → só com `ncps.sigilosas` (Comissão de Integridade);
 - é do **paciente** → `ncps.triar_paciente` (Qualidade) ou `ncps.coordenar`;
 - é do **trabalhador** → `ncps.triar_trabalhador` (SESMT);
-- ou ele é o **coordenador atribuído**.
+- ou ele é **analista do setor** a que a NCPS foi encaminhada.
 
-Quem tria (`triar_*` / `sigilosas`) altera tudo. O coordenador atribuído
-registra a classificação, a análise, o risco e as ações, mas não a triagem.
-Quem é atribuído recebe um aviso nas notificações do sistema.
+Quem tria (`triar_*` / `sigilosas`) altera tudo e encaminha a NCPS a um
+**setor**. Os analistas do setor — usuários com `ncps.coordenar`, vinculados
+em Cadastros NCPS → Setores de análise — registram a classificação, a
+análise, o risco e as ações, mas não a triagem, e são avisados nas
+notificações do sistema quando uma NCPS chega ao setor. NCPS importadas do
+sistema anterior mantêm o coordenador de lá.
+
+## Matriz de risco
+
+A mesma do formulário FOR.SAMU.038 usada pela IA na Investigação de Eventos:
+probabilidade de Raro (1) a Quase certo (5), consequência Desprezível (1),
+Menor (2), Moderada (4), Maior (8) ou Catastrófica (16), classificação
+C = A × B (Baixo, Moderado ≥ 4, Elevado ≥ 10, Extremo ≥ 20), avaliada antes
+da investigação e como risco residual com o plano executado.
 
 Para reproduzir os perfis do sistema anterior, crie em **Perfis**:
 
@@ -42,7 +53,7 @@ Para reproduzir os perfis do sistema anterior, crie em **Perfis**:
 | Qualidade | `ncps.notificar`, `ncps.listar`, `ncps.triar_paciente`, `ncps.exportar`, `ncps.cadastros` |
 | SESMT | `ncps.notificar`, `ncps.listar`, `ncps.triar_trabalhador`, `ncps.exportar`, `ncps.pgr` |
 | Comissão de Integridade | `ncps.notificar`, `ncps.listar`, `ncps.sigilosas` |
-| Coordenador | `ncps.notificar`, `ncps.listar`, `ncps.coordenar` |
+| Coordenador (analista) | `ncps.notificar`, `ncps.listar`, `ncps.coordenar` + vínculo a um setor |
 | Colaborador | `ncps.notificar` |
 
 ## Protocolo e código de acompanhamento

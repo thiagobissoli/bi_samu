@@ -161,8 +161,14 @@ def tratativa(n) -> str:
                       f"{' [causa raiz]' if c.causa_raiz else ''}: {c.descricao}")
     for r in n.riscos:
         nivel = r.nivel
-        partes.append(f"Risco {r.momento} (matriz PGR): P{r.probabilidade} × "
-                      f"S{r.severidade} = {nivel['rotulo'] if nivel else '—'}"
+        if not nivel:
+            continue
+        momento = "antes da investigação" if r.momento == "inicial" else "residual"
+        partes.append(f"Risco {momento} (FOR.SAMU.038): probabilidade "
+                      f"{nivel['probabilidade']} ({nivel['probabilidade_rotulo']}) × "
+                      f"consequência {nivel['consequencia']} "
+                      f"({nivel['consequencia_rotulo']}) = {nivel['pontos']}, "
+                      f"risco {nivel['rotulo'].lower()}"
                       + (f" — {r.justificativa}" if r.justificativa else ""))
     for acao in n.acoes:
         partes.append(f"Ação ({cat.STATUS_ACAO.get(acao.status, acao.status)}): "

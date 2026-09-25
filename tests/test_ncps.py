@@ -34,40 +34,49 @@ def _publicar(**campos) -> tuple[int, str]:
     return int(protocolo.group(1)), codigo.group(1)
 
 
-def _usuario(id_, *permissoes):
-    return SimpleNamespace(id=id_, empresa_id=1, permissoes=set(permissoes))
+def _usuario(id_, *permissoes, setores=()):
+    return SimpleNamespace(id=id_, empresa_id=1, permissoes=set(permissoes),
+                           setores_ncps=set(setores))
 
 
 # ------------------------------------------------------------------ regras puras
 
-def test_matriz_de_risco():
-    assert service.cat.nivel_risco(5, 5)["classe"] == "PR1"
-    assert cat.nivel_risco(3, 5)["rotulo"] == "Alto"          # 15
-    assert cat.nivel_risco(2, 5)["rotulo"] == "Médio"         # 10
-    assert cat.nivel_risco(2, 3)["rotulo"] == "Baixo"         # 6
-    assert cat.nivel_risco(2, 2)["rotulo"] == "Irrelevante"   # 4
-    assert cat.nivel_risco(None, 3) is None
+def test_matriz_de_risco_e_a_do_for_samu_038():
+    """Mesma escala e faixas da matriz gerada pela IA na Investigação."""
+    from app.modules.investigacao.constants import nivel_de_risco
+
+    assert service.cat.nivel_risco(5, 16)["rotulo"] == "Extremo"   # 80
+    assert cat.nivel_risco(3, 4)["rotulo"] == "Elevado"            # 12
+    assert cat.nivel_risco(2, 2)["rotulo"] == "Moderado"           # 4
+    assert cat.nivel_risco(1, 2)["rotulo"] == "Baixo"              # 2
+    for p in cat.PROBABILIDADE:
+        for c in cat.CONSEQUENCIA:
+            assert cat.nivel_risco(p, c)["rotulo"] == nivel_de_risco(p * c)[0]
+    assert cat.nivel_risco(2, 3) is None          # 3 não é consequência válida
+    assert cat.nivel_risco(None, 4) is None
+    assert cat.STATUS["1"] == "Analisando evento"
 
 
 def test_regras_de_visibilidade():
     paciente = SimpleNamespace(natureza="paciente", confidencial=False,
-                               coordenador_id=None)
+                               setor_id=None, coordenador_id=None)
     trabalhador = SimpleNamespace(natureza="trabalhador", confidencial=False,
-                                  coordenador_id=7)
+                                  setor_id=3, coordenador_id=None)
     sigilosa = SimpleNamespace(natureza="trabalhador", confidencial=True,
-                               coordenador_id=None)
+                               setor_id=3, coordenador_id=None)
     qualidade = _usuario(1, "ncps.listar", "ncps.triar_paciente")
     sesmt = _usuario(2, "ncps.listar", "ncps.triar_trabalhador")
     comissao = _usuario(3, "ncps.listar", "ncps.sigilosas")
-    coordenador = _usuario(7, "ncps.listar", "ncps.coordenar")
-    outro_coord = _usuario(8, "ncps.listar", "ncps.coordenar")
+    coordenador = _usuario(7, "ncps.listar", "ncps.coordenar", setores={3})
+    outro_coord = _usuario(8, "ncps.listar", "ncps.coordenar", setores={4})
 
     assert pode_triar(paciente, qualidade) and not pode_ver(trabalhador, qualidade)
     assert pode_triar(trabalhador, sesmt) and not pode_ver(paciente, sesmt)
     # sigilosa: só a Comissão, nem a Qualidade nem o SESMT
     assert pode_ver(sigilosa, comissao) and pode_triar(sigilosa, comissao)
+    assert not pode_ver(sigilosa, coordenador)       # setor não abre sigilosa
     assert not pode_ver(sigilosa, sesmt) and not pode_ver(sigilosa, qualidade)
-    # coordenador vê as do paciente e só as do trabalhador atribuídas a ele
+    # analista vê as do paciente e só as do trabalhador encaminhadas ao seu setor
     assert pode_ver(paciente, coordenador) and not pode_tratar(paciente, coordenador)
     assert pode_ver(trabalhador, coordenador) and pode_tratar(trabalhador, coordenador)
     assert not pode_ver(trabalhador, outro_coord)
@@ -156,13 +165,22 @@ def test_fluxo_completo_de_tratativa():
         assert resp.status_code == 303, resp.text
         assert "erro=" not in resp.headers["location"], resp.headers["location"]
 
+    client.post("/ncps/setores",
+                data={"nome": "Setor Teste NCPS", "usuarios": [admin_id]})
+    db = SessionLocal()
+    try:
+        from app.modules.ncps.models import NcpsSetor
+        setor = db.scalar(select(NcpsSetor).where(NcpsSetor.nome == "Setor Teste NCPS"))
+        assert [u.id for u in setor.usuarios] == [admin_id]
+    finally:
+        db.close()
     salvar(secao="triagem", natureza="trabalhador", procedente="2", status="1",
-           local_id=local.id, gestor_id=gestor.id,
-           coordenador_id=admin_id)
+           local_id=local.id, gestor_id=gestor.id, setor_id=setor.id)
     salvar(secao="classificacao", tipo_evento_trab="acidente_tipico",
            afastamento="sim", dias_afastamento="3", cat_emitida="sim",
            cat_numero="123", cat_data="2026-09-21")
-    salvar(secao="risco", inicial_ps="4-3", inicial_justificativa="Recorrente")
+    salvar(secao="risco", inicial_ps="3-4", inicial_justificativa="Recorrente",
+           residual_ps="2-3")        # consequência 3 não existe: ignorada
     salvar(secao="analise", cronologia="14h30 corte", problemas="Descarte")
     salvar(secao="causa_add", metodo="ishikawa", categoria="metodo",
            descricao="Sem caixa de descarte", causa_raiz="1")
@@ -172,10 +190,20 @@ def test_fluxo_completo_de_tratativa():
     db = SessionLocal()
     try:
         n = db.get(Ncps, ncps_id)
-        assert n.status == "1" and n.coordenador_id == admin_id
+        assert n.status == "1" and n.setor_id == setor.id
+        # os analistas do setor são avisados e o alerta aparece no Início
+        from app.models import Notificacao, Usuario
+        assert db.scalar(select(Notificacao).where(
+            Notificacao.usuario_id == admin_id,
+            Notificacao.titulo == f"NCPS #{ncps_id} encaminhada ao setor Setor Teste NCPS"))
+        from app.modules.inicio.service import alertas
+        admin = db.get(Usuario, admin_id)
+        assert any("aguardando análise do seu setor" in a["titulo"]
+                   for a in alertas(db, admin))
         assert n.gestor_id == gestor.id and n.local_id == local.id
         assert n.ocupacional.dias_afastamento == 3 and n.ocupacional.cat_numero == "123"
-        assert n.risco("inicial").nivel["rotulo"] == "Médio"     # 4 × 3 = 12
+        assert n.risco("inicial").nivel["rotulo"] == "Elevado"   # 3 × 4 = 12
+        assert n.risco("residual") is None
         assert n.analise.cronologia == "14h30 corte"
         assert n.causas[0].causa_raiz
         assert service.acoes_atrasadas(n)                      # prazo vencido
@@ -203,7 +231,7 @@ def test_fluxo_completo_de_tratativa():
     from openpyxl import load_workbook
     aba = load_workbook(BytesIO(planilha.content)).active
     cabecalho = [c.value for c in aba[1]]
-    assert "Protocolo" in cabecalho and "Risco inicial" in cabecalho
+    assert "Protocolo" in cabecalho and "Risco antes" in cabecalho and "Setor" in cabecalho
     assert any(row[0] == ncps_id for row in aba.iter_rows(min_row=2, values_only=True))
 
     # exclusão lógica

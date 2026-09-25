@@ -57,7 +57,7 @@
     {{ tile(ind.total, 'Notificações', 'fa-clipboard-list', ind.paciente ~ ' paciente · ' ~ ind.trabalhador ~ ' trabalhador') }}
     {{ tile(ind.aguardando_triagem, 'Aguardando triagem', 'fa-inbox', alerta=True) }}
     {{ tile(ind.abertas, 'Em aberto', 'fa-hourglass-half', ind.abertas_30d ~ ' há mais de 30 dias') }}
-    {{ tile(ind.sem_coordenador, 'Abertas sem coordenador', 'fa-user-slash', alerta=True) }}
+    {{ tile(ind.sem_setor, 'Abertas sem setor', 'fa-users-slash', alerta=True) }}
     {{ tile(ind.acoes.atrasadas, 'Ações atrasadas', 'fa-circle-exclamation', ind.acoes.abertas ~ ' de ' ~ ind.acoes.total ~ ' em aberto', alerta=True) }}
     {{ tile(ind.eventos_adversos, 'Eventos adversos', 'fa-triangle-exclamation', ind.danos_graves ~ ' com dano grave/óbito · ' ~ ind.sentinelas ~ ' sentinela') }}
 </div>
@@ -80,7 +80,7 @@
 
 <div class="row g-3 mb-3">
     <div class="col-lg-4">{{ ranking('Status', ind.por_status) }}</div>
-    <div class="col-lg-4">{{ ranking('Nível de risco inicial (matriz PGR)', ind.por_risco, 'Nenhuma avaliação de risco registrada.') }}</div>
+    <div class="col-lg-4">{{ ranking('Nível do risco antes da investigação (FOR.SAMU.038)', ind.por_risco, 'Nenhuma avaliação de risco registrada.') }}</div>
     <div class="col-lg-4">{{ ranking('Eficácia das ações concluídas', ind.acoes.eficacia, 'Nenhuma ação concluída.') }}</div>
 </div>
 
