@@ -2,6 +2,38 @@
    prontuário e análise por IA. Incluído por index.html quando há uma
    ocorrência investigada. #}
 
+{# --------------------------------------------------- NCPS da ocorrência #}
+{% if dossie.ncps and dossie.origem != 'ncps' %}
+<div class="card mb-3 border-primary-subtle">
+    <div class="card-header py-2">
+        <h3 class="card-title fs-6 mb-0">
+            <i class="fa-solid fa-clipboard-check me-2"></i>Notificações NCPS sobre esta ocorrência
+            <span class="badge text-bg-primary ms-1">{{ dossie.ncps | length }}</span>
+        </h3>
+    </div>
+    <ul class="list-group list-group-flush">
+        {% for n in dossie.ncps %}
+        <li class="list-group-item">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <a href="/ncps/{{ n.id }}" class="fw-semibold">NCPS #{{ n.id }}</a>
+                <span class="badge text-bg-light border">{{ n.natureza }}</span>
+                <span class="badge text-bg-secondary">{{ n.status }}</span>
+                <small class="text-body-secondary ms-auto">{{ n.registrado_em | localdt }}</small>
+            </div>
+            <div class="small mt-1" style="white-space: pre-line">{{ n.descricao }}</div>
+            {% if n.classificacao %}
+            <div class="small text-body-secondary mt-1">{% for r, v in n.classificacao %}{{ r }}: {{ v }}{{ " · " if not loop.last }}{% endfor %}</div>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    <div class="card-footer small text-body-secondary py-1">
+        Os relatos acima entram no material da análise por IA como indício a confirmar.
+    </div>
+</div>
+{% endif %}
+
+{% if dossie.origem != 'ncps' %}
 {# --------------------------------------------------- cadeia do chamado #}
 <div class="card mb-3">
     <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -64,6 +96,8 @@
     </div>
 </div>
 
+{% endif %}
+{% if dossie.origem != 'ncps' %}
 {# ------------------------------------------------- indicadores medidos #}
 <div class="card mb-3">
     <div class="card-header py-2">
@@ -100,6 +134,7 @@
     </div>
 </div>
 
+{% endif %}
 {# ------------------------------- fatores do tempo de resposta (meta 10min) #}
 {% if dossie.fatores_tr and dossie.fatores_tr.aplicavel %}
 {% set f = dossie.fatores_tr %}
@@ -248,6 +283,7 @@
 </div>
 {% endif %}
 
+{% if dossie.origem != 'ncps' %}
 {# ---------------------------------------------------------- prontuário #}
 <div class="card mb-3">
     <div class="card-header py-2 d-flex justify-content-between align-items-center">
@@ -297,6 +333,7 @@
     {% endif %}
 </div>
 
+{% endif %}
 {# -------------------------------------------------------- análise por IA #}
 <div class="card mb-3">
     <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -338,6 +375,7 @@
                     {% if dossie.analise_ia %}Refazer análise{% else %}Analisar evento{% endif %}
                 </button>
             </div>
+            {% if dossie.origem != 'ncps' %}
             <div class="col-auto form-check ms-2">
                 <input class="form-check-input" type="checkbox" value="1"
                        id="incluir_prontuario" name="incluir_prontuario">
@@ -345,6 +383,12 @@
                     Incluir o texto do prontuário (baixa do vSky se preciso)
                 </label>
             </div>
+            {% else %}
+            <div class="col-auto small text-body-secondary ms-2">
+                Baseado no relato da NCPS #{{ investigacao.ncps_id }}, na tratativa já
+                registrada nela e nos relatos dos envolvidos.
+            </div>
+            {% endif %}
             <div class="col-auto form-check">
                 <input class="form-check-input" type="checkbox" value="1"
                        id="anonimizar" name="anonimizar"

@@ -39,22 +39,38 @@
 
 {% block content %}
 
-{# ------------------------------------------------ investigar ocorrência #}
+{# ------------------------------------------------ iniciar investigação #}
 <div class="card mb-3">
-    <div class="card-header py-2">
+    <div class="card-header py-2 d-flex align-items-center flex-wrap gap-2">
         <h3 class="card-title fs-6 mb-0">
             <i class="fa-solid fa-magnifying-glass-chart me-2"></i>
-            Investigar ocorrência
+            Iniciar investigação
         </h3>
+        {% if ve_ncps %}
+        <ul class="nav nav-pills nav-sm ms-auto" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link py-1 px-2 small {{ 'active' if not filtros.ncps }}" data-bs-toggle="pill"
+                        data-bs-target="#inicio-ocorrencia" type="button" role="tab">
+                    <i class="fa-solid fa-truck-medical me-1"></i>Por ocorrência</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link py-1 px-2 small {{ 'active' if filtros.ncps }}" data-bs-toggle="pill"
+                        data-bs-target="#inicio-ncps" type="button" role="tab">
+                    <i class="fa-solid fa-clipboard-check me-1"></i>Por notificação NCPS</button>
+            </li>
+        </ul>
+        {% endif %}
     </div>
     <div class="card-body">
+        <div class="tab-content">
+        <div class="tab-pane fade {{ 'show active' if not filtros.ncps or not ve_ncps }}" id="inicio-ocorrencia" role="tabpanel">
         <form method="get" class="row g-2 align-items-end">
             <div class="col-md-4">
                 <label class="form-label small mb-1" for="ocorrencia">
                     Número da ocorrência
                 </label>
                 <input type="text" class="form-control" id="ocorrencia"
-                       name="ocorrencia" value="{{ filtros.ocorrencia }}"
+                       name="ocorrencia" value="{{ filtros.ocorrencia if not filtros.ncps }}"
                        placeholder="ex.: 2715799">
             </div>
             <div class="col-auto">
@@ -64,11 +80,85 @@
             </div>
             <div class="col text-muted small">
                 Mostra a situação de todas as viaturas sediadas no município
-                da ocorrência no instante do acionamento.
+                da ocorrência no instante do acionamento{% if ve_ncps %} e as NCPS
+                que citam a ocorrência{% endif %}.
             </div>
         </form>
+        </div>
+        {% if ve_ncps %}
+        <div class="tab-pane fade {{ 'show active' if filtros.ncps }}" id="inicio-ncps" role="tabpanel">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small mb-1" for="ncps">Protocolo da NCPS</label>
+                <input type="text" class="form-control" id="ncps" name="ncps"
+                       inputmode="numeric" value="{{ filtros.ncps }}" placeholder="ex.: 1824">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-primary">
+                    <i class="fa-solid fa-magnifying-glass me-1"></i>Investigar
+                </button>
+            </div>
+            <div class="col text-muted small">
+                Traz o relato da notificação e, se ela informar o número da
+                ocorrência, todos os dados do atendimento no vSky.
+            </div>
+        </form>
+        </div>
+        {% endif %}
+        </div>
 
-        {% if investigacao %}
+        {% if ncps_erro %}
+        <div class="alert alert-warning mt-3 mb-0">{{ ncps_erro }}</div>
+        {% endif %}
+        {% if ncps_origem %}
+        {% set n = ncps_origem %}
+        <div class="border rounded-3 p-3 mt-3 {{ 'border-warning' if not n.id_ocorrencia }}">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <span class="fw-bold fs-5">NCPS #{{ n.id }}</span>
+                <span class="badge text-bg-primary">{{ n.natureza }}</span>
+                <span class="badge text-bg-secondary">{{ n.status }}</span>
+                <a href="/ncps/{{ n.id }}" class="ms-auto small">Abrir a NCPS <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+            </div>
+            <p class="mb-2" style="white-space: pre-line">{{ n.descricao }}</p>
+            <div class="row small g-2">
+                <div class="col-sm-3"><span class="text-body-secondary d-block">Registrada em</span>{{ n.registrado_em | localdt }}</div>
+                <div class="col-sm-3"><span class="text-body-secondary d-block">Data do evento</span>{{ n.data_evento or '—' }}</div>
+                <div class="col-sm-3"><span class="text-body-secondary d-block">Local informado</span>{{ n.local or '—' }}</div>
+                <div class="col-sm-3"><span class="text-body-secondary d-block">Ocorrência (vSky)</span>{{ n.id_ocorrencia or 'não informada' }}</div>
+                {% for rotulo, valor in n.classificacao %}
+                <div class="col-sm-3"><span class="text-body-secondary d-block">{{ rotulo }}</span>{{ valor }}</div>
+                {% endfor %}
+            </div>
+            {% if n.sugestao %}<p class="small mt-2 mb-0"><strong>Ação realizada / sugestão:</strong> {{ n.sugestao }}</p>{% endif %}
+
+            {% if not n.id_ocorrencia or (dossie and dossie.origem == 'ncps') %}
+            <div class="alert alert-warning small mt-3 mb-0">
+                {% if n.id_ocorrencia %}
+                A ocorrência {{ n.id_ocorrencia }} informada na notificação não está nos dados importados do vSky.
+                {% else %}
+                Esta notificação não informa a ocorrência do vSky. Sem ela, a investigação
+                fica restrita ao relato: registre a análise de causas e o plano de ação
+                <a href="/ncps/{{ n.id }}#analise">na própria NCPS</a>.
+                {% endif %}
+                {% if pode_vincular %}
+                <form method="post" action="/investigacao/vincular-ncps" class="row g-2 align-items-end mt-1">
+                    <input type="hidden" name="ncps" value="{{ n.id }}">
+                    <div class="col-sm-4">
+                        <label class="form-label small mb-1" for="vinc-oc">Vincular à ocorrência nº</label>
+                        <input class="form-control form-control-sm" id="vinc-oc" name="ocorrencia" required inputmode="numeric">
+                    </div>
+                    <div class="col-auto"><button class="btn btn-sm btn-outline-primary">Vincular e investigar</button></div>
+                </form>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if erro_ia and not dossie %}
+        <div class="alert alert-danger mt-3 mb-0">{{ erro_ia }}</div>
+        {% endif %}
+
+        {% if investigacao and investigacao.origem != 'ncps' %}
         {% if investigacao.erro %}
         <div class="alert alert-warning mt-3 mb-0">{{ investigacao.erro }}</div>
         {% else %}

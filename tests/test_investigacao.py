@@ -126,7 +126,7 @@ def test_pagina_e_menu():
     _login()
     pagina = client.get("/investigacao/", headers={"accept": "text/html"})
     assert pagina.status_code == 200
-    assert "Investigar ocorrência" in pagina.text
+    assert "Iniciar investigação" in pagina.text
     assert "tl-periodo" in pagina.text          # barras da timeline
     assert "Empenhos de outro município" in pagina.text
     # a ressalva sobre o significado de "sem empenho" é obrigatória
