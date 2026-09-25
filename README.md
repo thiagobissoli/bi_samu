@@ -1,4 +1,4 @@
-# Samu
+# Qualidade SAMU
 
 Aplicação SaaS gerada pelo **Framework SaaS**.
 A especificação completa da arquitetura está em [docs/ESPECIFICACAO-BASE-SAAS.md](docs/ESPECIFICACAO-BASE-SAAS.md).

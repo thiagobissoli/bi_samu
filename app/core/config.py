@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(BASE_DIR / ".env"),
                                       extra="ignore")
 
-    app_name: str = "Samu"
+    app_name: str = "Qualidade SAMU"
     debug: bool = False
     secret_key: str = "trocar-em-producao"
     # SQLite por padrão (desenvolvimento). Produção: PostgreSQL 16+ (§36.2).
