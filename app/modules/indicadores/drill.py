@@ -43,7 +43,7 @@ import pandas as pd
 from app.modules.indicadores.constants import ADEQUACAO, CAP_TEMPO
 
 POR_PAGINA = 50
-_MAX_REGISTROS = 32
+_MAX_REGISTROS = 16
 
 # (empresa, tema, versão dos dados, filtros) -> [descrição por gráfico]
 _registro: "OrderedDict[tuple, list]" = OrderedDict()
@@ -87,11 +87,17 @@ def faixa(coluna: str, bordas_s: list[float]) -> dict:
 ROTULO = {"tipo": "rotulo"}
 
 
+def grade(eixo_linhas: dict, linhas: list, eixo_colunas: dict, colunas: list) -> dict:
+    """Eixo de mapa de calor: cada célula é (linha, coluna)."""
+    return {"tipo": "grade", "eixo_linhas": eixo_linhas, "linhas": list(linhas),
+            "eixo_colunas": eixo_colunas, "colunas": list(colunas)}
+
+
 def recorte(sub: pd.DataFrame, tema_df: pd.DataFrame | None) -> list:
     """Predicado de linhas quando `sub` é um recorte do DataFrame do tema."""
     if tema_df is None or sub is tema_df or len(sub) == len(tema_df):
         return []
-    return [("idx", sub.index.to_numpy(dtype=np.int64))]
+    return [("idx", sub.index.to_numpy(dtype=np.int32))]
 
 
 # ------------------------------------------------------------------ avaliação
@@ -126,6 +132,11 @@ def _desperdicio(df: pd.DataFrame, qual: str) -> pd.Series:
     return resultado
 
 
+def _norm(d: pd.DataFrame, coluna: str) -> pd.Series:
+    from app.modules.indicadores.nucleo import norm_txt
+    return d[coluna].fillna("").map(norm_txt)
+
+
 MASCARAS = {
     "aph": lambda d: d["transporte"] == "Pré-hospitalar",
     "saida": lambda d: d["dt_inicio_deslocamento"].notna(),
@@ -136,6 +147,16 @@ MASCARAS = {
     "desperdicio_real": lambda d: _desperdicio(d, "real"),
     "desperdicio_evitado": lambda d: _desperdicio(d, "evitado"),
     "obito": lambda d: d["obito_constatado"].fillna(False).astype(bool),
+    "atendimento_com": lambda d: _norm(d, "atendimento").eq("COM ATENDIMENTO"),
+    "atendimento_sem": lambda d: _norm(d, "atendimento").eq("SEM ATENDIMENTO"),
+    "atendimento_informado": lambda d: _norm(d, "atendimento").isin(
+        ["COM ATENDIMENTO", "SEM ATENDIMENTO"]),
+    "atendimento_vazio": lambda d: ~_norm(d, "atendimento").isin(
+        ["COM ATENDIMENTO", "SEM ATENDIMENTO"]),
+    "apoio_policia_militar": lambda d: _norm(d, "apoio_policia_militar").eq("COMPARECEU"),
+    "apoio_bombeiros": lambda d: _norm(d, "apoio_bombeiros").eq("COMPARECEU"),
+    "apoio_usa": lambda d: _norm(d, "apoio_usa").eq("COMPARECEU"),
+    "enviado_ro": lambda d: d["controlador"].notna(),
 }
 
 
@@ -144,7 +165,11 @@ def _cidade_unidade(d: pd.DataFrame) -> pd.Series:
     return combinada.where(d["cidade"].notna() & d["unidade_curta"].ne(""))
 
 
-DERIVADAS = {"cidade_unidade": _cidade_unidade}
+DERIVADAS = {
+    "cidade_unidade": _cidade_unidade,
+    "motivo_codigo": lambda d: d["motivo"].str.split(" ").str[0],
+    "situacao_norm": lambda d: _norm(d, "situacao_atendimento"),
+}
 
 
 def mascara(df: pd.DataFrame, condicao) -> pd.Series:
@@ -210,6 +235,16 @@ def linhas(df: pd.DataFrame, d: dict, x: int, s: int | None) -> pd.DataFrame:
     series = d.get("series")
     if series and s is not None and 0 <= s < len(series) and series[s]:
         m &= mascara(df, series[s])
+    if d["eixo"]["tipo"] == "grade":
+        # mapa de calor: x = linha * nº de colunas + coluna
+        eixo = d["eixo"]
+        n_col = len(eixo["colunas"])
+        lin, col_ = divmod(x, n_col) if n_col else (-1, -1)
+        if not (0 <= lin < len(eixo["linhas"]) and 0 <= col_ < n_col):
+            return df.iloc[0:0]
+        sub = df[m]
+        return sub[(chave_eixo(sub, eixo["eixo_linhas"]) == eixo["linhas"][lin])
+                   & (chave_eixo(sub, eixo["eixo_colunas"]) == eixo["colunas"][col_])]
     if d["eixo"]["tipo"] == "rotulo":
         rotulos = d.get("rotulos") or []
         if not 0 <= x < len(rotulos):

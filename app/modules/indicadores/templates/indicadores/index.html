@@ -39,6 +39,21 @@
         </a>
     </div>
     <div class="col-md-4 col-lg-3 mb-3">
+        <a href="/indicadores/correlacao{% if qs %}?{{ qs }}{% endif %}"
+           class="text-decoration-none">
+            <div class="card h-100 shadow-sm border-primary">
+                <div class="card-body">
+                    <h5 class="card-title mb-1">
+                        <i class="fa-solid fa-diagram-project me-2 text-primary"></i>Correlação de Indicadores
+                    </h5>
+                    <p class="card-text text-muted small mb-0">
+                        Dispersão X × Y, matriz de correlação e séries lado a lado
+                    </p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 col-lg-3 mb-3">
         <a href="/indicadores/calendarios{% if qs %}?{{ qs }}{% endif %}"
            class="text-decoration-none">
             <div class="card h-100 shadow-sm border-primary">

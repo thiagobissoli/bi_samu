@@ -122,7 +122,7 @@ def test_selecao_de_profissionais():
 
 def test_botoes_de_exportacao():
     _login()
-    page = client.get("/indicadores/processos", headers={"accept": "text/html"}).text
+    page = client.get("/indicadores/processos?aplicar=1", headers={"accept": "text/html"}).text
     # botões de exportação nos gráficos e tabelas
     assert page.count('data-fmt="png"') >= 2
     assert page.count('data-fmt="pdf"') >= 2
@@ -692,7 +692,7 @@ def test_deslocamento_compara_com_a_mediana_da_propria_cidade():
 
 def test_pagina_de_calendarios_renderiza():
     _login()
-    resp = client.get("/indicadores/calendarios?unidades=3",
+    resp = client.get("/indicadores/calendarios?aplicar=1&unidades=3",
                       headers={"accept": "text/html"})
     assert resp.status_code == 200
     assert "Calendários de Indicadores" in resp.text
@@ -812,7 +812,7 @@ def test_calendario_respeita_teto_de_unidades_e_avisa():
     assert dados["unidades_omitidas"] > 0
 
     _login()
-    html = client.get("/indicadores/calendarios?unidades=2",
+    html = client.get("/indicadores/calendarios?aplicar=1&unidades=2",
                       headers={"accept": "text/html"}).text
     assert "fora da página" in html
 
@@ -838,8 +838,8 @@ def test_calendario_com_filtro_sem_resultado():
     assert dados["unidades"] == [] and dados["periodo"] is None
 
     _login()
-    html = client.get("/indicadores/calendarios"
-                      "?data_inicial=2000-01-01&data_final=2000-01-02",
+    html = client.get("/indicadores/calendarios?aplicar=1"
+                      "&data_inicial=2000-01-01&data_final=2000-01-02",
                       headers={"accept": "text/html"}).text
     assert "Nenhum atendimento" in html
 
@@ -847,10 +847,12 @@ def test_calendario_com_filtro_sem_resultado():
 def test_calendario_tem_filtro_de_tipo_de_transporte():
     """USA/USB — o 'recurso', que a coluna Unidade identifica."""
     _login()
-    html = client.get("/indicadores/calendarios?unidades=2",
+    html = client.get("/indicadores/calendarios?aplicar=1&unidades=2",
                       headers={"accept": "text/html"}).text
-    assert 'id="recurso"' in html and "Tipo de transporte" in html
-    assert 'value="USA"' in html and 'value="USB"' in html
+    assert 'id="f-recurso"' in html and "Tipo de transporte" in html
+    # as opções chegam à parte, depois que a página abre
+    recursos = [v for v, _ in client.get("/indicadores/api/opcoes").json()["data"]["recurso"]]
+    assert "USA" in recursos and "USB" in recursos
 
 
 def test_calendario_filtrado_por_recurso_traz_so_aquele_tipo():
@@ -869,7 +871,7 @@ def test_calendario_filtrado_por_recurso_traz_so_aquele_tipo():
 def test_interruptores_do_calendario():
     """Nº Ocorrências, Calendário compacto e Aproximar valor, como no DBSamu."""
     _login()
-    base = "/indicadores/calendarios?unidades=2&indicador=tempo-resposta"
+    base = "/indicadores/calendarios?aplicar=1&unidades=2&indicador=tempo-resposta"
     html = client.get(base, headers={"accept": "text/html"}).text
     for rotulo in ("Nº Ocorrências", "Calendário compacto", "Aproximar valor"):
         assert rotulo in html, rotulo
@@ -880,7 +882,7 @@ def test_interruptores_do_calendario():
 
 def test_contagens_aparecem_so_com_o_interruptor_ligado():
     _login()
-    base = "/indicadores/calendarios?unidades=2&indicador=tempo-resposta"
+    base = "/indicadores/calendarios?aplicar=1&unidades=2&indicador=tempo-resposta"
     sem = client.get(base, headers={"accept": "text/html"}).text
     com = client.get(base + "&ocorrencias=1", headers={"accept": "text/html"}).text
     assert 'class="cal-n"' not in sem
@@ -921,7 +923,7 @@ def test_impressao_sempre_em_paisagem():
     import re
 
     _login()
-    base = "/indicadores/calendarios?unidades=2&indicador=tempo-resposta"
+    base = "/indicadores/calendarios?aplicar=1&unidades=2&indicador=tempo-resposta"
     for modo in ("mes", "semana"):
         html = client.get(f"{base}&modo={modo}", headers={"accept": "text/html"}).text
         achado = re.search(r"@page\s*\{\s*size:\s*A4 (\w+);", html)
@@ -931,7 +933,7 @@ def test_impressao_sempre_em_paisagem():
 
 def test_impressao_um_calendario_por_pagina():
     _login()
-    html = client.get("/indicadores/calendarios?unidades=3"
+    html = client.get("/indicadores/calendarios?aplicar=1&unidades=3"
                       "&indicador=tempo-resposta",
                       headers={"accept": "text/html"}).text
     assert "break-after: page" in html
@@ -946,7 +948,7 @@ def test_periodo_analisado_dentro_de_cada_calendario():
     data nas células, então o período tem de estar no próprio cartão."""
     _login()
     for modo in ("mes", "semana"):
-        html = client.get("/indicadores/calendarios?unidades=3"
+        html = client.get("/indicadores/calendarios?aplicar=1&unidades=3"
                           f"&indicador=tempo-resposta&modo={modo}",
                           headers={"accept": "text/html"}).text
         cartoes = html.count('class="card mb-3 cal-cartao"')
@@ -958,7 +960,7 @@ def test_periodo_analisado_dentro_de_cada_calendario():
 
 def test_folha_impressa_tem_titulo_logo_e_centralizacao():
     _login()
-    html = client.get("/indicadores/calendarios?unidades=3"
+    html = client.get("/indicadores/calendarios?aplicar=1&unidades=3"
                       "&indicador=tempo-resposta",
                       headers={"accept": "text/html"}).text
     cartoes = html.count('class="card mb-3 cal-cartao"')
@@ -999,7 +1001,7 @@ def test_min_height_compensa_o_zoom():
     _login()
     ids = "&indicador=" + "&indicador=".join(
         ["tempo-resposta", "saida-base", "deslocamento", "cena", "transferencia"])
-    html = client.get("/indicadores/calendarios?unidades=1&ocorrencias=1" + ids,
+    html = client.get("/indicadores/calendarios?aplicar=1&unidades=1&ocorrencias=1" + ids,
                       headers={"accept": "text/html"}).text
     zoom = float(re.search(r"zoom: ([\d.]+);", html).group(1))
     altura = float(re.search(r"min-height: ([\d.]+)mm;", html).group(1))
@@ -1009,7 +1011,7 @@ def test_min_height_compensa_o_zoom():
 
 def test_numero_de_empenhos_so_com_o_interruptor_ligado():
     _login()
-    base = "/indicadores/calendarios?unidades=3&indicador=tempo-resposta"
+    base = "/indicadores/calendarios?aplicar=1&unidades=3&indicador=tempo-resposta"
     sem = client.get(base, headers={"accept": "text/html"}).text
     com = client.get(base + "&ocorrencias=1", headers={"accept": "text/html"}).text
     assert " empenhos<" not in sem
@@ -1018,7 +1020,7 @@ def test_numero_de_empenhos_so_com_o_interruptor_ligado():
 
 def test_legenda_descreve_os_dois_turnos_e_o_dia_do_plantao():
     _login()
-    html = client.get("/indicadores/calendarios?unidades=1"
+    html = client.get("/indicadores/calendarios?aplicar=1&unidades=1"
                       "&indicador=tempo-resposta",
                       headers={"accept": "text/html"}).text
     texto = " ".join(html.split())
@@ -1051,7 +1053,7 @@ def test_folha_impressa_explica_os_simbolos():
     """No papel o rodapé é a única legenda: sem ele ☀/☾ e as cores do Pareto
     ficam sem significado."""
     _login()
-    html = client.get("/indicadores/calendarios?unidades=2"
+    html = client.get("/indicadores/calendarios?aplicar=1&unidades=2"
                       "&indicador=tempo-resposta",
                       headers={"accept": "text/html"}).text
     # uma vez por cartão, dentro do rodapé que vai ao papel
