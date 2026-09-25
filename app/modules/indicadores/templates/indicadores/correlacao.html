@@ -100,7 +100,7 @@
     <div class="col-6 col-md">
         <div class="card h-100 stat"><div class="card-body py-2">
             <div class="small text-body-secondary">{{ rot }}</div>
-            <div class="valor">{{ '—' if valor is none else ('{:.3f}'.format(valor) if valor is float else valor) | replace('.', ',') }}</div>
+            <div class="valor">{% if valor is none %}—{% elif rot == 'p-valor' and valor < 0.001 %}&lt; 0,001{% else %}{{ ('{:.3f}'.format(valor) if valor is float else valor) | replace('.', ',') }}{% endif %}</div>
             <div class="small text-body-secondary">{{ dica }}</div>
         </div></div>
     </div>

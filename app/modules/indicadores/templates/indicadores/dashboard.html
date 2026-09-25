@@ -127,7 +127,9 @@
                     </div>
                 </div>
                 {% else %}
-                <canvas id="chart-{{ loop.index }}" height="230" role="img" aria-label="{{ chart.titulo }}"></canvas>
+                <div style="position: relative; height: 260px;">
+                    <canvas id="chart-{{ loop.index }}" role="img" aria-label="{{ chart.titulo }}"></canvas>
+                </div>
                 {% endif %}
                 {% if chart.drill %}<div class="dica-clique text-body-secondary mt-1"><i class="fa-solid fa-hand-pointer"></i> clique para ver as ocorrências</div>{% endif %}
             </div>

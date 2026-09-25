@@ -122,6 +122,13 @@
 <script src="{{ url_for('static', path='vendor/select2/pt-BR.js') }}"></script>
 <script>
 $(function () {
+    // campos vazios não vão para a URL (fica curta e fácil de compartilhar)
+    $(".ind-filtros").on("submit", function () {
+        $(this).find("input, select").each(function () {
+            var v = $(this).val();
+            if (this.name && (v === "" || v === null || (Array.isArray(v) && !v.length))) this.disabled = true;
+        });
+    });
     var selects = $(".ind-filtros .select2-multi");
     selects.each(function () {
         $(this).select2({ width: "100%", placeholder: "Todos", language: "pt-BR",
