@@ -24,6 +24,22 @@ período e importa todas as linhas do XLS para o banco — sem duplicar.
 4. Cada execução fica registrada em `vsky_importacoes` com status, total de
    linhas, novas, duplicadas e eventual erro — tudo auditado (§11).
 
+## Período longo (script)
+
+Para trazer um histórico grande (ex.: 3 anos), o período é quebrado em
+janelas de 25 dias, cada uma importada como uma importação normal:
+
+```bash
+python -m app.modules.download_vsky.baixar_periodo --anos 3 --simular   # só lista as janelas
+python -m app.modules.download_vsky.baixar_periodo --anos 3
+python -m app.modules.download_vsky.baixar_periodo --inicio 01/01/2023 --fim 31/12/2025
+```
+
+Repetir uma janela não duplica linhas. Se parar no meio, retome com
+`--a-partir-de <data>`; janelas que falharem após as tentativas são
+listadas no final com o comando para refazê-las. Opções: `--dias`,
+`--tentativas`, `--pausa`, `--empresa`.
+
 ## Rotas
 
 - `GET /download_vsky` — importações + formulário de período (HTML)
