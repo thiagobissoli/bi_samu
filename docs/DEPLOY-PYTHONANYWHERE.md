@@ -32,6 +32,20 @@ Anote o host: `samues.mysql.pythonanywhere-services.com`
 
 ---
 
+## Atalho: script de instalação
+
+Os passos 2 a 6 estão automatizados. No console Bash do PythonAnywhere:
+
+```bash
+git clone https://github.com/thiagobissoli/qualidade_samu.git
+bash ~/qualidade_samu/deploy/pythonanywhere_setup.sh
+```
+
+O script cria o virtualenv, instala as dependências, gera uma SECRET_KEY nova,
+pergunta a senha do MySQL, aplica as migrações e publica o site. É idempotente.
+As seções abaixo detalham cada etapa, caso prefira fazer à mão ou precise
+depurar algo.
+
 ## 2. Clonar o repositório
 
 O repositório é privado, então precisa de um token. Crie um em
@@ -150,25 +164,48 @@ tail -f /var/log/samues.pythonanywhere.com.error.log
 
 ---
 
-## 8. Uploads
+## 8. Dados: banco e uploads
 
-O `.gitignore` exclui `uploads/` — os arquivos não vêm pelo git. Para levá-los,
-compacte localmente e envie pela aba **Files** (ou por `scp`, nos planos pagos):
+O código vai por git. Banco e uploads não — e medindo o que existe hoje, a
+transferência é bem menor do que os 1,5 GB brutos sugerem:
+
+| Item | Bruto | A transferir |
+|---|---|---|
+| Banco MySQL | 397 MB | **81 MB** (dump comprimido) |
+| PDFs de prontuário + logo | 8,8 MB | **8,6 MB** |
+| XLS das importações | 919 MB | **opcional** |
+| Backups gerados pelo sistema | 205 MB | não vai |
+
+Gere os pacotes na sua máquina:
 
 ```bash
-# na sua máquina
-tar -czf uploads.tar.gz uploads/
+./deploy/preparar_transferencia.sh
 ```
+
+Envie os dois arquivos pela aba **Files** e, no console do PythonAnywhere:
 
 ```bash
-# no PythonAnywhere, após enviar o arquivo
-cd ~/qualidade_samu && tar -xzf ~/uploads.tar.gz
+cd ~/qualidade_samu
+gunzip -c ~/banco.sql.gz | mysql -u samues -p -h samues.mysql.pythonanywhere-services.com 'samues$samu'
+tar -xzf ~/uploads-essenciais.tar.gz
 ```
 
-São ~1,1 GB. Se a cota apertar, considere subir só o necessário e manter o
-histórico fora da aplicação.
+Importar o dump dispensa o `alembic upgrade head` — o schema vem junto.
 
----
+### Por que os 919 MB de XLS são opcionais
+
+São os arquivos de origem das importações do vSky. Os dados já estão no banco
+(`vsky_registros_analiticos`, mais de 500 mil linhas). Sem eles, o botão
+"baixar arquivo original" de uma importação antiga apenas volta para a lista,
+sem erro — o código já trata o arquivo ausente. Se quiser levá-los assim mesmo:
+
+```bash
+./deploy/preparar_transferencia.sh --historico
+```
+
+Os PDFs de prontuário até se recuperam sozinhos (o módulo rebaixa do vSky
+quando o arquivo falta), mas levá-los custa 8,6 MB e evita depender do vSky
+no primeiro acesso.
 
 ## 9. O que muda de comportamento neste ambiente
 

@@ -18,3 +18,6 @@ uvicorn.log
 .saas-backup-*/
 *.novo
 *.merged
+
+# Pacotes gerados por deploy/preparar_transferencia.sh
+/transferencia/
