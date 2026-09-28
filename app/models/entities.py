@@ -4,8 +4,18 @@ Presentes em qualquer sistema construído sobre o framework.
 """
 
 from datetime import datetime
+from typing import ClassVar
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, String, Table, Text
+from sqlalchemy import (
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base, BaseModel, utcnow
@@ -58,6 +68,18 @@ class Usuario(BaseModel):
     perfis: Mapped[list["Perfil"]] = relationship(
         secondary=usuarios_perfis, lazy="selectin"
     )
+
+    # Empresa ativa da requisição (§36.9). Não é coluna: vive só em memória,
+    # carregada da sessão a cada requisição pelo TenantService.
+    _tenant_override: ClassVar[int | None] = None
+
+    def assumir_tenant(self, empresa_id: int) -> None:
+        self._tenant_override = empresa_id
+
+    @property
+    def tenant_id(self) -> int:
+        """Empresa cujos dados o usuário está vendo agora."""
+        return self._tenant_override or self.empresa_id
 
     @property
     def permissoes(self) -> set[str]:
@@ -141,6 +163,9 @@ class Sessao(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     usuario_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    # Empresa ativa nesta sessão (§39.6) — permite trocar de empresa sem trocar
+    # de conta. Nulo = a empresa de origem do usuário.
+    empresa_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -187,3 +212,47 @@ class Arquivo(BaseModel):
     hash: Mapped[str] = mapped_column(String(64))
     caminho: Mapped[str] = mapped_column(String(500))
     modulo: Mapped[str] = mapped_column(String(50), default="geral", index=True)
+
+
+class ApiKey(BaseModel):
+    """Chaves de API para integrações externas (§39.20).
+
+    A chave em claro é mostrada **uma única vez**, na criação: o banco guarda
+    apenas o hash. O prefixo fica visível para você identificar qual chave é
+    qual sem poder reconstruí-la.
+    """
+
+    __tablename__ = "api_keys"
+
+    nome: Mapped[str] = mapped_column(String(100))
+    prefixo: Mapped[str] = mapped_column(String(16), index=True)
+    chave_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # Usuário de serviço: dá contexto à auditoria das chamadas da integração.
+    usuario_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    escopos: Mapped[str] = mapped_column(Text, default="")
+    expira_em: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revogada: Mapped[bool] = mapped_column(default=False, index=True)
+    ultimo_uso: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ultimo_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    total_usos: Mapped[int] = mapped_column(Integer, default=0)
+
+    @property
+    def lista_escopos(self) -> list[str]:
+        return [e for e in (self.escopos or "").split(",") if e]
+
+    @property
+    def ativa(self) -> bool:
+        from datetime import timezone as _tz
+
+        if self.revogada or self.deleted_at is not None:
+            return False
+        if self.expira_em is None:
+            return True
+        expira = self.expira_em
+        if expira.tzinfo is None:
+            expira = expira.replace(tzinfo=_tz.utc)
+        return expira > datetime.now(_tz.utc)

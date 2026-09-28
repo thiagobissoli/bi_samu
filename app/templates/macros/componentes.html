@@ -1,0 +1,86 @@
+{#
+  Componentes ricos (§32) — Wizard, Kanban e Calendário.
+
+  Cada um exige o plugin correspondente no bloco `plugins` da página:
+      {% block plugins %}{% include "components/plugins/kanban.html" %}{% endblock %}
+#}
+
+{% macro wizard_inicio(passos, id="wizard") %}
+{#  `passos`: lista de rótulos. O Wizard é puro Bootstrap — sem plugin. #}
+<div class="wizard" id="{{ id }}">
+    <ul class="nav nav-pills nav-justified mb-4 wizard-passos">
+        {% for passo in passos %}
+        <li class="nav-item">
+            <button type="button" class="nav-link {{ 'active' if loop.first }}"
+                    data-passo="{{ loop.index0 }}" disabled>
+                <span class="badge rounded-pill text-bg-light me-1">{{ loop.index }}</span>
+                {{ passo }}
+            </button>
+        </li>
+        {% endfor %}
+    </ul>
+    <div class="wizard-conteudo">
+{% endmacro %}
+
+{% macro wizard_passo(indice) %}
+        <div class="wizard-painel" data-painel="{{ indice }}"
+             {% if indice != 0 %}style="display:none"{% endif %}>
+{% endmacro %}
+
+{% macro wizard_fim_passo() %}
+        </div>
+{% endmacro %}
+
+{% macro wizard_fim(rotulo_final="Concluir") %}
+    </div>
+    <div class="d-flex justify-content-between mt-4">
+        <button type="button" class="btn btn-outline-secondary wizard-voltar" disabled>
+            <i class="fa-solid fa-arrow-left"></i> Voltar
+        </button>
+        <div>
+            <button type="button" class="btn btn-primary wizard-avancar">
+                Avançar <i class="fa-solid fa-arrow-right"></i>
+            </button>
+            <button type="submit" class="btn btn-success wizard-concluir" style="display:none">
+                <i class="fa-solid fa-check"></i> {{ rotulo_final }}
+            </button>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro kanban(colunas, id="kanban") %}
+{#  `colunas`: lista de dicts {id, titulo, cor, cards:[{id, titulo, texto}]}.
+    Ao soltar um card, dispara o evento `kanban:mover` com origem e destino. #}
+<div class="row g-3 kanban" id="{{ id }}">
+    {% for coluna in colunas %}
+    <div class="col-md">
+        <div class="card h-100">
+            <div class="card-header text-bg-{{ coluna.cor | default('secondary') }} py-2">
+                <strong>{{ coluna.titulo }}</strong>
+                <span class="badge text-bg-light float-end">{{ coluna.cards | length }}</span>
+            </div>
+            <div class="card-body kanban-coluna p-2" data-coluna="{{ coluna.id }}"
+                 style="min-height: 120px;">
+                {% for card in coluna.cards %}
+                <div class="card mb-2 kanban-card" data-card="{{ card.id }}"
+                     style="cursor: grab;">
+                    <div class="card-body p-2">
+                        <strong class="d-block">{{ card.titulo }}</strong>
+                        {% if card.texto %}<small class="text-muted">{{ card.texto }}</small>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro calendario(id="calendario", eventos_url="", altura="auto") %}
+{#  `eventos_url` deve devolver JSON no formato do FullCalendar:
+    [{"title": "...", "start": "2026-08-13", "url": "/..."}]  #}
+<div id="{{ id }}" data-eventos="{{ eventos_url }}" data-altura="{{ altura }}"
+     class="calendario"></div>
+{% endmacro %}

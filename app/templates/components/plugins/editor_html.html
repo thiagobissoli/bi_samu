@@ -1,0 +1,37 @@
+{# Editor HTML (§32) — Quill. Use um <div class="editor-html" data-campo="corpo"></div>
+   junto de um <input type="hidden" name="corpo"> que recebe o conteúdo. #}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/quill/quill.snow.css') }}">
+<script src="{{ url_for('static', path='vendor/quill/quill.min.js') }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".editor-html").forEach(function (area) {
+        var campo = document.querySelector('[name="' + area.dataset.campo + '"]');
+        var editor = new Quill(area, {
+            theme: "snow",
+            placeholder: area.dataset.placeholder || "Escreva aqui...",
+            modules: {
+                toolbar: [
+                    [{ header: [1, 2, 3, false] }],
+                    ["bold", "italic", "underline", "strike"],
+                    [{ list: "ordered" }, { list: "bullet" }],
+                    [{ color: [] }, { background: [] }],
+                    ["link", "blockquote", "code-block"],
+                    ["clean"]
+                ]
+            }
+        });
+        if (campo && campo.value) { editor.clipboard.dangerouslyPasteHTML(campo.value); }
+        /* O <input hidden> é o que vai no POST — sincroniza a cada digitação. */
+        editor.on("text-change", function () {
+            if (campo) { campo.value = editor.root.innerHTML; }
+        });
+    });
+});
+</script>
+<style>
+    .ql-toolbar.ql-snow, .ql-container.ql-snow { border-color: var(--bs-border-color); }
+    .ql-container { min-height: 180px; font-family: inherit; font-size: 1rem; }
+    [data-bs-theme="dark"] .ql-toolbar .ql-stroke { stroke: var(--bs-body-color); }
+    [data-bs-theme="dark"] .ql-toolbar .ql-fill { fill: var(--bs-body-color); }
+    [data-bs-theme="dark"] .ql-picker-label { color: var(--bs-body-color); }
+</style>

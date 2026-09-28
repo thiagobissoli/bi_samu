@@ -23,6 +23,7 @@ BASE_PERMISSIONS: list[tuple[str, str, str]] = [
     ("empresa.criar", "Criar empresas", "empresas"),
     ("empresa.editar", "Editar empresas", "empresas"),
     ("empresa.excluir", "Excluir empresas", "empresas"),
+    ("empresa.trocar", "Trocar de empresa (operador da plataforma)", "empresas"),
     ("usuario.listar", "Listar usuários", "usuarios"),
     ("usuario.criar", "Criar usuários", "usuarios"),
     ("usuario.editar", "Editar usuários", "usuarios"),
@@ -42,6 +43,9 @@ BASE_PERMISSIONS: list[tuple[str, str, str]] = [
     ("upload.listar", "Listar arquivos", "uploads"),
     ("upload.enviar", "Enviar arquivos", "uploads"),
     ("upload.excluir", "Excluir arquivos", "uploads"),
+    ("apikey.listar", "Listar chaves de API", "api"),
+    ("apikey.criar", "Criar chaves de API", "api"),
+    ("apikey.revogar", "Revogar chaves de API", "api"),
 ]
 
 DEFAULT_CONFIGS = [

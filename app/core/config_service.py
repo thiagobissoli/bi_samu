@@ -13,10 +13,22 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.cache import cache
 from app.core.crypto import decrypt_value, encrypt_value, is_sensitive
 from app.models import Configuracao
 
-_cache: dict[tuple[int, str], str | None] = {}
+TTL_CONFIG = 300
+
+
+class _NaoEncontrado:
+    """Distingue 'não está no cache' de 'está no cache e vale None'."""
+
+
+_NAO_ENCONTRADO = _NaoEncontrado()
+
+
+def _chave(empresa_id: int, chave: str) -> str:
+    return f"config:{empresa_id}:{chave}"
 
 
 def get_config(
@@ -25,9 +37,9 @@ def get_config(
     default: str | None = None,
     empresa_id: int = 1,
 ) -> str | None:
-    key = (empresa_id, chave)
-    if key in _cache:
-        return _cache[key] if _cache[key] is not None else default
+    em_cache = cache.get(_chave(empresa_id, chave), _NAO_ENCONTRADO)
+    if em_cache is not _NAO_ENCONTRADO:
+        return em_cache if em_cache is not None else default
 
     item = db.scalar(select(Configuracao).where(
         Configuracao.empresa_id == empresa_id,
@@ -35,7 +47,7 @@ def get_config(
         Configuracao.deleted_at.is_(None),
     ))
     valor = decrypt_value(item.valor) if item is not None and item.valor else None
-    _cache[key] = valor
+    cache.set(_chave(empresa_id, chave), valor, TTL_CONFIG)
     return valor if valor is not None else default
 
 
@@ -70,9 +82,9 @@ def set_config(
 
 def invalidate_config(empresa_id: int | None = None, chave: str | None = None) -> None:
     if empresa_id is None:
-        _cache.clear()
+        cache.invalidate("config:*")
     elif chave is None:
-        for key in [k for k in _cache if k[0] == empresa_id]:
-            _cache.pop(key, None)
+        cache.invalidate(f"config:{empresa_id}:*")
     else:
-        _cache.pop((empresa_id, chave), None)
+        cache.delete(_chave(empresa_id, chave))
+

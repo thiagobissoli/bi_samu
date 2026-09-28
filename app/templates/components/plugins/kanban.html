@@ -1,0 +1,23 @@
+{# SortableJS (§32) — arrastar e soltar em quadros kanban. #}
+<script src="{{ url_for('static', path='vendor/sortable/Sortable.min.js') }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".kanban-coluna").forEach(function (coluna) {
+        new Sortable(coluna, {
+            group: "kanban", animation: 150, ghostClass: "opacity-50",
+            onEnd: function (evento) {
+                /* Quem usa o componente decide o que fazer — normalmente um
+                   POST via fetch/HTMX para persistir a nova posição. */
+                document.dispatchEvent(new CustomEvent("kanban:mover", {
+                    detail: {
+                        card: evento.item.dataset.card,
+                        de: evento.from.dataset.coluna,
+                        para: evento.to.dataset.coluna,
+                        posicao: evento.newIndex
+                    }
+                }));
+            }
+        });
+    });
+});
+</script>

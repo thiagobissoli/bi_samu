@@ -1,0 +1,35 @@
+{# DataTables (§32, §35.10) — inclua no bloco `plugins` da sua página:
+
+       {% block plugins %}{% include "components/plugins/datatable.html" %}{% endblock %}
+
+   e marque a tabela com class="datatable". #}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/datatables/dataTables.bootstrap5.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/datatables/responsive.bootstrap5.min.css') }}">
+<script src="{{ url_for('static', path='vendor/datatables/dataTables.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/datatables/dataTables.bootstrap5.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/datatables/dataTables.responsive.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/datatables/responsive.bootstrap5.min.js') }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("table.datatable").forEach(function (tabela) {
+        new DataTable(tabela, {
+            responsive: true,
+            pageLength: parseInt(tabela.dataset.pagina || "25", 10),
+            order: [],
+            language: {
+                emptyTable: "Nenhum registro encontrado",
+                info: "Mostrando _START_ a _END_ de _TOTAL_ registros",
+                infoEmpty: "Mostrando 0 registros",
+                infoFiltered: "(filtrado de _MAX_ registros)",
+                lengthMenu: "Mostrar _MENU_ registros",
+                loadingRecords: "Carregando...",
+                processing: "Processando...",
+                search: "Pesquisar:",
+                zeroRecords: "Nenhum registro encontrado",
+                paginate: { first: "Primeiro", last: "Último",
+                            next: "Próximo", previous: "Anterior" }
+            }
+        });
+    });
+});
+</script>

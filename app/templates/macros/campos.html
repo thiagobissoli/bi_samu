@@ -1,0 +1,169 @@
+{#
+  Macros de formulário (§35.9) — evitam HTML repetido e padronizam
+  label, ajuda, obrigatoriedade e máscara em todos os módulos.
+
+  Uso:
+      {% import "macros/campos.html" as campos %}
+      {{ campos.texto("nome", "Nome", item.nome if item, obrigatorio=True) }}
+      {{ campos.cpf("cpf", "CPF", item.cpf if item) }}
+#}
+
+{% macro _abre(nome, rotulo, obrigatorio, coluna) %}
+<div class="{{ coluna }}">
+    <label for="{{ nome }}" class="form-label">
+        {{ rotulo }}{% if obrigatorio %} <span class="text-danger">*</span>{% endif %}
+    </label>
+{% endmacro %}
+
+{% macro _fecha(ajuda) %}
+    {% if ajuda %}<div class="form-text">{{ ajuda }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro texto(nome, rotulo, valor="", obrigatorio=False, maxlength=255,
+               placeholder="", ajuda="", coluna="mb-3", tipo="text") %}
+{{ _abre(nome, rotulo, obrigatorio, coluna) }}
+    <input type="{{ tipo }}" class="form-control" id="{{ nome }}" name="{{ nome }}"
+           value="{{ valor or '' }}" maxlength="{{ maxlength }}"
+           placeholder="{{ placeholder }}"{% if obrigatorio %} required{% endif %}>
+{{ _fecha(ajuda) }}
+{% endmacro %}
+
+{% macro email(nome, rotulo="E-mail", valor="", obrigatorio=False, ajuda="", coluna="mb-3") %}
+{{ texto(nome, rotulo, valor, obrigatorio, 255, "nome@empresa.com", ajuda, coluna, "email") }}
+{% endmacro %}
+
+{% macro senha(nome, rotulo="Senha", obrigatorio=False, ajuda="", coluna="mb-3") %}
+{{ _abre(nome, rotulo, obrigatorio, coluna) }}
+    <input type="password" class="form-control" id="{{ nome }}" name="{{ nome }}"
+           minlength="8" autocomplete="new-password"{% if obrigatorio %} required{% endif %}>
+{{ _fecha(ajuda) }}
+{% endmacro %}
+
+{% macro numero(nome, rotulo, valor="", obrigatorio=False, minimo=None, maximo=None,
+                passo="1", ajuda="", coluna="mb-3") %}
+{{ _abre(nome, rotulo, obrigatorio, coluna) }}
+    <input type="number" class="form-control" id="{{ nome }}" name="{{ nome }}"
+           value="{{ valor if valor is not none else '' }}" step="{{ passo }}"
+           {% if minimo is not none %}min="{{ minimo }}"{% endif %}
+           {% if maximo is not none %}max="{{ maximo }}"{% endif %}
+           {% if obrigatorio %}required{% endif %}>
+{{ _fecha(ajuda) }}
+{% endmacro %}
+
+{# --- Campos com máscara (Inputmask, aplicada por data-mask) --- #}
+
+{% macro _mascarado(nome, rotulo, valor, obrigatorio, mascara, placeholder,
+                    ajuda, coluna, inputmode="text") %}
+{{ _abre(nome, rotulo, obrigatorio, coluna) }}
+    <input type="text" class="form-control" id="{{ nome }}" name="{{ nome }}"
+           value="{{ valor or '' }}" data-mask="{{ mascara }}"
+           placeholder="{{ placeholder }}" inputmode="{{ inputmode }}"
+           {% if obrigatorio %}required{% endif %}>
+{{ _fecha(ajuda) }}
+{% endmacro %}
+
+{% macro cpf(nome="cpf", rotulo="CPF", valor="", obrigatorio=False, ajuda="", coluna="mb-3") %}
+{{ _mascarado(nome, rotulo, valor, obrigatorio, "999.999.999-99",
+              "000.000.000-00", ajuda, coluna, "numeric") }}
+{% endmacro %}
+
+{% macro cnpj(nome="cnpj", rotulo="CNPJ", valor="", obrigatorio=False, ajuda="", coluna="mb-3") %}
+{{ _mascarado(nome, rotulo, valor, obrigatorio, "99.999.999/9999-99",
+              "00.000.000/0000-00", ajuda, coluna, "numeric") }}
+{% endmacro %}
+
+{% macro telefone(nome="telefone", rotulo="Telefone", valor="", obrigatorio=False,
+                  ajuda="", coluna="mb-3") %}
+{{ _mascarado(nome, rotulo, valor, obrigatorio, "(99) [9]9999-9999",
+              "(00) 00000-0000", ajuda, coluna, "tel") }}
+{% endmacro %}
+
+{% macro cep(nome="cep", rotulo="CEP", valor="", obrigatorio=False, ajuda="", coluna="mb-3") %}
+{{ _mascarado(nome, rotulo, valor, obrigatorio, "99999-999", "00000-000",
+              ajuda, coluna, "numeric") }}
+{% endmacro %}
+
+{% macro moeda(nome, rotulo, valor="", obrigatorio=False, ajuda="", coluna="mb-3") %}
+{{ _abre(nome, rotulo, obrigatorio, coluna) }}
+    <div class="input-group">
+        <span class="input-group-text">R$</span>
+        <input type="text" class="form-control text-end" id="{{ nome }}" name="{{ nome }}"
+               value="{{ valor or '' }}" data-mask="moeda" inputmode="decimal"
+               placeholder="0,00"{% if obrigatorio %} required{% endif %}>
+    </div>
+{{ _fecha(ajuda) }}
+{% endmacro %}
+
+{% macro data(nome, rotulo, valor="", obrigatorio=False, ajuda="", coluna="mb-3") %}
+{{ _abre(nome, rotulo, obrigatorio, coluna) }}
+    <input type="date" class="form-control" id="{{ nome }}" name="{{ nome }}"
+           value="{{ valor or '' }}"{% if obrigatorio %} required{% endif %}>
+{{ _fecha(ajuda) }}
+{% endmacro %}
+
+{% macro data_hora(nome, rotulo, valor="", obrigatorio=False, ajuda="", coluna="mb-3") %}
+{{ _abre(nome, rotulo, obrigatorio, coluna) }}
+    <input type="datetime-local" class="form-control" id="{{ nome }}" name="{{ nome }}"
+           value="{{ valor or '' }}"{% if obrigatorio %} required{% endif %}>
+{{ _fecha(ajuda) }}
+{% endmacro %}
+
+{# --- Seleção --- #}
+
+{% macro select(nome, rotulo, opcoes, valor=None, obrigatorio=False, busca=False,
+                vazio="", ajuda="", coluna="mb-3") %}
+{#  `opcoes` é uma lista de (valor, rótulo) ou de strings. #}
+{{ _abre(nome, rotulo, obrigatorio, coluna) }}
+    <select class="form-select{% if busca %} select-busca{% endif %}"
+            id="{{ nome }}" name="{{ nome }}"{% if obrigatorio %} required{% endif %}>
+        {% if vazio %}<option value="">{{ vazio }}</option>{% endif %}
+        {% for opcao in opcoes %}
+            {% set ov = opcao[0] if opcao is not string else opcao %}
+            {% set orot = opcao[1] if opcao is not string else opcao %}
+            <option value="{{ ov }}"{% if valor is not none and ov|string == valor|string %} selected{% endif %}>{{ orot }}</option>
+        {% endfor %}
+    </select>
+{{ _fecha(ajuda) }}
+{% endmacro %}
+
+{% macro textarea(nome, rotulo, valor="", obrigatorio=False, linhas=3,
+                  maxlength=1000, ajuda="", coluna="mb-3") %}
+{{ _abre(nome, rotulo, obrigatorio, coluna) }}
+    <textarea class="form-control" id="{{ nome }}" name="{{ nome }}" rows="{{ linhas }}"
+              maxlength="{{ maxlength }}"{% if obrigatorio %} required{% endif %}>{{ valor or '' }}</textarea>
+{{ _fecha(ajuda) }}
+{% endmacro %}
+
+{% macro checkbox(nome, rotulo, marcado=False, ajuda="", coluna="mb-3") %}
+<div class="{{ coluna }}">
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" value="true"
+               id="{{ nome }}" name="{{ nome }}"{% if marcado %} checked{% endif %}>
+        <label class="form-check-label" for="{{ nome }}">{{ rotulo }}</label>
+    </div>
+    {% if ajuda %}<div class="form-text">{{ ajuda }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro switch(nome, rotulo, marcado=False, ajuda="", coluna="mb-3") %}
+<div class="{{ coluna }}">
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" value="true"
+               id="{{ nome }}" name="{{ nome }}"{% if marcado %} checked{% endif %}>
+        <label class="form-check-label" for="{{ nome }}">{{ rotulo }}</label>
+    </div>
+    {% if ajuda %}<div class="form-text">{{ ajuda }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{# --- Rodapé de formulário padronizado (§37.9) --- #}
+
+{% macro acoes(voltar="/", rotulo_salvar="Salvar") %}
+<div class="card-footer d-flex gap-2">
+    <button type="submit" class="btn btn-primary">
+        <i class="fa-solid fa-check"></i> {{ rotulo_salvar }}
+    </button>
+    <a href="{{ voltar }}" class="btn btn-outline-secondary">Cancelar</a>
+</div>
+{% endmacro %}

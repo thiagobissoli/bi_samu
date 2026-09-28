@@ -37,6 +37,33 @@ def localdt(ctx, value, fmt: str = "%d/%m/%Y %H:%M"):
 templates.env.filters["localdt"] = localdt
 
 
+def _registrar_filtros() -> None:
+    """Helpers disponíveis nos templates (§35.22)."""
+    from app.core.helpers import DateHelper, FileHelper, MaskHelper, MoneyHelper, StringHelper
+
+    templates.env.filters.update({
+        "moeda": MoneyHelper.formatar,
+        "percentual": MoneyHelper.percentual,
+        "cpf": MaskHelper.cpf,
+        "cnpj": MaskHelper.cnpj,
+        "documento": MaskHelper.documento,
+        "telefone": MaskHelper.telefone,
+        "cep": MaskHelper.cep,
+        "slug": StringHelper.slug,
+        "truncar": StringHelper.truncar,
+        "iniciais": StringHelper.iniciais,
+        "primeiro_nome": StringHelper.primeiro_nome,
+        "mascarar": StringHelper.mascarar,
+        "tamanho_arquivo": FileHelper.tamanho_legivel,
+        "icone_arquivo": FileHelper.icone,
+        "idade": DateHelper.idade,
+        "humanizar": DateHelper.humanizar,
+    })
+
+
+_registrar_filtros()
+
+
 def render(request: Request, name: str, usuario=None, **context):
     """Resposta HTML padrão: injeta menu (filtrado por permissão), usuário,
     notificações não lidas (§21) e o fuso da empresa (§22)."""
@@ -47,6 +74,8 @@ def render(request: Request, name: str, usuario=None, **context):
     nao_lidas = 0
     tz = "UTC"
     aparencia = default_appearance()
+    empresas_tenant: list = []
+    empresa_ativa = None
     if usuario is not None:
         from app.core.config import settings
         from app.core.config_service import get_config
@@ -56,8 +85,16 @@ def render(request: Request, name: str, usuario=None, **context):
         db = SessionLocal()
         try:
             nao_lidas = unread_count(db, usuario.id)
-            tz = get_config(db, "timezone", settings.timezone, usuario.empresa_id)
-            aparencia = get_appearance(db, usuario.empresa_id)
+            tz = get_config(db, "timezone", settings.timezone, usuario.tenant_id)
+            aparencia = get_appearance(db, usuario.tenant_id)
+
+            # Seletor de empresa (§39.6): só consulta para quem pode trocar.
+            from app.core.tenant import empresa_ativa as _ativa, pode_trocar
+            from app.core.tenant import empresas_disponiveis
+
+            empresa_ativa = _ativa(db, usuario)
+            if pode_trocar(usuario):
+                empresas_tenant = empresas_disponiveis(db, usuario)
         finally:
             db.close()
 
@@ -68,6 +105,8 @@ def render(request: Request, name: str, usuario=None, **context):
         "notificacoes_nao_lidas": nao_lidas,
         "tz": tz,
         "aparencia": aparencia,
+        "empresas_tenant": empresas_tenant,
+        "empresa_ativa": empresa_ativa,
         **context,
     }
     return templates.TemplateResponse(request, name, ctx)

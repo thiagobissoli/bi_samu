@@ -1,0 +1,116 @@
+{#
+  Macros de interface (§32, §37) — cards, KPIs, badges, botões e estados vazios.
+
+  Uso:
+      {% import "macros/ui.html" as ui %}
+      {{ ui.kpi("Usuários", 42, "fa-users", "primary", "/usuarios/") }}
+      {{ ui.badge_status(item.ativo) }}
+      {{ ui.botao_excluir("/usuarios/3/delete", "Excluir este usuário?") }}
+#}
+
+{% macro kpi(rotulo, valor, icone="fa-chart-simple", cor="primary", url=None,
+             rodape="Ver todos") %}
+<div class="small-box text-bg-{{ cor }}">
+    <div class="inner">
+        <h3>{{ valor }}</h3>
+        <p>{{ rotulo }}</p>
+    </div>
+    <i class="small-box-icon fa-solid {{ icone }}"></i>
+    {% if url %}
+    <a href="{{ url }}" class="small-box-footer link-{{ 'dark' if cor == 'warning' else 'light' }}">
+        {{ rodape }} <i class="fa-solid fa-arrow-right"></i>
+    </a>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro badge_status(ativo, rotulo_sim="Ativo", rotulo_nao="Inativo") %}
+{% if ativo %}<span class="badge text-bg-success">{{ rotulo_sim }}</span>
+{% else %}<span class="badge text-bg-secondary">{{ rotulo_nao }}</span>{% endif %}
+{% endmacro %}
+
+{% macro badge(texto, cor="secondary") %}
+<span class="badge text-bg-{{ cor }}">{{ texto }}</span>
+{% endmacro %}
+
+{% macro botao_editar(url, titulo="Editar") %}
+<a href="{{ url }}" class="btn btn-outline-primary btn-sm" title="{{ titulo }}">
+    <i class="fa-solid fa-pen"></i>
+</a>
+{% endmacro %}
+
+{% macro botao_excluir(url, mensagem="Excluir este registro?", titulo="Excluir") %}
+{#  A confirmação é feita pelo SweetAlert2 (app.js intercepta data-confirm). #}
+<form method="post" action="{{ url }}" class="d-inline" data-confirm="{{ mensagem }}">
+    <button type="submit" class="btn btn-outline-danger btn-sm" title="{{ titulo }}">
+        <i class="fa-solid fa-trash"></i>
+    </button>
+</form>
+{% endmacro %}
+
+{% macro botao_ver(url, titulo="Visualizar") %}
+<a href="{{ url }}" class="btn btn-outline-secondary btn-sm" title="{{ titulo }}">
+    <i class="fa-solid fa-eye"></i>
+</a>
+{% endmacro %}
+
+{% macro vazio(mensagem="Nenhum registro encontrado.", icone="fa-inbox", acao=None,
+               rotulo_acao="Criar o primeiro") %}
+<div class="text-center text-muted py-5">
+    <i class="fa-solid {{ icone }} fa-2x mb-3 d-block opacity-50"></i>
+    <p class="mb-2">{{ mensagem }}</p>
+    {% if acao %}<a href="{{ acao }}" class="btn btn-primary btn-sm">
+        <i class="fa-solid fa-plus"></i> {{ rotulo_acao }}</a>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro card_inicio(titulo, icone="fa-folder", classe="") %}
+<div class="card {{ classe }}">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="card-title"><i class="fa-solid {{ icone }} me-2"></i>{{ titulo }}</h3>
+{% endmacro %}
+
+{% macro card_meio() %}
+    </div>
+    <div class="card-body">
+{% endmacro %}
+
+{% macro card_fim() %}
+    </div>
+</div>
+{% endmacro %}
+
+{% macro timeline(eventos) %}
+{#  `eventos`: lista de dicts com data, titulo, texto, icone, cor. #}
+<div class="timeline">
+    {% for evento in eventos %}
+    <div class="timeline-item">
+        <i class="fa-solid {{ evento.icone | default('fa-circle') }} bg-{{ evento.cor | default('primary') }}"></i>
+        <div class="timeline-body-wrapper">
+            <span class="timeline-time">
+                <i class="fa-regular fa-clock"></i> {{ evento.data }}
+            </span>
+            <h3 class="timeline-header">{{ evento.titulo }}</h3>
+            {% if evento.texto %}<div class="timeline-body">{{ evento.texto }}</div>{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro barra_busca(action, valor="", placeholder="Pesquisar...") %}
+<form method="get" action="{{ action }}" class="row g-2 mb-3">
+    <div class="col-auto">
+        <input type="text" name="q" value="{{ valor }}" class="form-control form-control-sm"
+               placeholder="{{ placeholder }}">
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-magnifying-glass"></i> Buscar
+        </button>
+        {% if valor %}
+        <a href="{{ action }}" class="btn btn-link btn-sm">Limpar</a>
+        {% endif %}
+    </div>
+</form>
+{% endmacro %}

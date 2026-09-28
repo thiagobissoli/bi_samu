@@ -64,6 +64,11 @@ def user_from_request(request: Request, db: Session) -> Usuario | None:
     usuario = db.get(Usuario, sessao.usuario_id)
     if usuario is None or not usuario.ativo or usuario.deleted_at is not None:
         return None
+
+    # Empresa ativa da sessão (§36.9) — importado aqui para evitar ciclo.
+    from app.core.tenant import aplicar_sessao
+
+    aplicar_sessao(usuario, sessao)
     return usuario
 
 

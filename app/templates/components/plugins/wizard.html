@@ -1,0 +1,39 @@
+{# Wizard (§32) — navegação entre passos, validando o passo atual antes de avançar. #}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".wizard").forEach(function (wizard) {
+        var paineis = wizard.querySelectorAll(".wizard-painel");
+        var abas = wizard.querySelectorAll(".wizard-passos .nav-link");
+        var voltar = wizard.querySelector(".wizard-voltar");
+        var avancar = wizard.querySelector(".wizard-avancar");
+        var concluir = wizard.querySelector(".wizard-concluir");
+        var atual = 0;
+
+        function pintar() {
+            paineis.forEach(function (p, i) { p.style.display = i === atual ? "" : "none"; });
+            abas.forEach(function (a, i) { a.classList.toggle("active", i === atual); });
+            voltar.disabled = atual === 0;
+            var ultimo = atual === paineis.length - 1;
+            avancar.style.display = ultimo ? "none" : "";
+            concluir.style.display = ultimo ? "" : "none";
+        }
+
+        /* Só avança se os campos obrigatórios do passo atual estiverem válidos. */
+        function passoValido() {
+            var campos = paineis[atual].querySelectorAll("input, select, textarea");
+            for (var i = 0; i < campos.length; i++) {
+                if (!campos[i].checkValidity()) { campos[i].reportValidity(); return false; }
+            }
+            return true;
+        }
+
+        avancar.addEventListener("click", function () {
+            if (passoValido() && atual < paineis.length - 1) { atual++; pintar(); }
+        });
+        voltar.addEventListener("click", function () {
+            if (atual > 0) { atual--; pintar(); }
+        });
+        pintar();
+    });
+});
+</script>

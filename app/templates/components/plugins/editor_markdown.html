@@ -1,0 +1,25 @@
+{# Editor Markdown (§32) — EasyMDE. Aplique class="editor-markdown" no <textarea>. #}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/easymde/easymde.min.css') }}">
+<script src="{{ url_for('static', path='vendor/easymde/easymde.min.js') }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("textarea.editor-markdown").forEach(function (campo) {
+        new EasyMDE({
+            element: campo,
+            spellChecker: false,
+            status: ["lines", "words"],
+            placeholder: campo.placeholder || "Escreva em Markdown...",
+            toolbar: ["bold", "italic", "heading", "|", "quote", "unordered-list",
+                      "ordered-list", "|", "link", "image", "table", "|",
+                      "preview", "side-by-side", "fullscreen", "|", "guide"]
+        });
+    });
+});
+</script>
+<style>
+    .EasyMDEContainer .CodeMirror { background: var(--bs-body-bg); color: var(--bs-body-color);
+        border-color: var(--bs-border-color); }
+    .editor-toolbar { border-color: var(--bs-border-color); }
+    [data-bs-theme="dark"] .editor-toolbar button { color: var(--bs-body-color) !important; }
+    [data-bs-theme="dark"] .CodeMirror-cursor { border-color: var(--bs-body-color); }
+</style>

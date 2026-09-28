@@ -93,8 +93,9 @@ alembic upgrade head
 python manage.py criar-usuario --nome "Administrador" --email seu@email.com --perfil Administrador
 ```
 
-Se `manage.py` não existir neste projeto, o primeiro acesso cria o admin padrão
-pelos seeds — troque a senha logo depois.
+O `manage.py` valida o e-mail e a força da senha antes de gravar. Se preferir,
+o primeiro acesso também cria o admin padrão pelos seeds — nesse caso troque a
+senha logo depois.
 
 ---
 

@@ -4,8 +4,9 @@
 
 {% block content %}
 <div class="card">
-    <div class="card-header">
+    <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="card-title"><i class="fa-solid fa-clipboard-list me-2"></i>Trilha de auditoria (§11)</h3>
+        <div class="d-flex gap-2">{% set export_url = "/auditoria/export" %}{% set export_qs = "&tabela=" ~ f_tabela ~ "&acao=" ~ f_acao %}{% include "components/export_buttons.html" %}</div>
     </div>
     <div class="card-body">
         <form method="get" action="/auditoria/" class="row g-2 mb-3">

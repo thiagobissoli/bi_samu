@@ -6,9 +6,7 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="card-title"><i class="fa-solid fa-building me-2"></i>Empresas</h3>
-        {% if "empresa.criar" in usuario_logado.permissoes %}
-        <a href="/empresas/create" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Nova</a>
-        {% endif %}
+<div class="d-flex gap-2">{% if "empresa.criar" in usuario_logado.permissoes %}<a href="/empresas/create" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Nova</a>{% endif %}{% set export_url = "/empresas/export" %}{% set export_qs = ("&q=" ~ q) if q else "" %}{% include "components/export_buttons.html" %}</div>
     </div>
     <div class="card-body">
         <form method="get" action="/empresas/" class="row g-2 mb-3">

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "macros/campos.html" as campos %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/api-keys">API</a></li>
+<li class="breadcrumb-item active">Nova chave</li>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header"><h3 class="card-title">Nova chave de API</h3></div>
+    <form method="post" action="/api-keys/create">
+        <div class="card-body">
+            <div class="row">
+                {{ campos.texto("nome", "Nome da integração", obrigatorio=True,
+                                placeholder="ex.: Integração Faturamento",
+                                coluna="col-md-6 mb-3") }}
+                {{ campos.numero("dias_validade", "Validade (dias)", 90, minimo=0,
+                                 ajuda="0 = sem expiração", coluna="col-md-3 mb-3") }}
+            </div>
+
+            <label class="form-label fw-bold">Escopos</label>
+            <p class="text-muted"><small>
+                A chave só pode fazer o que estiver marcado aqui — e apenas se o seu
+                usuário também tiver a permissão. Marque o mínimo necessário.
+            </small></p>
+            <div class="row">
+                {% set modulos = escopos | groupby("modulo") %}
+                {% for modulo, itens in modulos %}
+                <div class="col-md-4 mb-3">
+                    <div class="card card-outline">
+                        <div class="card-header py-2"><strong>{{ modulo | title }}</strong></div>
+                        <div class="card-body py-2">
+                            {% for permissao in itens %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="escopos"
+                                       value="{{ permissao.codigo }}" id="e{{ permissao.id }}">
+                                <label class="form-check-label" for="e{{ permissao.id }}">
+                                    <code>{{ permissao.codigo }}</code>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {{ campos.acoes(voltar="/api-keys", rotulo_salvar="Gerar chave") }}
+    </form>
+</div>
+{% endblock %}

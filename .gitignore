@@ -13,3 +13,8 @@ uvicorn.log
 .uvicorn.pid
 .DS_Store
 *.egg-info/
+
+# Artefatos do 'saas upgrade' (o .saas-framework e o snapshot base SÃO versionados)
+.saas-backup-*/
+*.novo
+*.merged

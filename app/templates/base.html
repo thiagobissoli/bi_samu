@@ -49,6 +49,7 @@
     {% block styles %}{% endblock %}
 </head>
 <body class="{{ aparencia.body_class }}">
+{% include "components/toasts.html" %}
 <div class="app-wrapper">
 
     <nav class="app-header navbar navbar-expand bg-body">
@@ -61,6 +62,29 @@
                 </li>
             </ul>
             <ul class="navbar-nav ms-auto">
+                {% if empresas_tenant | length > 1 %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown"
+                       title="Empresa ativa">
+                        <i class="fa-solid fa-building me-1"></i>
+                        {{ empresa_ativa.nome_fantasia if empresa_ativa else "Empresa" }}
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><h6 class="dropdown-header">Trocar de empresa</h6></li>
+                        {% for empresa in empresas_tenant %}
+                        <li>
+                            <form method="post" action="/empresas/trocar">
+                                <input type="hidden" name="empresa_id" value="{{ empresa.id }}">
+                                <button type="submit" class="dropdown-item
+                                    {% if empresa_ativa and empresa.id == empresa_ativa.id %}active{% endif %}">
+                                    {{ empresa.nome_fantasia }}
+                                </button>
+                            </form>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </li>
+                {% endif %}
                 <li class="nav-item">
                     <a class="nav-link" href="#" id="theme-toggle" title="Alternar tema">
                         <i class="fa-solid fa-moon"></i>
@@ -190,6 +214,11 @@
 <script src="{{ url_for('static', path='vendor/adminlte/js/adminlte.min.js') }}"></script>
 <script src="{{ url_for('static', path='vendor/htmx/htmx.min.js') }}"></script>
 <script src="{{ url_for('static', path='vendor/alpinejs/alpine.min.js') }}" defer></script>
+<script src="{{ url_for('static', path='vendor/inputmask/inputmask.min.js') }}"></script>
+<script src="{{ url_for('static', path='vendor/sweetalert2/sweetalert2.all.min.js') }}"></script>
+<script src="{{ url_for('static', path='js/app.js') }}"></script>
+<script src="{{ url_for('static', path='js/projeto.js') }}"></script>
+{% block plugins %}{% endblock %}
 <script>
 // Dark mode (§37.16) — preferência salva no navegador.
 (function () {

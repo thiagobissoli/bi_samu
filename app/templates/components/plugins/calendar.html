@@ -1,0 +1,25 @@
+{# FullCalendar (§32) — use a macro `componentes.calendario()`. #}
+<script src="{{ url_for('static', path='vendor/fullcalendar/fullcalendar.min.js') }}"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".calendario").forEach(function (elemento) {
+        var calendario = new FullCalendar.Calendar(elemento, {
+            initialView: "dayGridMonth",
+            locale: "pt-br",
+            height: elemento.dataset.altura || "auto",
+            headerToolbar: {
+                left: "prev,next hoje",
+                center: "title",
+                right: "dayGridMonth,timeGridWeek,listWeek"
+            },
+            customButtons: {
+                hoje: { text: "Hoje", click: function () { calendario.today(); } }
+            },
+            buttonText: { month: "Mês", week: "Semana", list: "Lista" },
+            noEventsText: "Nenhum evento no período",
+            events: elemento.dataset.eventos || []
+        });
+        calendario.render();
+    });
+});
+</script>

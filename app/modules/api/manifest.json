@@ -1,0 +1,28 @@
+{
+    "name": "API",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [
+        "usuarios"
+    ],
+    "permissions": [
+        "apikey.listar",
+        "apikey.criar",
+        "apikey.revogar"
+    ],
+    "menu": [
+        {
+            "label": "API",
+            "url": "/api-keys",
+            "icon": "fa-key",
+            "permission": "apikey.listar",
+            "order": 65,
+            "group": "sistema"
+        }
+    ],
+    "routes": [
+        "/api-keys",
+        "/api/token",
+        "/api/v1"
+    ]
+}

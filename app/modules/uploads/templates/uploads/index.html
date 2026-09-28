@@ -6,7 +6,10 @@
 <div class="row g-3">
     <div class="col-md-8">
         <div class="card">
-            <div class="card-header"><h3 class="card-title"><i class="fa-solid fa-upload me-2"></i>Arquivos</h3></div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title"><i class="fa-solid fa-upload me-2"></i>Arquivos</h3>
+                <div class="d-flex gap-2">{% set export_url = "/uploads/export" %}{% set export_qs = ("&q=" ~ q) if q else "" %}{% include "components/export_buttons.html" %}</div>
+            </div>
             <div class="card-body">
                 <form method="get" action="/uploads/" class="row g-2 mb-3">
                     <div class="col-auto"><input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Pesquisar..."></div>

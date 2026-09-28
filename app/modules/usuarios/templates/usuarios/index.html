@@ -6,9 +6,7 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="card-title"><i class="fa-solid fa-users me-2"></i>Usuários</h3>
-        {% if "usuario.criar" in usuario_logado.permissoes %}
-        <a href="/usuarios/create" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Novo</a>
-        {% endif %}
+<div class="d-flex gap-2">{% if "usuario.criar" in usuario_logado.permissoes %}<a href="/usuarios/create" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Novo</a>{% endif %}{% set export_url = "/usuarios/export" %}{% set export_qs = ("&q=" ~ q) if q else "" %}{% include "components/export_buttons.html" %}</div>
     </div>
     <div class="card-body">
         <form method="get" action="/usuarios/" class="row g-2 mb-3">

@@ -1,0 +1,18 @@
+{#  Visualizador de PDF (§32).
+
+    Usa o visualizador nativo do navegador (<object>), que é universal e não
+    custa nenhum KB de biblioteca. O <a> de download é o fallback para
+    ambientes sem suporte embutido — celulares antigos, principalmente.
+
+    Espera `pdf_url` e, opcionalmente, `pdf_altura`.  #}
+<div class="ratio" style="--bs-aspect-ratio: {{ pdf_altura | default('130%') }};">
+    <object data="{{ pdf_url }}" type="application/pdf" class="rounded border">
+        <div class="d-flex flex-column align-items-center justify-content-center h-100 p-4">
+            <i class="fa-solid fa-file-pdf fa-2x text-danger mb-3"></i>
+            <p class="text-muted mb-3">Seu navegador não exibe PDF embutido.</p>
+            <a href="{{ pdf_url }}" class="btn btn-primary btn-sm" download>
+                <i class="fa-solid fa-download"></i> Baixar o arquivo
+            </a>
+        </div>
+    </object>
+</div>

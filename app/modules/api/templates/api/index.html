@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% import "macros/ui.html" as ui %}
+
+{% block breadcrumb %}<li class="breadcrumb-item active">API</li>{% endblock %}
+
+{% block content %}
+{% if chave_nova %}
+<div class="alert alert-success">
+    <h5><i class="fa-solid fa-key me-2"></i>Chave criada</h5>
+    <p class="mb-2">Copie agora — ela <strong>não será exibida novamente</strong>.
+       O sistema guarda apenas o hash.</p>
+    <div class="input-group">
+        <input type="text" class="form-control font-monospace" id="chave-nova"
+               value="{{ chave_nova }}" readonly>
+        <button class="btn btn-outline-secondary" type="button"
+                onclick="navigator.clipboard.writeText(document.getElementById('chave-nova').value);
+                         notificar('Chave copiada.', 'sucesso');">
+            <i class="fa-solid fa-copy"></i> Copiar
+        </button>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="card-title"><i class="fa-solid fa-key me-2"></i>Chaves de API</h3>
+        {% if "apikey.criar" in usuario_logado.permissoes %}
+        <a href="/api-keys/create" class="btn btn-primary btn-sm">
+            <i class="fa-solid fa-plus"></i> Nova chave
+        </a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        {% if pg["items"] %}
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr><th>Nome</th><th>Prefixo</th><th>Escopos</th><th>Validade</th>
+                    <th>Último uso</th><th>Status</th><th class="text-end">Ações</th></tr>
+            </thead>
+            <tbody>
+            {% for item in pg["items"] %}
+            <tr>
+                <td>{{ item.nome }}</td>
+                <td><code>sk_{{ item.prefixo }}_•••</code></td>
+                <td>
+                    {% for escopo in item.lista_escopos[:3] %}
+                    <span class="badge text-bg-info">{{ escopo }}</span>
+                    {% endfor %}
+                    {% if item.lista_escopos | length > 3 %}
+                    <span class="badge text-bg-secondary">+{{ item.lista_escopos | length - 3 }}</span>
+                    {% elif not item.lista_escopos %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                <td>{{ item.expira_em | localdt if item.expira_em else "sem expiração" }}</td>
+                <td>
+                    {% if item.ultimo_uso %}{{ item.ultimo_uso | humanizar }}
+                    <small class="text-muted d-block">{{ item.total_usos }} chamada(s)</small>
+                    {% else %}<span class="text-muted">nunca usada</span>{% endif %}
+                </td>
+                <td>
+                    {% if item.revogada %}<span class="badge text-bg-danger">Revogada</span>
+                    {% elif not item.ativa %}<span class="badge text-bg-warning">Expirada</span>
+                    {% else %}<span class="badge text-bg-success">Ativa</span>{% endif %}
+                </td>
+                <td class="text-end">
+                    {% if not item.revogada and "apikey.revogar" in usuario_logado.permissoes %}
+                    <form method="post" action="/api-keys/{{ item.id }}/revogar" class="d-inline"
+                          data-confirm="Revogar a chave {{ item.nome }}? As integrações que a usam param de funcionar imediatamente.">
+                        <button class="btn btn-outline-danger btn-sm" title="Revogar">
+                            <i class="fa-solid fa-ban"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% include "components/pagination.html" %}
+        {% else %}
+        {{ ui.vazio("Nenhuma chave de API criada.", icone="fa-key",
+                    acao="/api-keys/create", rotulo_acao="Criar a primeira") }}
+        {% endif %}
+    </div>
+    <div class="card-footer">
+        <h6 class="mb-2">Como usar (§16)</h6>
+        <p class="mb-1"><small>1. Troque a chave por um token de 1 hora:</small></p>
+<pre class="bg-body-tertiary p-2 rounded"><code>curl -X POST {{ request.base_url }}api/token \
+  -H "Content-Type: application/json" \
+  -d '{"api_key": "sk_..."}'</code></pre>
+        <p class="mb-1"><small>2. Use o token nas chamadas:</small></p>
+<pre class="bg-body-tertiary p-2 rounded mb-0"><code>curl {{ request.base_url }}api/v1/usuarios \
+  -H "Authorization: Bearer &lt;access_token&gt;"</code></pre>
+        <p class="text-muted mt-2 mb-0"><small>
+            A documentação completa está no <a href="/api/docs">Swagger</a>.
+            Um escopo só funciona se o usuário dono da chave também tiver a permissão.
+        </small></p>
+    </div>
+</div>
+{% endblock %}

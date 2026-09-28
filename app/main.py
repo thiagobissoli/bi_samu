@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
@@ -10,6 +10,7 @@ from app.core.auth import get_current_user
 from app.core.middleware import SecurityHeadersMiddleware
 from app.core.config import settings
 from app.core.database import get_session, init_db
+from app.core.exceptions import registrar_handlers
 from app.core.modules import discover_modules
 from app.core.templating import render
 from app.models import Auditoria, Empresa, Log, Usuario
@@ -24,8 +25,32 @@ app = FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+registrar_handlers(app)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+
+@app.get("/live", tags=["Health"])
+def live() -> dict:
+    """Liveness (§39.21) — o processo está de pé.
+
+    Não toca em dependência alguma de propósito: se o banco cair, o
+    orquestrador deve parar de mandar tráfego (papel do /ready), não
+    reiniciar o processo.
+    """
+    return {"status": "alive", "app": settings.app_name}
+
+
+@app.get("/ready", tags=["Health"])
+def ready(response: Response, db: Session = Depends(get_session)) -> dict:
+    """Readiness (§39.21) — verifica banco, cache, disco e armazenamento."""
+    from app.core.health import verificar_dependencias
+
+    checagens, pronto = verificar_dependencias(db)
+    if not pronto:
+        response.status_code = 503
+    return {"status": "ready" if pronto else "not_ready",
+            "app": settings.app_name, "checks": checagens}
 
 
 @app.get("/health", tags=["Health"])

@@ -97,7 +97,10 @@ def test_pagina_mostra_chave_gravada_fora_do_catalogo():
 def _apagar(db, chave: str) -> None:
     from sqlalchemy import select
 
-    from app.core.config_service import _cache
+    # O cache do ConfigService passou a ser o CacheService (Redis com queda
+    # para memória); invalidate_config é a API pública que substitui o antigo
+    # dicionário interno `_cache`.
+    from app.core.config_service import invalidate_config
     from app.models import Configuracao
 
     item = db.scalar(select(Configuracao).where(
@@ -105,7 +108,7 @@ def _apagar(db, chave: str) -> None:
     if item is not None:
         db.delete(item)
         db.commit()
-    _cache.pop((1, chave), None)
+    invalidate_config(1, chave)
 
 
 def test_salvar_meta_pela_tela_muda_a_auditoria():

@@ -1,0 +1,22 @@
+{# Select2 (§32) — selects com busca. Requer jQuery (já carregado no base).
+   Marque o select com class="select-busca" (as macros fazem isso com busca=True). #}
+<link rel="stylesheet" href="{{ url_for('static', path='vendor/select2/select2.min.css') }}">
+<script src="{{ url_for('static', path='vendor/select2/select2.full.min.js') }}"></script>
+<script>
+$(function () {
+    $(".select-busca").select2({
+        theme: "default", width: "100%",
+        language: { noResults: function () { return "Nenhum resultado"; },
+                    searching: function () { return "Buscando..."; } }
+    });
+});
+</script>
+<style>
+    /* Alinha a altura do Select2 com os campos do Bootstrap 5 */
+    .select2-container--default .select2-selection--single { height: 38px; padding: 3px 0; }
+    [data-bs-theme="dark"] .select2-selection { background: var(--bs-body-bg) !important;
+        border-color: var(--bs-border-color) !important; }
+    [data-bs-theme="dark"] .select2-selection__rendered { color: var(--bs-body-color) !important; }
+    [data-bs-theme="dark"] .select2-dropdown { background: var(--bs-body-bg);
+        border-color: var(--bs-border-color); }
+</style>

@@ -1,0 +1,17 @@
+{# Botões de exportação (§38.16).
+   Espera `export_url` (ex.: "/usuarios/export") e, opcionalmente,
+   `export_qs` com os filtros atuais (ex.: "&q=maria"). #}
+<div class="btn-group">
+    <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle"
+            data-bs-toggle="dropdown" title="Exportar">
+        <i class="fa-solid fa-file-export"></i> Exportar
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" href="{{ export_url }}?formato=csv{{ export_qs | default('') }}">
+            <i class="fa-solid fa-file-csv me-2 text-success"></i>CSV</a></li>
+        <li><a class="dropdown-item" href="{{ export_url }}?formato=xlsx{{ export_qs | default('') }}">
+            <i class="fa-solid fa-file-excel me-2 text-success"></i>Excel</a></li>
+        <li><a class="dropdown-item" href="{{ export_url }}?formato=pdf{{ export_qs | default('') }}">
+            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>PDF</a></li>
+    </ul>
+</div>
