@@ -28,7 +28,7 @@ def index(
     registros = list(db.scalars(
         select(Configuracao).where(
             Configuracao.deleted_at.is_(None),
-            Configuracao.empresa_id == usuario.empresa_id,
+            Configuracao.empresa_id == usuario.tenant_id,
         ).order_by(Configuracao.chave)
     ))
     gravadas = {c.chave: c for c in registros}
@@ -80,13 +80,13 @@ def salvar(
     chave = chave.strip()
     # Campo sensível em branco = manter o valor atual (não sobrescrever).
     if not valor and is_sensitive(chave):
-        atual = get_config(db, chave, empresa_id=usuario.empresa_id)
+        atual = get_config(db, chave, empresa_id=usuario.tenant_id)
         if atual:
             return RedirectResponse("/configuracoes/", status_code=303)
 
-    anterior = get_config(db, chave, empresa_id=usuario.empresa_id)
+    anterior = get_config(db, chave, empresa_id=usuario.tenant_id)
     existia = anterior is not None
-    item = set_config(db, chave, valor, usuario.empresa_id, updated_by=usuario.id)
+    item = set_config(db, chave, valor, usuario.tenant_id, updated_by=usuario.id)
 
     record_audit(
         db, tabela="configuracoes",
@@ -111,12 +111,12 @@ def delete(
     """Exclusão lógica de uma chave (§36.7) — some da tela e o get_config
     volta a usar o valor padrão; o histórico permanece na auditoria."""
     item = db.get(Configuracao, item_id)
-    if item is not None and item.deleted_at is None and item.empresa_id == usuario.empresa_id:
-        anterior = get_config(db, item.chave, empresa_id=usuario.empresa_id)
+    if item is not None and item.deleted_at is None and item.empresa_id == usuario.tenant_id:
+        anterior = get_config(db, item.chave, empresa_id=usuario.tenant_id)
         item.deleted_at = utcnow()
         item.deleted_by = usuario.id
         db.commit()
-        invalidate_config(usuario.empresa_id, item.chave)
+        invalidate_config(usuario.tenant_id, item.chave)
         record_audit(db, tabela="configuracoes", acao="DELETE", registro_id=item.id,
                      valor_anterior={"chave": item.chave,
                                      "valor": mask_value(item.chave, anterior)},
@@ -136,7 +136,7 @@ def aparencia_form(
     from app.core.appearance import get_appearance
 
     return render(request, "configuracoes/aparencia.html", usuario,
-                  page_title="Aparência", a=get_appearance(db, usuario.empresa_id))
+                  page_title="Aparência", a=get_appearance(db, usuario.tenant_id))
 
 
 @router.post("/aparencia", include_in_schema=False)
@@ -160,7 +160,7 @@ def aparencia_salvar(
     from app.core.appearance import APPEARANCE_KEYS, get_appearance
     from app.core.storage import save_upload
 
-    antes = get_appearance(db, usuario.empresa_id)
+    antes = get_appearance(db, usuario.tenant_id)
 
     valores = {
         "brand_nome": brand_nome.strip(),
@@ -171,20 +171,20 @@ def aparencia_salvar(
         "cor_primaria": "" if cor_padrao == "sim" else cor_primaria.strip(),
     }
     for chave, valor in valores.items():
-        set_config(db, chave, valor, usuario.empresa_id, updated_by=usuario.id)
+        set_config(db, chave, valor, usuario.tenant_id, updated_by=usuario.id)
 
     if remover_logo == "sim":
-        set_config(db, "logo_arquivo_id", "", usuario.empresa_id, updated_by=usuario.id)
+        set_config(db, "logo_arquivo_id", "", usuario.tenant_id, updated_by=usuario.id)
     elif logo is not None and logo.filename:
         try:
-            arquivo = save_upload(db, logo, usuario.empresa_id, "sistema",
+            arquivo = save_upload(db, logo, usuario.tenant_id, "sistema",
                                   created_by=usuario.id)
             set_config(db, "logo_arquivo_id", str(arquivo.id),
-                       usuario.empresa_id, updated_by=usuario.id)
+                       usuario.tenant_id, updated_by=usuario.id)
         except ValueError:
             pass  # tipo/tamanho inválido: mantém a logo atual
 
-    depois = get_appearance(db, usuario.empresa_id)
+    depois = get_appearance(db, usuario.tenant_id)
     record_audit(db, tabela="configuracoes", acao="UPDATE", registro_id=None,
                  valor_anterior={k: antes.get(k) for k in APPEARANCE_KEYS},
                  valor_novo={k: depois.get(k) for k in APPEARANCE_KEYS},

@@ -55,14 +55,14 @@ def ready(response: Response, db: Session = Depends(get_session)) -> dict:
 
 @app.get("/health", tags=["Health"])
 def health(db: Session = Depends(get_session)) -> dict:
-    """Health check (§39.21) — inclui verificação do banco."""
-    try:
-        db.execute(select(1))
-        database = "ok"
-    except Exception:  # noqa: BLE001
-        database = "error"
-    return {"status": "ok" if database == "ok" else "degraded",
-            "app": settings.app_name, "database": database}
+    """Resumo do estado (§39.21) — sempre 200, para painéis e uptime checks."""
+    from app.core.health import verificar_dependencias
+
+    checagens, pronto = verificar_dependencias(db)
+    return {"status": "ok" if pronto else "degraded",
+            "app": settings.app_name,
+            "database": checagens["database"]["status"],
+            "checks": checagens}
 
 
 @app.get("/logo", include_in_schema=False)
@@ -77,7 +77,7 @@ def logo(request: Request, db: Session = Depends(get_session)):
     from app.models import Arquivo
 
     usuario = user_from_request(request, db)
-    empresa_id = usuario.empresa_id if usuario else 1
+    empresa_id = usuario.tenant_id if usuario else 1
     arquivo_id = get_config(db, "logo_arquivo_id", empresa_id=empresa_id)
     if not arquivo_id:
         raise HTTPException(status_code=404)

@@ -13,6 +13,7 @@ from app.core.database import get_session, utcnow
 from app.core.logs import write_log
 from app.core.pagination import paginate
 from app.core.security import generate_token, hash_password
+from app.core.export import export_response, tz_da_empresa
 from app.core.templating import render
 from app.models import Perfil, TokenSeguranca, Usuario
 
@@ -39,7 +40,7 @@ def index(
     # Isolamento multi-tenant (§36.9): somente usuários da empresa atual.
     query = select(Usuario).where(
         Usuario.deleted_at.is_(None),
-        Usuario.empresa_id == usuario.empresa_id,
+        Usuario.empresa_id == usuario.tenant_id,
     ).order_by(Usuario.id.desc())
     if q:
         query = query.where(Usuario.nome.ilike(f"%{q}%") | Usuario.email.ilike(f"%{q}%"))
@@ -71,7 +72,7 @@ def create(
     db: Session = Depends(get_session),
 ):
     item = Usuario(
-        empresa_id=usuario.empresa_id, nome=nome, email=email.strip().lower(),
+        empresa_id=usuario.tenant_id, nome=nome, email=email.strip().lower(),
         telefone=telefone or None, senha_hash=hash_password(senha),
         ativo=ativo, created_by=usuario.id,
     )
@@ -159,3 +160,33 @@ def delete(
         record_audit(db, tabela="usuarios", acao="DELETE", registro_id=item.id,
                      valor_anterior=antes, usuario=usuario, request=request)
     return RedirectResponse("/usuarios/", status_code=303)
+
+
+COLUNAS_EXPORT = [
+    ("id", "#"), ("nome", "Nome"), ("email", "E-mail"),
+    ("telefone", "Telefone"), ("ativo", "Ativo"),
+    ("email_confirmado", "E-mail confirmado"), ("ultimo_login", "Último login"),
+]
+
+
+@router.get("/export", include_in_schema=False)
+def export(
+    request: Request,
+    formato: str = "csv",
+    q: str | None = None,
+    usuario: Usuario = Depends(require_permission("usuario.listar")),
+    db: Session = Depends(get_session),
+):
+    """Exportação da listagem (§38.16) — respeita o filtro e o tenant."""
+    query = select(Usuario).where(
+        Usuario.deleted_at.is_(None),
+        Usuario.empresa_id == usuario.tenant_id,
+    ).order_by(Usuario.id)
+    if q:
+        query = query.where(Usuario.nome.ilike(f"%{q}%") | Usuario.email.ilike(f"%{q}%"))
+    itens = list(db.scalars(query))
+    record_audit(db, tabela="usuarios", acao="EXPORTACAO",
+                 valor_novo={"formato": formato, "registros": len(itens)},
+                 usuario=usuario, request=request)
+    return export_response(itens, COLUNAS_EXPORT, formato, "Usuários",
+                           tz=tz_da_empresa(db, usuario.tenant_id))

@@ -4,15 +4,18 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Raiz do projeto (pasta que contém app/) — âncora para caminhos relativos,
-# para que o servidor funcione igual independentemente do CWD de partida.
+# para que o servidor funcione igual independentemente do diretório de onde
+# for iniciado. Sem isso, subir o uvicorn de outra pasta apontaria para outro
+# banco e outra pasta de uploads, parecendo um "reset" das configurações.
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
     """Configuração centralizada (§35.23) — valores vêm do .env, nunca fixos."""
 
-    model_config = SettingsConfigDict(env_file=str(BASE_DIR / ".env"),
-                                      extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=str(BASE_DIR / ".env"), extra="ignore"
+    )
 
     app_name: str = "Qualidade SAMU"
     debug: bool = False
@@ -27,18 +30,29 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    s = Settings()
-    # Normaliza caminhos relativos para a raiz do projeto: iniciar o
-    # servidor de qualquer diretório deve usar sempre o MESMO banco e
-    # a MESMA pasta de uploads (evita "reset" de configurações).
+    settings = Settings()
+
+    # Normaliza caminhos relativos para a raiz do projeto.
     prefixo = "sqlite:///"
-    if s.database_url.startswith(prefixo):
-        caminho = s.database_url[len(prefixo):]
-        if not Path(caminho).is_absolute():
-            s.database_url = prefixo + str((BASE_DIR / caminho).resolve())
-    if not Path(s.upload_dir).is_absolute():
-        s.upload_dir = str((BASE_DIR / s.upload_dir).resolve())
-    return s
+    if settings.database_url.startswith(prefixo):
+        caminho = settings.database_url[len(prefixo):]
+        if caminho and not Path(caminho).is_absolute():
+            settings.database_url = prefixo + str((BASE_DIR / caminho).resolve())
+    if not Path(settings.upload_dir).is_absolute():
+        settings.upload_dir = str((BASE_DIR / settings.upload_dir).resolve())
+
+    # HS256 (JWT §6) exige 32+ bytes; a mesma chave protege as configurações
+    # sensíveis (§39.29). Fora de DEBUG, uma chave fraca é problema real.
+    if not settings.debug and len(settings.secret_key.encode()) < 32:
+        import warnings
+
+        warnings.warn(
+            "SECRET_KEY fraca (< 32 bytes). Gere uma com "
+            "`python -c \"import secrets; print(secrets.token_urlsafe(48))\"` "
+            "e ajuste o .env — trocá-la invalida os valores já criptografados.",
+            stacklevel=2,
+        )
+    return settings
 
 
 settings = get_settings()

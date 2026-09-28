@@ -6,9 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit, snapshot
-from app.core.auth import require_permission
+from app.core.auth import get_current_user, require_permission
 from app.core.database import get_session, utcnow
 from app.core.pagination import paginate
+from app.core.export import export_response, tz_da_empresa
 from app.core.templating import render
 from app.models import Empresa, Usuario
 
@@ -60,7 +61,7 @@ def create(
     db: Session = Depends(get_session),
 ):
     item = Empresa(
-        empresa_id=usuario.empresa_id, razao_social=razao_social,
+        empresa_id=usuario.tenant_id, razao_social=razao_social,
         nome_fantasia=nome_fantasia, cnpj=cnpj, email=email,
         telefone=telefone or None, plano=plano, status=status,
         created_by=usuario.id,
@@ -135,3 +136,45 @@ def delete(
         record_audit(db, tabela="empresas", acao="DELETE", registro_id=item.id,
                      valor_anterior=antes, usuario=usuario, request=request)
     return RedirectResponse("/empresas/", status_code=303)
+
+
+COLUNAS_EXPORT = [
+    ("id", "#"), ("nome_fantasia", "Nome fantasia"), ("razao_social", "Razão social"),
+    ("cnpj", "CNPJ"), ("email", "E-mail"), ("telefone", "Telefone"),
+    ("plano", "Plano"), ("status", "Status"),
+]
+
+
+@router.get("/export", include_in_schema=False)
+def export(
+    request: Request,
+    formato: str = "csv",
+    q: str | None = None,
+    usuario: Usuario = Depends(require_permission("empresa.listar")),
+    db: Session = Depends(get_session),
+):
+    itens = list(db.scalars(_query(q)))
+    record_audit(db, tabela="empresas", acao="EXPORTACAO",
+                 valor_novo={"formato": formato, "registros": len(itens)},
+                 usuario=usuario, request=request)
+    return export_response(itens, COLUNAS_EXPORT, formato, "Empresas",
+                           tz=tz_da_empresa(db, usuario.tenant_id))
+
+
+@router.post("/trocar", include_in_schema=False)
+def trocar(
+    request: Request,
+    empresa_id: int = Form(...),
+    usuario: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    """Assume o contexto de outra empresa (§39.6). Exige `empresa.trocar`."""
+    from app.core.tenant import token_da_requisicao, trocar_empresa
+
+    if trocar_empresa(db, usuario, empresa_id, token_da_requisicao(request)):
+        record_audit(db, tabela="empresas", acao="TROCA_EMPRESA",
+                     registro_id=empresa_id,
+                     valor_novo={"empresa_id": empresa_id},
+                     usuario=usuario, request=request)
+    destino = request.headers.get("referer") or "/"
+    return RedirectResponse(destino, status_code=303)

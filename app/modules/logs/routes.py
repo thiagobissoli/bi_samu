@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.auth import require_permission
 from app.core.database import get_session
 from app.core.pagination import paginate
+from app.core.audit import record_audit
+from app.core.export import export_response, tz_da_empresa
 from app.core.templating import render
 from app.models import Log, Usuario
 
@@ -25,7 +27,7 @@ def index(
     db: Session = Depends(get_session),
 ):
     query = select(Log).where(
-        Log.empresa_id == usuario.empresa_id
+        Log.empresa_id == usuario.tenant_id
     ).order_by(Log.id.desc())
     if nivel:
         query = query.where(Log.nivel == nivel)
@@ -37,3 +39,33 @@ def index(
                   pg=pg, niveis=NIVEIS, modulos=modulos,
                   f_nivel=nivel, f_modulo=modulo,
                   qs=f"&nivel={nivel}&modulo={modulo}")
+
+
+COLUNAS_EXPORT = [
+    ("id", "#"), ("created_at", "Data"), ("nivel", "Nível"),
+    ("modulo", "Módulo"), ("mensagem", "Mensagem"),
+]
+
+
+@router.get("/export", include_in_schema=False)
+def export(
+    request: Request,
+    formato: str = "csv",
+    nivel: str = "",
+    modulo: str = "",
+    usuario: Usuario = Depends(require_permission("log.listar")),
+    db: Session = Depends(get_session),
+):
+    query = select(Log).where(
+        Log.empresa_id == usuario.tenant_id
+    ).order_by(Log.id.desc())
+    if nivel:
+        query = query.where(Log.nivel == nivel)
+    if modulo:
+        query = query.where(Log.modulo == modulo)
+    itens = list(db.scalars(query))
+    record_audit(db, tabela="logs", acao="EXPORTACAO",
+                 valor_novo={"formato": formato, "registros": len(itens)},
+                 usuario=usuario, request=request)
+    return export_response(itens, COLUNAS_EXPORT, formato, "Logs",
+                           tz=tz_da_empresa(db, usuario.tenant_id))

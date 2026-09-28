@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_audit, snapshot
 from app.core.auth import require_permission
 from app.core.database import get_session, utcnow
+from app.core.export import export_response, tz_da_empresa
 from app.core.templating import render
 from app.models import Perfil, Permissao, Usuario
 
@@ -58,7 +59,7 @@ def create(
     usuario: Usuario = Depends(require_permission("perfil.criar")),
     db: Session = Depends(get_session),
 ):
-    item = Perfil(empresa_id=usuario.empresa_id, nome=nome,
+    item = Perfil(empresa_id=usuario.tenant_id, nome=nome,
                   descricao=descricao or None, ativo=ativo, created_by=usuario.id)
     todas = list(db.scalars(select(Permissao).where(Permissao.id.in_(permissao_ids or [-1]))))
     item.permissoes.extend(todas)
@@ -128,3 +129,25 @@ def delete(
         record_audit(db, tabela="perfis", acao="DELETE", registro_id=item.id,
                      valor_anterior=antes, usuario=usuario, request=request)
     return RedirectResponse("/perfis/", status_code=303)
+
+
+COLUNAS_EXPORT = [
+    ("id", "#"), ("nome", "Perfil"), ("descricao", "Descrição"), ("ativo", "Ativo"),
+]
+
+
+@router.get("/export", include_in_schema=False)
+def export(
+    request: Request,
+    formato: str = "csv",
+    usuario: Usuario = Depends(require_permission("perfil.listar")),
+    db: Session = Depends(get_session),
+):
+    itens = list(db.scalars(
+        select(Perfil).where(Perfil.deleted_at.is_(None)).order_by(Perfil.nome)
+    ))
+    record_audit(db, tabela="perfis", acao="EXPORTACAO",
+                 valor_novo={"formato": formato, "registros": len(itens)},
+                 usuario=usuario, request=request)
+    return export_response(itens, COLUNAS_EXPORT, formato, "Perfis",
+                           tz=tz_da_empresa(db, usuario.tenant_id))

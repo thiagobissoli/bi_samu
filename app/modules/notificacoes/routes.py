@@ -70,7 +70,7 @@ def enviar_form(
 ):
     usuarios = list(db.scalars(select(Usuario).where(
         Usuario.deleted_at.is_(None), Usuario.ativo.is_(True),
-        Usuario.empresa_id == usuario.empresa_id,
+        Usuario.empresa_id == usuario.tenant_id,
     ).order_by(Usuario.nome)))
     return render(request, "notificacoes/enviar.html", usuario,
                   page_title="Notificações", usuarios=usuarios)
@@ -83,11 +83,14 @@ def enviar(
     titulo: str = Form(...),
     mensagem: str = Form(...),
     tipo: str = Form("info"),
+    canais: list[str] = Form(["sistema"]),
     usuario: Usuario = Depends(require_permission("notificacao.enviar")),
     db: Session = Depends(get_session),
 ):
-    item = notify(db, usuario_id, titulo, mensagem, tipo, empresa_id=usuario.empresa_id)
-    record_audit(db, tabela="notificacoes", acao="INSERT", registro_id=item.id,
-                 valor_novo={"usuario_id": usuario_id, "titulo": titulo, "tipo": tipo},
+    resultado = notify(db, usuario_id, titulo, mensagem, tipo,
+                       empresa_id=usuario.tenant_id, canais=canais)
+    record_audit(db, tabela="notificacoes", acao="ENVIO",
+                 valor_novo={"usuario_id": usuario_id, "titulo": titulo,
+                             "tipo": tipo, "canais": resultado},
                  usuario=usuario, request=request)
     return RedirectResponse("/notificacoes/", status_code=303)

@@ -27,6 +27,13 @@ if settings.database_url.startswith("sqlite"):
 engine = create_engine(settings.database_url, connect_args=_connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
+# Equivalentes Python das funções do banco no SQLite (§36.17). Registrado aqui,
+# junto do engine, e não no init_db(): qualquer conexão precisa delas, inclusive
+# scripts e o shell, que não passam pela inicialização da aplicação.
+from app.core import db_objects as _db_objects  # noqa: E402
+
+_db_objects.registrar_funcoes_sqlite(engine)
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -161,3 +168,6 @@ def init_db() -> None:
     """Cria o banco se preciso e deixa o schema no head das migrações."""
     _garantir_banco()
     aplicar_migracoes()
+
+    # Views, materialized views e triggers (§36.15–36.18) — por dialeto.
+    _db_objects.aplicar(engine)

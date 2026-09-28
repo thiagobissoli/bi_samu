@@ -203,7 +203,7 @@ def recover(
         enviado = send_mail(db, usuario.email, "Recuperação de senha",
                             f"<p>Para redefinir sua senha, acesse: "
                             f"<a href='{link}'>{link}</a></p><p>O link expira em 2 horas.</p>",
-                            empresa_id=usuario.empresa_id)
+                            empresa_id=usuario.tenant_id)
         if not enviado and settings.debug:
             link_dev = f"/redefinir-senha/{token}"
     return templates.TemplateResponse(

@@ -10,6 +10,7 @@ from app.core.auth import require_permission
 from app.core.database import get_session, utcnow
 from app.core.pagination import paginate
 from app.core.storage import absolute_path, save_upload
+from app.core.export import export_response, tz_da_empresa
 from app.core.templating import render
 from app.models import Arquivo, Usuario
 
@@ -26,7 +27,7 @@ def index(
 ):
     query = select(Arquivo).where(
         Arquivo.deleted_at.is_(None),
-        Arquivo.empresa_id == usuario.empresa_id,
+        Arquivo.empresa_id == usuario.tenant_id,
     ).order_by(Arquivo.id.desc())
     if q:
         query = query.where(Arquivo.nome_original.ilike(f"%{q}%"))
@@ -44,7 +45,7 @@ def enviar(
     db: Session = Depends(get_session),
 ):
     try:
-        item = save_upload(db, arquivo, usuario.empresa_id, modulo, created_by=usuario.id)
+        item = save_upload(db, arquivo, usuario.tenant_id, modulo, created_by=usuario.id)
     except ValueError:
         return RedirectResponse("/uploads/", status_code=303)
     record_audit(db, tabela="arquivos", acao="UPLOAD", registro_id=item.id,
@@ -61,7 +62,7 @@ def download(
     db: Session = Depends(get_session),
 ):
     item = db.get(Arquivo, item_id)
-    if item is None or item.deleted_at is not None or item.empresa_id != usuario.empresa_id:
+    if item is None or item.deleted_at is not None or item.empresa_id != usuario.tenant_id:
         return RedirectResponse("/uploads/", status_code=303)
     path = absolute_path(item)
     if not path.is_file():
@@ -77,7 +78,7 @@ def delete(
     db: Session = Depends(get_session),
 ):
     item = db.get(Arquivo, item_id)
-    if item is not None and item.deleted_at is None and item.empresa_id == usuario.empresa_id:
+    if item is not None and item.deleted_at is None and item.empresa_id == usuario.tenant_id:
         item.deleted_at = utcnow()
         item.deleted_by = usuario.id
         db.commit()
@@ -85,3 +86,31 @@ def delete(
                      valor_anterior={"nome": item.nome_original},
                      usuario=usuario, request=request)
     return RedirectResponse("/uploads/", status_code=303)
+
+
+COLUNAS_EXPORT = [
+    ("id", "#"), ("nome_original", "Arquivo"), ("modulo", "Módulo"),
+    ("mime_type", "Tipo"), ("tamanho", "Bytes"), ("created_at", "Enviado em"),
+]
+
+
+@router.get("/export", include_in_schema=False)
+def export(
+    request: Request,
+    formato: str = "csv",
+    q: str | None = None,
+    usuario: Usuario = Depends(require_permission("upload.listar")),
+    db: Session = Depends(get_session),
+):
+    query = select(Arquivo).where(
+        Arquivo.deleted_at.is_(None),
+        Arquivo.empresa_id == usuario.tenant_id,
+    ).order_by(Arquivo.id.desc())
+    if q:
+        query = query.where(Arquivo.nome_original.ilike(f"%{q}%"))
+    itens = list(db.scalars(query))
+    record_audit(db, tabela="arquivos", acao="EXPORTACAO",
+                 valor_novo={"formato": formato, "registros": len(itens)},
+                 usuario=usuario, request=request)
+    return export_response(itens, COLUNAS_EXPORT, formato, "Arquivos",
+                           tz=tz_da_empresa(db, usuario.tenant_id))
