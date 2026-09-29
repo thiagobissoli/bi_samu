@@ -26,13 +26,28 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-# Tabelas cujo conteúdo é dado pessoal de paciente. Com --sem-pessoais a
-# estrutura é criada, mas as linhas não são copiadas.
+# Com --sem-pessoais estas tabelas são criadas vazias. A lista foi montada
+# lendo o schema, não por suposição: cobre dado de paciente, dado pessoal de
+# equipe e credenciais.
 TABELAS_PESSOAIS = {
-    "vsky_prontuarios",
-    "vsky_registros_analiticos",
-    "investigacao_analises",
+    # Pacientes
+    "vsky_prontuarios",            # PDFs de prontuário
+    "vsky_registros_analiticos",   # paciente, endereço, telefone
+    "investigacao_analises",       # análises nominais
+    # Equipe
+    "usuarios",                    # nome, e-mail, telefone, senha_hash
+    "ncps_gestores",               # nomes de gestores
+    "auditoria",                   # usuario_nome, IP de quem operou
+    "notificacoes",                # mensagens dirigidas a pessoas
+    # Vínculos de usuário: sem as pessoas, apontam para ids inexistentes — e o
+    # seed recria o administrador com id 1, que herdaria perfis de outra pessoa.
+    "usuarios_perfis",
+    "ncps_setor_usuarios",
 }
+
+# Credenciais: nunca vão, nem sem --sem-pessoais. Levar sessões ativas para
+# outro servidor permitiria assumir a sessão de quem está logado aqui.
+TABELAS_CREDENCIAIS = {"sessoes", "tokens", "api_keys"}
 
 
 def converter(destino: Path, sem_pessoais: bool, desde: str | None) -> None:
@@ -63,6 +78,12 @@ def converter(destino: Path, sem_pessoais: bool, desde: str | None) -> None:
             novo = equivalentes.get(type(coluna.type).__name__)
             if novo is not None:
                 coluna.type = novo()
+            # No SQLite só INTEGER PRIMARY KEY incrementa sozinho: um
+            # BIGINT PRIMARY KEY faria todo INSERT sem id explícito falhar
+            # com "NOT NULL constraint failed". É a mesma razão pela qual os
+            # modelos usam BigInteger().with_variant(Integer, "sqlite").
+            if coluna.primary_key and isinstance(coluna.type, (BigInteger, Integer)):
+                coluna.type = Integer()
             # As colações do MySQL não existem no SQLite
             if getattr(coluna.type, "collation", None):
                 coluna.type.collation = None
@@ -77,8 +98,13 @@ def converter(destino: Path, sem_pessoais: bool, desde: str | None) -> None:
     copiadas = ignoradas = 0
     with origem.connect() as src, alvo.begin() as dst:
         for tabela in md.sorted_tables:
+            if tabela.name in TABELAS_CREDENCIAIS:
+                print(f"  {tabela.name}: vazia (credenciais nunca são copiadas)")
+                ignoradas += 1
+                continue
+
             if sem_pessoais and tabela.name in TABELAS_PESSOAIS:
-                print(f"  {tabela.name}: estrutura apenas (--sem-pessoais)")
+                print(f"  {tabela.name}: vazia (--sem-pessoais)")
                 ignoradas += 1
                 continue
 
@@ -86,14 +112,26 @@ def converter(destino: Path, sem_pessoais: bool, desde: str | None) -> None:
             if desde and "created_at" in tabela.columns:
                 consulta = consulta.where(tabela.c.created_at >= desde)
 
-            linhas = src.execute(consulta).mappings().all()
+            linhas = [dict(l) for l in src.execute(consulta).mappings().all()]
+
+            # Configurações cifradas dependem da SECRET_KEY desta máquina: no
+            # destino não decifram. Vão embora em vez de ficar como lixo.
+            if tabela.name == "configuracoes":
+                antes = len(linhas)
+                linhas = [l for l in linhas
+                          if not str(l.get("valor") or "").startswith("enc:")]
+                if antes != len(linhas):
+                    print(f"  configuracoes: {antes - len(linhas)} chaves cifradas omitidas")
+
             for inicio in range(0, len(linhas), 5000):
-                dst.execute(tabela.insert(),
-                            [dict(l) for l in linhas[inicio:inicio + 5000]])
+                dst.execute(tabela.insert(), linhas[inicio:inicio + 5000])
             copiadas += len(linhas)
 
     tamanho = destino.stat().st_size / 1048576
-    print(f"\n{copiadas} linhas copiadas, {ignoradas} tabelas só com estrutura")
+    print(f"\n{copiadas} linhas copiadas, {ignoradas} tabelas criadas vazias")
+    if sem_pessoais:
+        print("Sem dados de paciente, de equipe nem credenciais.")
+        print("O primeiro acesso cria o administrador padrão pelos seeds.")
     print(f"arquivo: {destino}  ({tamanho:.0f} MB)")
     if tamanho > 450:
         print("\nAVISO: o plano Beginner do PythonAnywhere dá 512 MB no total,")
