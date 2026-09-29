@@ -136,6 +136,9 @@ class Ncps(BaseModel):
     # para o histórico importado do sistema anterior)
     setor_id: Mapped[int | None] = mapped_column(
         ForeignKey("ncps_setores.id"), nullable=True, index=True)
+    # Quem, dentro do setor, cuida desta NCPS (assume ou é atribuído)
+    responsavel_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=True, index=True)
     coordenador_id: Mapped[int | None] = mapped_column(
         ForeignKey("usuarios.id"), nullable=True, index=True)
 
@@ -167,6 +170,8 @@ class Ncps(BaseModel):
                                lazy="selectin")
     notificante = relationship("Usuario", foreign_keys=[notificante_id],
                                lazy="selectin")
+    responsavel = relationship("Usuario", foreign_keys=[responsavel_id],
+                               lazy="selectin")
 
     ocupacional: Mapped["NcpsOcupacional | None"] = relationship(
         back_populates="ncps", cascade="all, delete-orphan", uselist=False,
@@ -179,6 +184,9 @@ class Ncps(BaseModel):
         order_by="NcpsCausa.id", lazy="selectin")
     riscos: Mapped[list["NcpsRisco"]] = relationship(
         back_populates="ncps", cascade="all, delete-orphan", lazy="selectin")
+    eventos: Mapped[list["NcpsEvento"]] = relationship(
+        back_populates="ncps", cascade="all, delete-orphan",
+        order_by="NcpsEvento.id", lazy="selectin")
     acoes: Mapped[list["NcpsAcao"]] = relationship(
         back_populates="ncps", cascade="all, delete-orphan",
         order_by="NcpsAcao.id", lazy="selectin")
@@ -287,3 +295,22 @@ class NcpsAcao(BaseModel):
 
     ncps: Mapped[Ncps] = relationship(back_populates="acoes")
 
+
+
+class NcpsEvento(BaseModel):
+    """Histórico de tramitação: quem fez o quê com a NCPS e quando.
+
+    tipos: registrada, triagem, encaminhada, assumida, atribuida, devolvida,
+    concluida, status. `texto` traz o detalhe (setor, motivo da devolução…).
+    """
+
+    __tablename__ = "ncps_eventos"
+
+    ncps_id: Mapped[int] = mapped_column(ForeignKey("ncps.id"), index=True)
+    tipo: Mapped[str] = mapped_column(String(20))
+    texto: Mapped[str | None] = mapped_column(Text, nullable=True)
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"),
+                                                   nullable=True)
+
+    ncps: Mapped[Ncps] = relationship(back_populates="eventos")
+    usuario = relationship("Usuario", lazy="selectin")

@@ -50,6 +50,12 @@
                 <label class="form-check-label small" for="f-atr">Do meu setor</label>
             </div>
         </div>
+        <div class="col-md-auto">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="minhas" value="1" id="f-min" {{ 'checked' if filtros.minhas }}>
+                <label class="form-check-label small" for="f-min">Sob minha responsabilidade</label>
+            </div>
+        </div>
         {% if 'ncps.sigilosas' in usuario_logado.permissoes %}
         <div class="col-md-auto">
             <div class="form-check">

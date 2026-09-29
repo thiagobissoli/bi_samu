@@ -34,6 +34,22 @@ As regras ficam em `permissions.py`. Um usuário vê uma notificação quando:
 Quem não faz triagem vê e lista **somente** as NCPS do seu setor — inclusive
 na lista, nos indicadores, na exportação e na investigação.
 
+## Tramitação
+
+Na tela da NCPS, o quadro **Tramitação** mostra o setor, o responsável e o
+histórico (quem fez o quê e quando).
+
+| Ação | Quem pode | O que acontece |
+|---|---|---|
+| Encaminhar / trocar de setor | quem faz a triagem (aba Triagem) | analistas do setor avisados; responsável anterior é removido |
+| Assumir | analista do setor | vira o responsável; "Aguardando" passa a "Analisando evento" |
+| Atribuir | triagem ou analista do setor | escolhe quem, no setor, cuida da NCPS; a pessoa é avisada |
+| Devolver à triagem | analista do setor, com motivo | sai do setor, volta a "Aguardando análise"; triagem avisada |
+| Concluir análise | analista do setor ou triagem — exige análise e ao menos uma ação | status "Análise concluída"; triagem avisada para revisar; notificante recebe o retorno |
+
+A triagem pode reabrir uma NCPS concluída voltando o status para
+"Analisando evento".
+
 ## Avisos
 
 | Momento | Quem é avisado | Como |
@@ -41,6 +57,9 @@ na lista, nos indicadores, na exportação e na investigação.
 | NCPS registrada | quem faz a triagem daquele tipo (Qualidade, SESMT ou, nas sigilosas, a Comissão) | notificação no sistema + e-mail |
 | Encaminhada a um setor | os analistas do setor | notificação no sistema + e-mail |
 | Status muda | quem notificou, se identificado | notificação no sistema + e-mail |
+| Atribuída a uma pessoa | o responsável | notificação no sistema + e-mail |
+| Devolvida pelo setor | quem faz a triagem (motivo só no sistema) | notificação no sistema + e-mail |
+| Análise concluída | quem faz a triagem | notificação no sistema + e-mail |
 
 Quem executa a ação não é avisado dela. Os e-mails nunca levam o relato nem
 dados do paciente (nas sigilosas, nem o tipo) — só o número e o link; saem em

@@ -21,8 +21,8 @@ from app.core.database import utcnow
 from app.modules.ncps import constants as cat
 from app.modules.ncps.models import (Ncps, NcpsAcao, NcpsAnalise, NcpsCausa,
                                      NcpsGestor, NcpsGhe, NcpsLocal,
-                                     NcpsOcupacional, NcpsPerigo, NcpsRisco,
-                                     NcpsSetor)
+                                     NcpsEvento, NcpsOcupacional, NcpsPerigo,
+                                     NcpsRisco, NcpsSetor)
 from app.modules.ncps.permissions import (filtrar_visiveis, pode_tratar,
                                           pode_triar, setores_do_usuario)
 
@@ -264,6 +264,8 @@ def registrar(db: Session, empresa_id: int, form, usuario=None) -> tuple[Ncps, s
         created_by=None if anonima else usuario.id,
     )
     aplicar_codigo(n, codigo)
+    evento(n, "registrada", "Notificação registrada" + (
+        " (anônima)" if anonima else ""), None if anonima else usuario.id)
     if trabalhador:
         n.ocupacional = NcpsOcupacional(
             empresa_id=empresa_id,
@@ -302,6 +304,7 @@ def filtros_da_requisicao(params) -> dict:
         "q": (params.get("q") or "").strip()[:100],
         "atribuidas": params.get("atribuidas") == "1",
         "sigilosas": params.get("sigilosas") == "1",
+        "minhas": params.get("minhas") == "1",
     }
 
 
@@ -330,6 +333,8 @@ def consulta(db: Session, usuario, filtros: dict):
         q = q.where(or_(*condicoes))
     if filtros.get("sigilosas"):
         q = q.where(Ncps.confidencial.is_(True))
+    if filtros.get("minhas"):              # sob minha responsabilidade
+        q = q.where(Ncps.responsavel_id == usuario.id)
 
     zona = fuso(db, usuario.empresa_id)
     for chave, limite in (("inicio", time.min), ("fim", time.max)):
@@ -422,9 +427,11 @@ def _salvar_triagem(db: Session, n: Ncps, form, usuario,
     n.procedente = _escolha(form, "procedente", cat.PROCEDENTE) or n.procedente
     status_anterior = n.status
     n.status = _escolha(form, "status", cat.STATUS) or n.status
-    if n.status != status_anterior and n.notificante_id and not n.anonima:
-        db.flush()
-        avisos.retorno_notificante(db, n, base_url)
+    if n.status != status_anterior:
+        evento(n, "status", f"Status: {cat.STATUS.get(n.status, n.status)}", usuario.id)
+        if n.notificante_id and not n.anonima:
+            db.flush()
+            avisos.retorno_notificante(db, n, base_url)
 
     local_id, gestor_id = _inteiro(form, "local_id"), _inteiro(form, "gestor_id")
     n.local_id = local_id if local_id and db.scalar(select(NcpsLocal.id).where(
@@ -438,6 +445,11 @@ def _salvar_triagem(db: Session, n: Ncps, form, usuario,
         NcpsSetor.deleted_at.is_(None))) if setor_id else None
     if n.confidencial:
         setor = None          # sigilosa é tratada pela Comissão, não por setor
+    if (setor.id if setor else None) != n.setor_id:
+        # novo setor, novo responsável: quem cuidava era do setor anterior
+        n.responsavel_id = None
+        evento(n, "encaminhada", f"Encaminhada ao setor {setor.nome}" if setor
+               else "Retirada do setor", usuario.id)
     if setor and setor.id != n.setor_id:
         db.flush()
         avisos.encaminhada_ao_setor(db, n, setor, base_url, autor_id=usuario.id)
@@ -551,6 +563,107 @@ def _salvar_acao(db: Session, n: Ncps, secao: str, form) -> None:
         a.concluida_em = date.today()
     elif a.status != "concluida":
         a.concluida_em = None
+
+
+# ------------------------------------------------------------------ tramitação
+
+def evento(n: Ncps, tipo: str, texto: str | None, usuario_id: int | None) -> None:
+    """Registra um passo no histórico de tramitação da NCPS."""
+    n.eventos.append(NcpsEvento(empresa_id=n.empresa_id, tipo=tipo,
+                                texto=(texto or "")[:2000] or None,
+                                usuario_id=usuario_id))
+
+
+def analistas_do_setor(n: Ncps) -> list:
+    return list(n.setor.usuarios) if n.setor else []
+
+
+def tramitar(db: Session, n: Ncps, acao: str, form, usuario,
+             base_url: str | None = None) -> str:
+    """Ações do setor sobre a NCPS; devolve a mensagem para a tela.
+
+    assumir   o analista pega a NCPS para si
+    atribuir  a triagem ou o setor escolhe quem, no setor, cuida dela
+    devolver  o setor devolve à triagem, com justificativa obrigatória
+    concluir  o setor sinaliza que terminou; a triagem revisa
+    """
+    from app.modules.ncps import avisos
+    from app.modules.ncps.permissions import (pode_assumir, pode_atribuir,
+                                              pode_concluir, pode_devolver)
+
+    if acao == "assumir":
+        if not pode_assumir(n, usuario):
+            raise NcpsProibido("Só um analista do setor pode assumir esta NCPS.")
+        n.responsavel_id = usuario.id
+        evento(n, "assumida", f"Assumida por {usuario.nome}", usuario.id)
+        if n.status == "0":
+            n.status = "1"
+        msg = "Você é agora o responsável por esta NCPS."
+
+    elif acao == "atribuir":
+        if not pode_atribuir(n, usuario):
+            raise NcpsProibido("Você não pode definir o responsável desta NCPS.")
+        rid = _inteiro(form, "responsavel_id")
+        if not rid:
+            n.responsavel_id = None
+            evento(n, "atribuida", "Responsável removido", usuario.id)
+            msg = "A NCPS ficou sem responsável individual."
+        else:
+            membros = {u.id: u for u in analistas_do_setor(n)}
+            if rid not in membros:
+                raise NcpsErro("O responsável precisa ser analista do setor "
+                               "a que a NCPS está encaminhada.")
+            responsavel = membros[rid]
+            n.responsavel_id = rid
+            evento(n, "atribuida", f"Atribuída a {responsavel.nome}", usuario.id)
+            if n.status == "0":
+                n.status = "1"
+            db.flush()
+            avisos.atribuida(db, n, responsavel, base_url, autor_id=usuario.id)
+            msg = f"{responsavel.nome} é agora o responsável."
+
+    elif acao == "devolver":
+        if not pode_devolver(n, usuario):
+            raise NcpsProibido("Só o setor que recebeu a NCPS pode devolvê-la.")
+        motivo = _texto(form, "motivo", 2000)
+        if not motivo or len(motivo) < 10:
+            raise NcpsErro("Explique por que a NCPS está sendo devolvida "
+                           "(pelo menos 10 caracteres).")
+        setor_nome = n.setor.nome if n.setor else ""
+        n.setor_id = None
+        n.responsavel_id = None
+        n.status = "0"
+        evento(n, "devolvida", f"Devolvida à triagem pelo setor {setor_nome}. "
+               f"Motivo: {motivo}", usuario.id)
+        db.flush()
+        avisos.devolvida(db, n, setor_nome, motivo, base_url, autor_id=usuario.id)
+        msg = "NCPS devolvida à triagem; quem faz a triagem foi avisado."
+
+    elif acao == "concluir":
+        if not pode_concluir(n, usuario):
+            raise NcpsProibido("Você não pode concluir a análise desta NCPS.")
+        a = n.analise
+        tem_analise = bool(n.causas) or bool(a and any(
+            getattr(a, c) for c in ("cronologia", "problemas", "recomendacoes")))
+        if not tem_analise:
+            raise NcpsErro("Registre a análise (Protocolo de Londres, Ishikawa ou "
+                           "o texto da análise) antes de concluir.")
+        if not n.acoes:
+            raise NcpsErro("Inclua ao menos uma ação no plano de ação antes de "
+                           "concluir.")
+        n.status = "2"
+        evento(n, "concluida", f"Análise concluída por {usuario.nome}", usuario.id)
+        db.flush()
+        avisos.concluida(db, n, base_url, autor_id=usuario.id)
+        if n.notificante_id and not n.anonima:
+            avisos.retorno_notificante(db, n, base_url)
+        msg = "Análise concluída; quem faz a triagem foi avisado para revisar."
+    else:
+        raise NcpsErro("Ação desconhecida.")
+
+    n.updated_by = usuario.id
+    db.commit()
+    return msg
 
 
 def excluir(db: Session, n: Ncps, usuario) -> None:
@@ -700,6 +813,7 @@ def linha_exportacao(n: Ncps, zona: ZoneInfo) -> dict:
         "Ação realizada / sugestão": n.sugestao,
         "Gestor": n.gestor.nome if n.gestor else None,
         "Setor": n.setor.nome if n.setor else None,
+        "Responsável": n.responsavel.nome if n.responsavel else None,
         "Coordenador (sistema anterior)": n.coordenador.nome if n.coordenador else None,
         **{rotulo: opcoes.get(getattr(n, campo), getattr(n, campo))
            for campo, (rotulo, opcoes) in cat.CLASSIFICACAO_PACIENTE.items()},

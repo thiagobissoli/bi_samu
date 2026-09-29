@@ -104,6 +104,98 @@
     </div>
 </div>
 
+{# ============================================================ TRAMITAÇÃO #}
+{% if not n.confidencial %}
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center">
+        <h3 class="card-title mb-0"><i class="fa-solid fa-route me-1"></i> Tramitação</h3>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 align-items-start">
+            <div class="col-md-4">
+                <span class="text-body-secondary small d-block">Setor</span>
+                {% if n.setor %}<strong>{{ n.setor.nome }}</strong>
+                {% else %}<span class="text-body-secondary">Aguardando triagem</span>{% endif %}
+            </div>
+            <div class="col-md-4">
+                <span class="text-body-secondary small d-block">Responsável no setor</span>
+                {% if n.responsavel %}<strong>{{ n.responsavel.nome }}</strong>
+                {% elif n.setor %}<span class="text-body-secondary">Ninguém assumiu ainda</span>
+                {% else %}—{% endif %}
+            </div>
+            <div class="col-md-4 d-flex flex-wrap gap-2 justify-content-md-end">
+                {% if pode_assumir %}
+                <form method="post" action="/ncps/{{ n.id }}/tramitar">
+                    <input type="hidden" name="acao" value="assumir">
+                    <button class="btn btn-primary btn-sm"><i class="fa-solid fa-hand"></i> Assumir</button>
+                </form>
+                {% endif %}
+                {% if pode_concluir %}
+                <form method="post" action="/ncps/{{ n.id }}/tramitar"
+                      onsubmit="return confirm('Concluir a análise? A triagem será avisada para revisar.')">
+                    <input type="hidden" name="acao" value="concluir">
+                    <button class="btn btn-success btn-sm"><i class="fa-solid fa-flag-checkered"></i> Concluir análise</button>
+                </form>
+                {% endif %}
+                {% if pode_devolver %}
+                <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="collapse"
+                        data-bs-target="#devolver" aria-expanded="false">
+                    <i class="fa-solid fa-arrow-rotate-left"></i> Devolver à triagem</button>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if pode_atribuir %}
+        <form method="post" action="/ncps/{{ n.id }}/tramitar" class="row g-2 align-items-end mt-2">
+            <input type="hidden" name="acao" value="atribuir">
+            <div class="col-md-6">
+                <label class="form-label small mb-1" for="f-resp">Atribuir a um analista do setor</label>
+                <select class="form-select form-select-sm" id="f-resp" name="responsavel_id">
+                    <option value="">Sem responsável individual</option>
+                    {% for u in analistas_setor %}
+                    <option value="{{ u.id }}" {{ 'selected' if u.id == n.responsavel_id }}>{{ u.nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto"><button class="btn btn-outline-primary btn-sm">Atribuir</button></div>
+            {% if not analistas_setor %}
+            <div class="col-12 small text-body-secondary">O setor não tem analistas vinculados (Cadastros NCPS).</div>
+            {% endif %}
+        </form>
+        {% endif %}
+
+        {% if pode_devolver %}
+        <div class="collapse mt-3" id="devolver">
+            <form method="post" action="/ncps/{{ n.id }}/tramitar" class="border border-danger-subtle rounded p-3">
+                <input type="hidden" name="acao" value="devolver">
+                <label class="form-label small" for="f-motivo">Por que a NCPS está sendo devolvida?</label>
+                <textarea class="form-control form-control-sm mb-2" id="f-motivo" name="motivo" rows="2" minlength="10"
+                          required placeholder="Ex.: o evento envolve a frota, não a regulação."></textarea>
+                <p class="small text-body-secondary mb-2">A NCPS volta para "Aguardando análise", sai do seu setor e quem faz
+                    a triagem é avisado com o motivo.</p>
+                <button class="btn btn-danger btn-sm">Devolver à triagem</button>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if n.eventos %}
+        <details class="mt-3" {{ 'open' if n.eventos | length <= 6 }}>
+            <summary class="small text-body-secondary">Histórico ({{ n.eventos | length }})</summary>
+            <ol class="list-unstyled small mt-2 mb-0 border-start ps-3">
+                {% for e in n.eventos | reverse %}
+                <li class="mb-2">
+                    <span class="text-body-secondary">{{ e.created_at | localdt }}</span>
+                    · {{ e.texto or e.tipo }}
+                    {% if e.usuario and e.tipo != 'registrada' %}<span class="text-body-secondary">— {{ e.usuario.nome }}</span>{% endif %}
+                </li>
+                {% endfor %}
+            </ol>
+        </details>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <ul class="nav nav-tabs" role="tablist" id="abas">
     {% for id, rotulo in [('triagem', 'Triagem'), ('classificacao', 'Classificação'), ('risco', 'Matriz de risco'),
                           ('analise', 'Análise NR-1' if trab else 'Protocolo de Londres'), ('ishikawa', 'Ishikawa'),

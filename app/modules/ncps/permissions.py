@@ -134,3 +134,39 @@ def pode_tratar(ncps, usuario) -> bool:
     if pode_triar(ncps, usuario):
         return True
     return not ncps.confidencial and _do_meu_setor(ncps, usuario)
+
+
+# ------------------------------------------------------------------ tramitação
+
+def do_setor(ncps, usuario) -> bool:
+    """O usuário é analista do setor a que a NCPS está encaminhada."""
+    return (not ncps.confidencial and ncps.setor_id is not None
+            and ncps.setor_id in setores_do_usuario(usuario))
+
+
+def aberta(ncps) -> bool:
+    from app.modules.ncps.constants import STATUS_ABERTOS
+    return ncps.status in STATUS_ABERTOS
+
+
+def pode_assumir(ncps, usuario) -> bool:
+    """Analista do setor pega a NCPS para si."""
+    return aberta(ncps) and do_setor(ncps, usuario) \
+        and ncps.responsavel_id != usuario.id
+
+
+def pode_atribuir(ncps, usuario) -> bool:
+    """Escolher quem, no setor, cuida da NCPS: a triagem ou o próprio setor."""
+    return aberta(ncps) and ncps.setor_id is not None and not ncps.confidencial \
+        and (pode_triar(ncps, usuario) or do_setor(ncps, usuario))
+
+
+def pode_devolver(ncps, usuario) -> bool:
+    """O setor devolve à triagem (ex.: não é do setor), com justificativa."""
+    return aberta(ncps) and do_setor(ncps, usuario)
+
+
+def pode_concluir(ncps, usuario) -> bool:
+    """Quem analisa sinaliza que terminou; a triagem é avisada para revisar."""
+    return aberta(ncps) and not ncps.confidencial and ncps.setor_id is not None \
+        and (do_setor(ncps, usuario) or pode_triar(ncps, usuario))

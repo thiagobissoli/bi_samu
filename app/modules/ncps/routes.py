@@ -30,7 +30,9 @@ from app.modules.ncps import constants as cat
 from app.modules.ncps import avisos, service
 from app.modules.ncps.models import (Ncps, NcpsGestor, NcpsGhe, NcpsLocal,
                                      NcpsOcupacional, NcpsPerigo, NcpsSetor)
-from app.modules.ncps.permissions import (naturezas_triagem, pode_tratar,
+from app.modules.ncps.permissions import (naturezas_triagem, pode_assumir,
+                                          pode_atribuir, pode_concluir,
+                                          pode_devolver, pode_tratar,
                                           pode_triar, pode_ver)
 
 router = APIRouter(prefix="/ncps", tags=["NCPS"])
@@ -296,6 +298,9 @@ def analise(
         request, "ncps/analise.html", usuario, page_title=f"NCPS #{n.id}",
         n=n, cat=cat, hoje=date.today(), codigo=service.codigo_de(n),
         pode_triar=pode_triar(n, usuario), pode_tratar=pode_tratar(n, usuario),
+        pode_assumir=pode_assumir(n, usuario), pode_atribuir=pode_atribuir(n, usuario),
+        pode_devolver=pode_devolver(n, usuario), pode_concluir=pode_concluir(n, usuario),
+        analistas_setor=service.analistas_do_setor(n),
         ghes=service.ghes(db, emp, n.ghe_id),
         perigos=service.perigos(db, emp, n.ocupacional.perigo_id
                                 if n.ocupacional else None),
@@ -348,6 +353,37 @@ async def analise_salvar(
                  usuario=usuario, request=request)
     return RedirectResponse(
         f"/ncps/{n.id}?msg={quote('Alterações salvas.')}#{aba}", status_code=303)
+
+
+@router.post("/{ncps_id:int}/tramitar", include_in_schema=False)
+async def tramitar(
+    request: Request,
+    ncps_id: int,
+    usuario: Usuario = Depends(require_permission("ncps.listar")),
+    db: Session = Depends(get_session),
+):
+    """Assumir, atribuir responsável, devolver à triagem ou concluir a análise."""
+    form = await request.form()
+    n = _carregar(db, usuario, ncps_id)
+    acao = form.get("acao", "")
+    antes = {"setor_id": n.setor_id, "responsavel_id": n.responsavel_id,
+             "status": n.status}
+    try:
+        msg = service.tramitar(db, n, acao, form, usuario, str(request.base_url))
+    except service.NcpsProibido as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except service.NcpsErro as exc:
+        db.rollback()
+        return _redirecionar(f"/ncps/{ncps_id}", erro=str(exc))
+    record_audit(db, tabela="ncps", acao="UPDATE", registro_id=n.id,
+                 valor_anterior=antes,
+                 valor_novo={"tramitacao": acao, "setor_id": n.setor_id,
+                             "responsavel_id": n.responsavel_id, "status": n.status},
+                 usuario=usuario, request=request)
+    # quem devolveu perde o acesso à NCPS: volta para a lista
+    if acao == "devolver" and not pode_ver(n, usuario):
+        return _redirecionar("/ncps/", msg=msg)
+    return _redirecionar(f"/ncps/{ncps_id}", msg=msg)
 
 
 @router.post("/{ncps_id:int}/excluir", include_in_schema=False)

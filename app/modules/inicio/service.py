@@ -130,6 +130,15 @@ def _alertas_ncps(db, usuario, perms) -> list[dict]:
             + "Registre a análise e o plano de ação.",
             "/ncps/?atribuidas=1", len(minhas), "ncps"))
 
+    # 2b. sob minha responsabilidade (assumidas ou atribuídas a mim)
+    sob_mim = [n for n in minhas if n.responsavel_id == usuario.id]
+    if sob_mim:
+        lista.append(_alerta(
+            "warning", "fa-user-check",
+            f"{len(sob_mim)} NCPS sob sua responsabilidade",
+            "Você assumiu ou recebeu estas NCPS no seu setor.",
+            "/ncps/?minhas=1", len(sob_mim), "ncps"))
+
     # 3. ações do plano com prazo vencido, nas NCPS que posso tratar
     abertas = db.scalars(filtrar_visiveis(
         base.where(Ncps.status.in_(("0", "1", "2"))), usuario))

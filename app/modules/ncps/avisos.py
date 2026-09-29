@@ -165,3 +165,38 @@ def retorno_notificante(db: Session, n, base_url: str | None = None) -> int:
                            "com os eventos."],
                    _link(base_url, "/ncps/notificar"), "Ver minhas notificações",
                    n.empresa_id)
+
+
+def atribuida(db: Session, n, responsavel, base_url: str | None = None,
+              autor_id: int | None = None) -> int:
+    """A NCPS passou a ser responsabilidade de uma pessoa do setor."""
+    titulo = f"NCPS #{n.id} sob sua responsabilidade"
+    mensagem = (f"Você é o responsável pela análise desta NCPS no setor "
+                f"{n.setor.nome if n.setor else ''}.")
+    return _avisar(db, [responsavel], titulo, mensagem, "warning", titulo,
+                   [mensagem], _link(base_url, f"/ncps/{n.id}"), "Analisar a NCPS",
+                   n.empresa_id, excluir_id=autor_id)
+
+
+def devolvida(db: Session, n, setor_nome: str, motivo: str,
+              base_url: str | None = None, autor_id: int | None = None) -> int:
+    """O setor devolveu a NCPS à triagem. O motivo vai só no sino (pode citar
+    detalhes do caso); no e-mail, apenas o aviso."""
+    titulo = f"NCPS #{n.id} devolvida pelo setor {setor_nome}"
+    return _avisar(db, responsaveis_triagem(db, n), titulo, f"Motivo: {motivo}",
+                   "danger", titulo,
+                   [f"O setor {setor_nome} devolveu a NCPS à triagem. Veja o "
+                    "motivo no sistema e encaminhe ao setor correto."],
+                   _link(base_url, f"/ncps/{n.id}"), "Abrir a NCPS",
+                   n.empresa_id, excluir_id=autor_id)
+
+
+def concluida(db: Session, n, base_url: str | None = None,
+              autor_id: int | None = None) -> int:
+    """O setor concluiu a análise: a triagem revisa e arquiva ou reabre."""
+    titulo = f"NCPS #{n.id}: análise concluída pelo setor"
+    mensagem = ("A análise e o plano de ação foram registrados. Revise e, se "
+                "precisar de ajustes, volte o status para \"Analisando evento\".")
+    return _avisar(db, responsaveis_triagem(db, n), titulo, mensagem, "success",
+                   titulo, [mensagem], _link(base_url, f"/ncps/{n.id}"),
+                   "Revisar a NCPS", n.empresa_id, excluir_id=autor_id)
