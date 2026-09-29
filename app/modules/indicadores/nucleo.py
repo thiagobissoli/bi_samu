@@ -168,6 +168,11 @@ def _tentar_cache(empresa_id: int) -> pd.DataFrame | None:
 
 
 def _recarregar(empresa_id: int) -> pd.DataFrame:
+    # Solta o frame antigo antes de montar o novo. Quem chega durante a recarga
+    # já espera no _LOCK pelo frame novo, então o antigo não serve a ninguém —
+    # mantê-lo só fazia as duas cópias (~2 GB cada) coexistirem no pico, o que
+    # derrubava o processo a cada importação do vSky.
+    _cache.pop(empresa_id, None)
     agora = time.time()
     desconto = desconto_p41(empresa_id)
     marca = _marca_banco(empresa_id)
