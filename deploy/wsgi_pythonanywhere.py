@@ -1,11 +1,16 @@
 """Ponte WSGI para o PythonAnywhere (plano Beginner).
 
 A conta gratuita não tem a API de sites ASGI — só aplicações WSGI. Como o
-FastAPI é ASGI, o `a2wsgi` faz a adaptação. Requisição/resposta comuns
-funcionam normalmente; o que não funciona é streaming e WebSocket, que este
-sistema não usa.
+FastAPI é ASGI, o adaptador em deploy/asgi_wsgi.py faz a ponte. O a2wsgi foi
+tentado antes e trava neste uWSGI: ele mantém o event loop num thread de
+fundo e a requisição nunca retorna.
 
-Aponte a aplicação web do PythonAnywhere para este arquivo.
+As dependências que o PythonAnywhere não traz (PyJWT, pydantic-settings,
+APScheduler e python-multipart) vêm de `deploy/deps.zip`, importado
+diretamente pelo zipimport: são Python puro, e assim a instalação não
+depende de console nem gasta a cota de CPU com pip.
+
+Aponte o campo "WSGI configuration file" da aba Web para este arquivo.
 """
 
 import os
@@ -18,16 +23,15 @@ PROJETO = Path(__file__).resolve().parent.parent
 # Python que exponha um 'app' seria carregado no lugar, com outro banco.
 sys.path.insert(0, str(PROJETO))
 
-# Pacotes instalados com 'pip install --user' (não há venv no plano gratuito
-# quando se reaproveita o site-packages do sistema).
-LOCAL = Path.home() / ".local" / "lib"
-for versao in sorted(LOCAL.glob("python3.*/site-packages"), reverse=True):
-    sys.path.insert(0, str(versao))
+# Dependências que faltam no sistema, importadas de dentro do zip.
+DEPS = PROJETO / "deploy" / "deps.zip"
+if DEPS.is_file():
+    sys.path.insert(0, str(DEPS))
 
 os.chdir(PROJETO)
 
-from a2wsgi import ASGIMiddleware  # noqa: E402
+from deploy.asgi_wsgi import ASGIToWSGI  # noqa: E402
 
 from app.main import app as fastapi_app  # noqa: E402
 
-application = ASGIMiddleware(fastapi_app)
+application = ASGIToWSGI(fastapi_app)

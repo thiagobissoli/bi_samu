@@ -19,8 +19,11 @@ cd "$PROJETO"
 
 echo "== 1/4  Pacotes que faltam =="
 # --user porque não há virtualenv; são 4 pacotes Python puro, rápidos.
-pip3.13 install --user --quiet pydantic-settings PyJWT a2wsgi APScheduler
-echo "  instalados: pydantic-settings, PyJWT, a2wsgi, APScheduler"
+# Não é preciso instalar nada: deploy/deps.zip traz os pacotes que faltam
+# (PyJWT, pydantic-settings, APScheduler, python-multipart), importados
+# por zipimport. Assim a instalação não gasta a cota de CPU com pip.
+true
+echo "  dependências vêm de deploy/deps.zip (zipimport)"
 
 echo "== 2/4  Configuração =="
 if [ -f .env ]; then
