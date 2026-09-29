@@ -242,3 +242,44 @@ Se a atualização mexeu no banco:
 ```bash
 cd ~/qualidade_samu && alembic upgrade head
 ```
+
+
+---
+
+## Carregar os dados (decisão do controlador)
+
+O deploy no plano Beginner sobe com o banco **vazio**. Levar os dados de
+produção é uma decisão separada, com implicações de LGPD: este banco contém
+prontuários, mais de 500 mil registros de atendimento e investigações
+nominais — dados de saúde identificáveis.
+
+Pontos a pesar antes:
+
+- o site fica numa **URL pública**, protegido apenas pelo login da aplicação;
+- o plano Beginner dá **512 MB no total**, e o banco em SQLite deve ficar
+  entre 350 e 450 MB — sem folga para crescer;
+- a infraestrutura é compartilhada e o plano não oferece garantias
+  contratuais de tratamento de dados.
+
+Se ainda assim for o caminho, a conversão é feita na sua máquina:
+
+```bash
+.venv/bin/python deploy/converter_para_sqlite.py --sem-pessoais
+```
+
+`--sem-pessoais` cria as tabelas de prontuário, registros analíticos e
+investigações **vazias**, gerando uma base utilizável para homologação sem
+transferir conteúdo identificável. Sem a opção, tudo é copiado. Há ainda
+`--desde AAAA-MM-DD` para levar só um período recente.
+
+Depois, envie o arquivo pela aba Files e aponte o `.env` de lá:
+
+```
+DATABASE_URL=sqlite:////home/samues/qualidade_samu/dados.sqlite3
+```
+
+### Proteção adicional recomendada
+
+O PythonAnywhere permite exigir usuário e senha HTTP **antes** de a aplicação
+carregar, na aba Web → "Password protection". Com dados reais no ar, é a
+diferença entre uma tela de login exposta à internet e um serviço fechado.
