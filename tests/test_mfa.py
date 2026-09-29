@@ -198,3 +198,10 @@ def test_administrador_redefine(conta):
     db.commit()
     db.close()
     assert any(n.titulo == "2FA redefinido" for n in avisos)
+
+
+def test_qr_code_escala_sem_ser_recortado():
+    """O SVG precisa de viewBox: com largura/altura fixas o CSS recortava
+    o código e o celular não lia."""
+    svg = mfa.qr_svg("otpauth://totp/Qualidade%20SAMU%3Aa%40b.com?secret=ABC")
+    assert "viewBox=" in svg and 'width="' not in svg.split(">")[0]

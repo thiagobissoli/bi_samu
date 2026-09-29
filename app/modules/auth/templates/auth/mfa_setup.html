@@ -4,7 +4,8 @@
 
 {% block styles %}
 <style>
-    .qr-2fa svg { width: 200px; height: 200px; background: #fff; border-radius: 8px; }
+    .qr-2fa { width: 240px; max-width: 100%; background: #fff; border-radius: 8px; }
+    .qr-2fa svg { display: block; width: 100%; height: auto; }
     .codigos-rec { font-size: 1.05rem; letter-spacing: .08em; }
     @media print { .app-sidebar, .app-header, .app-footer, .nao-imprimir { display: none !important; } }
 </style>

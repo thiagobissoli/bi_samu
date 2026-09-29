@@ -178,5 +178,9 @@ def qr_svg(uri: str) -> str:
     chave secreta não pode sair do servidor)."""
     import segno
 
-    return segno.make(uri, error="m").svg_inline(scale=5, dark="#111", light="#fff",
-                                                 border=2)
+    # viewBox em vez de largura/altura fixas: o SVG escala com o CSS. Sem
+    # isso o navegador recortava o código ao encaixá-lo no quadro e o
+    # celular não conseguia ler. Margem de 4 módulos (a do padrão QR), em
+    # branco, para o leitor achar o código mesmo com a página no tema escuro.
+    return segno.make(uri, error="m").svg_inline(omitsize=True, dark="#000",
+                                                 light="#fff", border=4)
