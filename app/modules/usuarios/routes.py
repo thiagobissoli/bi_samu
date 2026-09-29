@@ -144,6 +144,35 @@ def edit(
     return RedirectResponse("/usuarios/", status_code=303)
 
 
+@router.post("/{item_id}/mfa/redefinir", include_in_schema=False)
+def redefinir_mfa(
+    request: Request,
+    item_id: int,
+    usuario: Usuario = Depends(require_permission("usuario.editar")),
+    db: Session = Depends(get_session),
+):
+    """Desliga o 2FA de quem perdeu o acesso (celular/e-mail e códigos)."""
+    from app.core import mfa
+    from app.core.mail import send_mail
+    from app.core.notifications import notify
+
+    item = db.get(Usuario, item_id)
+    if item is None or item.deleted_at is not None:
+        return RedirectResponse("/usuarios/", status_code=303)
+    metodo = item.mfa_metodo
+    mfa.desligar(item)
+    item.updated_by = usuario.id
+    db.commit()
+    record_audit(db, tabela="usuarios", acao="MFA_REDEFINIDO", registro_id=item.id,
+                 valor_anterior={"metodo": metodo}, usuario=usuario, request=request)
+    aviso = (f"{usuario.nome} redefiniu sua autenticação em duas etapas. "
+             "Se não foi você quem pediu, avise a equipe de TI.")
+    notify(db, item.id, "2FA redefinido", aviso, tipo="warning", empresa_id=item.empresa_id)
+    send_mail(db, item.email, "Autenticação em duas etapas redefinida", f"<p>{aviso}</p>",
+              empresa_id=item.empresa_id)
+    return RedirectResponse(f"/usuarios/{item_id}/edit?mfa=redefinido", status_code=303)
+
+
 @router.post("/{item_id}/delete", include_in_schema=False)
 def delete(
     request: Request,

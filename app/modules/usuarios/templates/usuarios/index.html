@@ -15,7 +15,7 @@
         </form>
         {% if pg["items"] %}
         <table class="table table-striped align-middle">
-            <thead><tr><th>#</th><th>Nome</th><th>E-mail</th><th>Perfis</th><th>Último login</th><th>Status</th><th class="text-end">Ações</th></tr></thead>
+            <thead><tr><th>#</th><th>Nome</th><th>E-mail</th><th>Perfis</th><th>Último login</th><th>2FA</th><th>Status</th><th class="text-end">Ações</th></tr></thead>
             <tbody>
             {% for item in pg["items"] %}
             <tr>
@@ -35,6 +35,7 @@
                     {% else %}—{% endfor %}
                 </td>
                 <td>{{ item.ultimo_login | localdt if item.ultimo_login else "—" }}</td>
+                <td>{% if item.mfa_habilitado %}<span class="badge text-bg-success"><i class="fa-solid fa-shield-halved"></i> {{ 'e-mail' if item.mfa_metodo == 'email' else 'app' }}</span>{% elif item.perfis | selectattr('exige_2fa') | list %}<span class="badge text-bg-warning">pendente</span>{% else %}<span class="text-body-secondary small">—</span>{% endif %}</td>
                 <td>
                     {% if item.ativo %}<span class="badge text-bg-success">Ativo</span>
                     {% else %}<span class="badge text-bg-secondary">Inativo</span>{% endif %}

@@ -57,4 +57,28 @@
         </div>
     </form>
 </div>
+
+{% if item %}
+<div class="card mt-3">
+    <div class="card-header"><h3 class="card-title mb-0"><i class="fa-solid fa-shield-halved me-2"></i>Autenticação em duas etapas</h3></div>
+    <div class="card-body">
+        {% if request.query_params.get('mfa') == 'redefinido' %}
+        <div class="alert alert-success py-2 small">2FA redefinido. No próximo login o usuário configura de novo{{ ' (o perfil exige)' if item.perfis | selectattr('exige_2fa') | list }}.</div>
+        {% endif %}
+        {% if item.mfa_habilitado %}
+        <p class="mb-2"><span class="badge text-bg-success">Ativa</span> por
+            <strong>{{ 'código por e-mail' if item.mfa_metodo == 'email' else 'aplicativo autenticador' }}</strong>.</p>
+        <p class="small text-body-secondary">Use "Redefinir" quando o usuário perder o celular ou o acesso ao e-mail e
+            também não tiver os códigos de recuperação. O 2FA é desligado e ele é avisado; se algum perfil dele exigir,
+            precisará configurar de novo no próximo login.</p>
+        <form method="post" action="/usuarios/{{ item.id }}/mfa/redefinir"
+              onsubmit="return confirm('Redefinir a autenticação em duas etapas deste usuário?')">
+            <button class="btn btn-outline-danger btn-sm"><i class="fa-solid fa-rotate-left"></i> Redefinir 2FA</button>
+        </form>
+        {% else %}
+        <p class="mb-0 small text-body-secondary">Não configurada{{ ' — o perfil exige, será pedida no próximo login' if item.perfis | selectattr('exige_2fa') | list }}.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 {% endblock %}

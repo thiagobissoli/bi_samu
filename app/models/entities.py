@@ -62,6 +62,10 @@ class Usuario(BaseModel):
     email_confirmado: Mapped[bool] = mapped_column(default=False)
     mfa_habilitado: Mapped[bool] = mapped_column(default=False)
     mfa_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # "app" (autenticador TOTP) ou "email" — ver app/core/mfa.py
+    mfa_metodo: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # JSON com o hash dos códigos de recuperação ainda não usados
+    mfa_recuperacao: Mapped[str | None] = mapped_column(Text, nullable=True)
     ultimo_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ultimo_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
 
@@ -98,6 +102,8 @@ class Perfil(BaseModel):
     nome: Mapped[str] = mapped_column(String(100), index=True)
     descricao: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ativo: Mapped[bool] = mapped_column(default=True)
+    # Quem tem este perfil precisa da autenticação em duas etapas
+    exige_2fa: Mapped[bool] = mapped_column(default=False)
 
     permissoes: Mapped[list["Permissao"]] = relationship(
         secondary=perfis_permissoes, lazy="selectin"

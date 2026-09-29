@@ -6,7 +6,7 @@ tentado antes e trava neste uWSGI: ele mantém o event loop num thread de
 fundo e a requisição nunca retorna.
 
 As dependências que o PythonAnywhere não traz (PyJWT, pydantic-settings,
-APScheduler e python-multipart) vêm de `deploy/deps.zip`, importado
+APScheduler, python-multipart e segno) vêm de `deploy/deps.zip`, importado
 diretamente pelo zipimport: são Python puro, e assim a instalação não
 depende de console nem gasta a cota de CPU com pip.
 

@@ -17,23 +17,54 @@
     </div>
     <div class="card">
         <div class="card-body login-card-body">
+            {% if metodo == "email" %}
+            <p class="login-box-msg">Enviamos um código de 6 dígitos para <strong>{{ email }}</strong></p>
+            {% else %}
             <p class="login-box-msg">Digite o código do seu aplicativo autenticador</p>
+            {% endif %}
             {% if erro %}<div class="alert alert-danger py-2">{{ erro }}</div>{% endif %}
-            <form method="post" action="/login/mfa">
+            {% if info %}<div class="alert alert-success py-2">{{ info }}</div>{% endif %}
+            <form method="post" action="/login/mfa" id="form-codigo">
                 <input type="hidden" name="token" value="{{ token }}">
-                <div class="input-group mb-3">
-                    <input type="text" name="codigo" class="form-control text-center fs-4"
+                <div class="input-group mb-3" id="grupo-codigo">
+                    <input type="text" name="codigo" id="codigo" class="form-control text-center fs-4"
                            placeholder="000000" maxlength="6" required autofocus
-                           inputmode="numeric" autocomplete="one-time-code">
+                           inputmode="numeric" autocomplete="one-time-code" aria-label="Código de verificação">
                     <div class="input-group-text"><i class="fa-solid fa-shield-halved"></i></div>
                 </div>
                 <div class="d-grid mb-2">
                     <button type="submit" class="btn btn-primary">Verificar</button>
                 </div>
             </form>
+            {% if metodo == "email" %}
+            <form method="post" action="/login/mfa/reenviar" class="text-center mb-2">
+                <input type="hidden" name="token" value="{{ token }}">
+                <button class="btn btn-link btn-sm p-0">Reenviar o código</button>
+            </form>
+            {% endif %}
+            <p class="text-center small mb-2">
+                <a href="#" id="usar-recuperacao">Não tenho acesso — usar um código de recuperação</a>
+            </p>
             <p class="text-center mb-0"><a href="/login">Voltar ao login</a></p>
         </div>
     </div>
 </div>
+<script>
+document.getElementById("usar-recuperacao").addEventListener("click", function (e) {
+    e.preventDefault();
+    var campo = document.getElementById("codigo");
+    campo.value = "";
+    campo.maxLength = 9;
+    campo.placeholder = "XXXX-XXXX";
+    campo.inputMode = "text";
+    campo.autocomplete = "off";
+    campo.classList.add("text-uppercase");
+    campo.setAttribute("aria-label", "Código de recuperação");
+    document.querySelector(".login-box-msg").textContent =
+        "Digite um dos seus códigos de recuperação (cada um vale uma vez)";
+    this.parentElement.hidden = true;
+    campo.focus();
+});
+</script>
 </body>
 </html>

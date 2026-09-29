@@ -16,7 +16,7 @@ from app.models import Perfil, Permissao, Usuario
 
 router = APIRouter(prefix="/perfis", tags=["Perfis"])
 
-FIELDS = ["nome", "descricao", "ativo"]
+FIELDS = ["nome", "descricao", "ativo", "exige_2fa"]
 
 
 def _permissoes_agrupadas(db: Session):
@@ -55,12 +55,14 @@ def create(
     nome: str = Form(...),
     descricao: str = Form(""),
     ativo: bool = Form(False),
+    exige_2fa: bool = Form(False),
     permissao_ids: list[int] = Form([]),
     usuario: Usuario = Depends(require_permission("perfil.criar")),
     db: Session = Depends(get_session),
 ):
     item = Perfil(empresa_id=usuario.tenant_id, nome=nome,
-                  descricao=descricao or None, ativo=ativo, created_by=usuario.id)
+                  descricao=descricao or None, ativo=ativo, exige_2fa=exige_2fa,
+                  created_by=usuario.id)
     todas = list(db.scalars(select(Permissao).where(Permissao.id.in_(permissao_ids or [-1]))))
     item.permissoes.extend(todas)
     db.add(item)
@@ -91,6 +93,7 @@ def edit(
     nome: str = Form(...),
     descricao: str = Form(""),
     ativo: bool = Form(False),
+    exige_2fa: bool = Form(False),
     permissao_ids: list[int] = Form([]),
     usuario: Usuario = Depends(require_permission("perfil.editar")),
     db: Session = Depends(get_session),
@@ -102,6 +105,7 @@ def edit(
     item.nome = nome
     item.descricao = descricao or None
     item.ativo = ativo
+    item.exige_2fa = exige_2fa
     item.permissoes.clear()
     todas = list(db.scalars(select(Permissao).where(Permissao.id.in_(permissao_ids or [-1]))))
     item.permissoes.extend(todas)

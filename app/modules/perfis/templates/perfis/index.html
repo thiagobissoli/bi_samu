@@ -11,7 +11,7 @@
     <div class="card-body">
         {% if items %}
         <table class="table table-striped align-middle">
-            <thead><tr><th>#</th><th>Nome</th><th>Descrição</th><th>Permissões</th><th>Status</th><th class="text-end">Ações</th></tr></thead>
+            <thead><tr><th>#</th><th>Nome</th><th>Descrição</th><th>Permissões</th><th>2FA</th><th>Status</th><th class="text-end">Ações</th></tr></thead>
             <tbody>
             {% for item in items %}
             <tr>
@@ -19,6 +19,7 @@
                 <td>{{ item.nome }}</td>
                 <td>{{ item.descricao or "—" }}</td>
                 <td><span class="badge text-bg-info">{{ item.permissoes | length }}</span></td>
+                <td>{% if item.exige_2fa %}<span class="badge text-bg-warning"><i class="fa-solid fa-shield-halved"></i> Exigido</span>{% else %}<span class="text-body-secondary small">opcional</span>{% endif %}</td>
                 <td>
                     {% if item.ativo %}<span class="badge text-bg-success">Ativo</span>
                     {% else %}<span class="badge text-bg-secondary">Inativo</span>{% endif %}

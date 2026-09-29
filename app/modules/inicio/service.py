@@ -264,7 +264,15 @@ def _alertas_notificacoes(db, usuario, perms) -> list[dict]:
 
 
 def _alertas_conta(db, usuario, perms) -> list[dict]:
+    from app.core import mfa
+
     lista = []
+    if usuario.mfa_habilitado and mfa.restantes(usuario) <= 3:
+        lista.append(_alerta(
+            "warning", "fa-key",
+            f"Restam {mfa.restantes(usuario)} código(s) de recuperação",
+            "Gere novos códigos para não ficar sem acesso se perder o celular.",
+            "/mfa", grupo="conta"))
     if not usuario.mfa_habilitado:
         lista.append(_alerta(
             "info", "fa-shield-halved", "Ative a autenticação em duas etapas",

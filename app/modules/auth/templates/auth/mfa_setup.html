@@ -1,48 +1,162 @@
 {% extends "base.html" %}
 
-{% block breadcrumb %}<li class="breadcrumb-item active">MFA</li>{% endblock %}
+{% block breadcrumb %}<li class="breadcrumb-item active">Autenticação em duas etapas</li>{% endblock %}
+
+{% block styles %}
+<style>
+    .qr-2fa svg { width: 200px; height: 200px; background: #fff; border-radius: 8px; }
+    .codigos-rec { font-size: 1.05rem; letter-spacing: .08em; }
+    @media print { .app-sidebar, .app-header, .app-footer, .nao-imprimir { display: none !important; } }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-7">
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title"><i class="fa-solid fa-shield-halved me-2"></i>Autenticação em duas etapas (MFA)</h3>
-            </div>
-            <div class="card-body">
-                {% if erro %}<div class="alert alert-danger py-2">{{ erro }}</div>{% endif %}
-                {% if ok %}<div class="alert alert-success py-2">{{ ok }}</div>{% endif %}
+<div class="row justify-content-center">
+<div class="col-xl-8">
 
-                {% if usuario_logado.mfa_habilitado %}
-                <p><span class="badge text-bg-success"><i class="fa-solid fa-check me-1"></i>MFA ativo</span></p>
-                <p class="text-muted">Para desativar, informe um código atual do autenticador.</p>
-                <form method="post" action="/mfa/desativar" class="row g-2">
-                    <div class="col-auto">
-                        <input type="text" name="codigo" class="form-control" placeholder="000000"
-                               maxlength="6" required inputmode="numeric">
-                    </div>
-                    <div class="col-auto">
-                        <button class="btn btn-outline-danger">Desativar MFA</button>
-                    </div>
+{% if obrigatorio and not usuario_logado.mfa_habilitado %}
+<div class="alert alert-warning">
+    <i class="fa-solid fa-lock me-1"></i>
+    <strong>Seu perfil exige a autenticação em duas etapas.</strong>
+    Configure agora para continuar usando o sistema.
+</div>
+{% endif %}
+{% if erro %}<div class="alert alert-danger py-2">{{ erro }}</div>{% endif %}
+{% if ok %}<div class="alert alert-success py-2">{{ ok }}</div>{% endif %}
+
+{% if codigos %}
+{# ------------------------------------------------ códigos de recuperação (exibidos uma vez) #}
+<div class="card border-warning mb-3">
+    <div class="card-header"><h3 class="card-title mb-0"><i class="fa-solid fa-key me-2"></i>Seus códigos de recuperação</h3></div>
+    <div class="card-body">
+        <p>Guarde estes códigos num lugar seguro. Cada um permite entrar <strong>uma vez</strong> se você
+            perder o acesso ao {{ 'e-mail' if usuario_logado.mfa_metodo == 'email' else 'celular' }}.
+            <strong>Eles não serão mostrados de novo.</strong></p>
+        <div class="row row-cols-2 row-cols-md-5 g-2 codigos-rec font-monospace mb-3" id="codigos">
+            {% for c in codigos %}<div class="col"><div class="border rounded text-center py-1">{{ c }}</div></div>{% endfor %}
+        </div>
+        <div class="d-flex flex-wrap gap-2 nao-imprimir">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="copiar-codigos"><i class="fa-regular fa-copy"></i> Copiar</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="fa-solid fa-print"></i> Imprimir</button>
+            <a class="btn btn-outline-secondary btn-sm" download="codigos-recuperacao-qualidade-samu.txt"
+               href="data:text/plain;charset=utf-8,{{ ('Códigos de recuperação — Qualidade SAMU\n' ~ usuario_logado.email ~ '\n\n' ~ (codigos | join('\n'))) | urlencode }}">
+                <i class="fa-solid fa-download"></i> Baixar .txt</a>
+            <a class="btn btn-primary btn-sm ms-auto" href="/">Guardei os códigos — continuar</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header"><h3 class="card-title mb-0"><i class="fa-solid fa-shield-halved me-2"></i>Autenticação em duas etapas</h3></div>
+    <div class="card-body">
+    {% if usuario_logado.mfa_habilitado %}
+        {# ------------------------------------------------ já ativo #}
+        <p class="mb-2"><span class="badge text-bg-success"><i class="fa-solid fa-check me-1"></i>Ativa</span>
+            · método: <strong>{{ metodos.get(usuario_logado.mfa_metodo or 'app') }}</strong>
+            · <strong>{{ restantes }}</strong> código(s) de recuperação disponíveis</p>
+        {% if restantes <= 3 %}
+        <div class="alert alert-warning small py-2">Restam poucos códigos de recuperação. Gere novos abaixo.</div>
+        {% endif %}
+        <div class="row g-3 mt-1">
+            <div class="col-md-6">
+                <form method="post" action="/mfa/recuperacao" class="border rounded p-3 h-100">
+                    <h6 class="fw-semibold">Gerar novos códigos de recuperação</h6>
+                    <p class="small text-body-secondary">Os códigos atuais deixam de valer.</p>
+                    <label class="form-label small" for="senha-rec">Confirme sua senha</label>
+                    <input type="password" id="senha-rec" name="senha" class="form-control form-control-sm mb-2" required autocomplete="current-password">
+                    <button class="btn btn-outline-primary btn-sm">Gerar novos códigos</button>
                 </form>
+            </div>
+            <div class="col-md-6">
+                <form method="post" action="/mfa/desativar" class="border rounded p-3 h-100">
+                    <h6 class="fw-semibold">Desativar</h6>
+                    {% if obrigatorio %}
+                    <p class="small text-body-secondary mb-0">Seu perfil exige a autenticação em duas etapas. Para trocar
+                        de método (por exemplo, celular novo), peça a um administrador que a redefina — no próximo
+                        login você configura de novo.</p>
+                    {% else %}
+                    <p class="small text-body-secondary">A conta volta a pedir só a senha.</p>
+                    <label class="form-label small" for="senha-des">Confirme sua senha</label>
+                    <input type="password" id="senha-des" name="senha" class="form-control form-control-sm mb-2" required autocomplete="current-password">
+                    <button class="btn btn-outline-danger btn-sm">Desativar</button>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    {% else %}
+        {# ------------------------------------------------ configurar #}
+        <p class="text-body-secondary">Além da senha, o login passa a pedir um código. Escolha como recebê-lo:</p>
+        <ul class="nav nav-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {{ 'active' if aba != 'email' }}" data-bs-toggle="tab" data-bs-target="#aba-app" type="button" role="tab">
+                    <i class="fa-solid fa-mobile-screen me-1"></i>Aplicativo autenticador <span class="badge text-bg-success ms-1">recomendado</span></button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {{ 'active' if aba == 'email' }}" data-bs-toggle="tab" data-bs-target="#aba-email" type="button" role="tab">
+                    <i class="fa-solid fa-envelope me-1"></i>Código por e-mail</button>
+            </li>
+        </ul>
+        <div class="tab-content border border-top-0 rounded-bottom p-3">
+            <div class="tab-pane fade {{ 'show active' if aba != 'email' }}" id="aba-app" role="tabpanel">
+                <div class="row g-4 align-items-center">
+                    <div class="col-md-auto text-center">
+                        {% if qr %}<div class="qr-2fa" role="img" aria-label="QR code para o aplicativo autenticador">{{ qr | safe }}</div>{% endif %}
+                    </div>
+                    <div class="col">
+                        <p class="mb-1"><strong>1.</strong> No celular, abra o Google Authenticator, Microsoft Authenticator ou
+                            outro autenticador e {{ 'escaneie o QR code.' if qr else 'adicione a chave abaixo.' }}</p>
+                        <p class="small text-body-secondary mb-1">Sem câmera? Digite a chave:</p>
+                        <p><code class="fs-6 user-select-all">{{ secret }}</code></p>
+                        <p class="mb-1"><strong>2.</strong> Digite o código de 6 dígitos que o aplicativo mostra:</p>
+                        <form method="post" action="/mfa/ativar" class="d-flex gap-2">
+                            <input type="hidden" name="metodo" value="app">
+                            <input type="text" name="codigo" class="form-control" style="max-width: 10rem" placeholder="000000"
+                                   maxlength="6" required inputmode="numeric" autocomplete="one-time-code" aria-label="Código do aplicativo">
+                            <button class="btn btn-primary">Ativar</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade {{ 'show active' if aba == 'email' }}" id="aba-email" role="tabpanel">
+                <p>A cada login, um código de 6 dígitos é enviado para <strong>{{ usuario_logado.email }}</strong>.
+                    É mais simples, porém menos seguro que o aplicativo: quem acessar seu e-mail também recebe o código.</p>
+                {% if not smtp %}
+                <div class="alert alert-warning small">O envio de e-mail (SMTP) não está configurado no sistema, então esta
+                    opção ainda não está disponível. Use o aplicativo ou peça ao administrador para configurar o SMTP.</div>
+                {% elif email_enviado %}
+                <p class="small text-body-secondary">Enviamos um código para confirmar o endereço. Ele vale por 10 minutos.</p>
+                <form method="post" action="/mfa/ativar" class="d-flex gap-2 mb-2">
+                    <input type="hidden" name="metodo" value="email">
+                    <input type="text" name="codigo" class="form-control" style="max-width: 10rem" placeholder="000000"
+                           maxlength="6" required inputmode="numeric" autocomplete="one-time-code" aria-label="Código recebido por e-mail">
+                    <button class="btn btn-primary">Ativar</button>
+                </form>
+                <form method="post" action="/mfa/email/enviar"><button class="btn btn-link btn-sm p-0">Reenviar o código</button></form>
                 {% else %}
-                <p>1. Adicione esta chave no seu aplicativo autenticador
-                   (Google Authenticator, Authy, 1Password...):</p>
-                <p><code class="fs-5 user-select-all">{{ secret }}</code></p>
-                <p class="text-muted"><small>URI: <code class="user-select-all">{{ uri }}</code></small></p>
-                <p>2. Digite o código de 6 dígitos gerado para confirmar:</p>
-                <form method="post" action="/mfa/ativar" class="row g-2">
-                    <div class="col-auto">
-                        <input type="text" name="codigo" class="form-control" placeholder="000000"
-                               maxlength="6" required inputmode="numeric">
-                    </div>
-                    <div class="col-auto">
-                        <button class="btn btn-primary">Ativar MFA</button>
-                    </div>
+                <form method="post" action="/mfa/email/enviar">
+                    <button class="btn btn-outline-primary"><i class="fa-solid fa-paper-plane me-1"></i>Enviar código de confirmação</button>
                 </form>
                 {% endif %}
             </div>
         </div>
+    {% endif %}
     </div>
 </div>
+
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var btn = document.getElementById("copiar-codigos");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+        var texto = Array.from(document.querySelectorAll("#codigos .col")).map(function (e) { return e.textContent.trim(); }).join("\n");
+        navigator.clipboard.writeText(texto).then(function () { btn.textContent = "Copiado!"; });
+    });
+})();
+</script>
 {% endblock %}

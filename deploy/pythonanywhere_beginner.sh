@@ -20,7 +20,7 @@ cd "$PROJETO"
 echo "== 1/4  Pacotes que faltam =="
 # --user porque não há virtualenv; são 4 pacotes Python puro, rápidos.
 # Não é preciso instalar nada: deploy/deps.zip traz os pacotes que faltam
-# (PyJWT, pydantic-settings, APScheduler, python-multipart), importados
+# (PyJWT, pydantic-settings, APScheduler, python-multipart, segno), importados
 # por zipimport. Assim a instalação não gasta a cota de CPU com pip.
 true
 echo "  dependências vêm de deploy/deps.zip (zipimport)"

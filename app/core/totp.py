@@ -31,4 +31,9 @@ def verify_totp(secret: str, code: str) -> bool:
 
 
 def otpauth_uri(secret: str, email: str, issuer: str) -> str:
-    return f"otpauth://totp/{issuer}:{email}?secret={secret}&issuer={issuer}"
+    """URI do QR code. Rótulo e emissor codificados: "Qualidade SAMU" tem
+    espaço, e sem codificar alguns autenticadores cortam o nome."""
+    from urllib.parse import quote
+
+    rotulo = quote(f"{issuer}:{email}")
+    return f"otpauth://totp/{rotulo}?secret={secret}&issuer={quote(issuer)}"

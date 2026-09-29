@@ -84,7 +84,25 @@ def get_current_user(request: Request, db: Session = Depends(get_session)) -> Us
             raise HTTPException(status_code=303, headers={"Location": "/login"})
         raise HTTPException(status_code=401, detail="Não autenticado")
     request.state.user = usuario
+    _exigir_2fa(request, usuario)
     return usuario
+
+
+# Telas liberadas para quem ainda precisa configurar o 2FA obrigatório
+_LIBERADAS_SEM_2FA = ("/mfa", "/logout", "/alterar-senha")
+
+
+def _exigir_2fa(request: Request, usuario: Usuario) -> None:
+    """Perfil exige 2FA e o usuário não configurou: só a configuração abre."""
+    from app.core.mfa import pendente
+
+    caminho = request.url.path
+    if not pendente(usuario) or caminho.startswith(_LIBERADAS_SEM_2FA):
+        return
+    if "text/html" in (request.headers.get("accept") or ""):
+        raise HTTPException(status_code=303, headers={"Location": "/mfa"})
+    raise HTTPException(status_code=403, detail="Configure a autenticação em duas "
+                                                "etapas exigida pelo seu perfil.")
 
 
 # --- RBAC + ABAC (§7) ---
