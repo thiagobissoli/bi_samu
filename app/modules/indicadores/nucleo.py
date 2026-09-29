@@ -12,6 +12,8 @@ Convenções herdadas dos legados:
 
 from __future__ import annotations
 
+import ctypes
+import ctypes.util
 import re
 import threading
 import time
@@ -62,6 +64,11 @@ _RE_SUFIXO_PROF = [
     re.compile(r"\s*-\s*[\d.]+\s*[-/]?\s*[A-Z]{2}\s*$"),        # 17.186-ES, 013876 /ES
     re.compile(r"\s*-\s*[\d.]+\s*$"),                           # - 761
 ]
+
+# Leitura em blocos: os objetos temporários de cada bloco (tuplas do driver,
+# strings antes da conversão) são liberados antes do próximo, em vez de os
+# ~500 mil registros existirem de uma vez só em objetos Python.
+_BLOCO_LEITURA = 50_000
 
 _cache: dict[int, dict] = {}
 _LOCK = threading.Lock()   # uma recarga do núcleo por vez (rotas em threadpool)
@@ -164,21 +171,41 @@ def _recarregar(empresa_id: int) -> pd.DataFrame:
     agora = time.time()
     desconto = desconto_p41(empresa_id)
     marca = _marca_banco(empresa_id)
-    df = pd.read_sql_query(
+    blocos = pd.read_sql_query(
         text(f"SELECT {', '.join(COLS_USADAS)} FROM vsky_registros_analiticos "
              "WHERE empresa_id = :emp AND deleted_at IS NULL"),
         engine, params={"emp": empresa_id},
         parse_dates=["data_ocorrencia_dt"],
+        chunksize=_BLOCO_LEITURA,
     )
+    blocos = list(blocos)
+    df = pd.concat(blocos, ignore_index=True) if blocos \
+        else pd.DataFrame(columns=COLS_USADAS)
+    del blocos
     with warnings.catch_warnings():
         # As dezenas de colunas derivadas fragmentam o frame; o .copy()
         # final resolve — o aviso intermediário é só ruído.
         warnings.simplefilter("ignore", PerformanceWarning)
         df = _derivar(df, desconto)
+    _devolver_memoria_ao_so()
     _cache[empresa_id] = {"df": df, "marca": marca, "carregado_em": agora,
                           "verificado_em": agora, "desconto": desconto,
                           "opcoes": _montar_opcoes(df)}
     return df
+
+
+def _devolver_memoria_ao_so() -> None:
+    """Pede ao alocador do glibc que devolva ao SO a memória já liberada.
+
+    A derivação cria e descarta milhões de objetos temporários; sem isto o
+    processo continua ocupando o pico da carga (centenas de MB a mais) mesmo
+    depois de o Python ter liberado tudo. Fora do glibc (macOS, musl) não faz nada.
+    """
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
+        libc.malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
 
 
 def opcoes_filtros(empresa_id: int = 1) -> dict:

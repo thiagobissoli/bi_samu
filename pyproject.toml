@@ -26,6 +26,10 @@ dependencies = [
     "openpyxl>=3.1",
     "xlrd>=2.0",
     "pandas>=2.1",
+    # pandas 3 guarda o dtype `str` em buffers Arrow quando o pyarrow está
+    # instalado (sem ele, um objeto Python por célula): ~500 MB a menos no
+    # cache dos Indicadores.
+    "pyarrow>=15",
     "apscheduler>=3.10",
     "pymysql>=1.1",
     "pypdf>=4.0",
