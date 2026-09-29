@@ -9,6 +9,14 @@
 {% if msg %}<div class="alert alert-success alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
 {% if erro %}<div class="alert alert-danger alert-dismissible fade show">{{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
 
+{% if not triagem and 'ncps.sigilosas' not in usuario_logado.permissoes %}
+<div class="alert alert-info small py-2">
+    <i class="fa-solid fa-users-gear me-1"></i>
+    {% if meus_setores %}Você vê somente as NCPS encaminhadas ao seu setor: <strong>{{ meus_setores | join(', ') }}</strong>.
+    {% else %}Você ainda não está vinculado a nenhum setor de análise, por isso nenhuma NCPS aparece aqui.
+    Peça à Qualidade para vinculá-lo em Cadastros NCPS.{% endif %}
+</div>
+{% endif %}
 {% set acao = "/ncps/" %}{% set com_busca = True %}
 {% include "ncps/_filtros.html" %}
 

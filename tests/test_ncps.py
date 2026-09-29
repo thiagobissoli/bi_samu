@@ -88,8 +88,8 @@ def test_regras_de_visibilidade():
     assert pode_ver(sigilosa, comissao) and pode_triar(sigilosa, comissao)
     assert not pode_ver(sigilosa, coordenador)       # setor não abre sigilosa
     assert not pode_ver(sigilosa, sesmt) and not pode_ver(sigilosa, qualidade)
-    # analista vê as do paciente e só as do trabalhador encaminhadas ao seu setor
-    assert pode_ver(paciente, coordenador) and not pode_tratar(paciente, coordenador)
+    # analista (não tria) vê só as NCPS encaminhadas ao seu setor
+    assert not pode_ver(paciente, coordenador) and not pode_tratar(paciente, coordenador)
     assert pode_ver(trabalhador, coordenador) and pode_tratar(trabalhador, coordenador)
     assert not pode_ver(trabalhador, outro_coord)
 
@@ -213,11 +213,10 @@ def test_fluxo_completo_de_tratativa():
     try:
         n = db.get(Ncps, ncps_id)
         assert n.status == "1" and n.setor_id == setor.id
-        # os analistas do setor são avisados e o alerta aparece no Início
-        from app.models import Notificacao, Usuario
-        assert db.scalar(select(Notificacao).where(
-            Notificacao.usuario_id == admin_id,
-            Notificacao.titulo == f"NCPS #{ncps_id} encaminhada ao setor Setor Teste NCPS"))
+        # o alerta do setor aparece no Início (os avisos por notificação e
+        # e-mail estão em test_ncps_avisos.py — aqui quem triou é o próprio
+        # analista, e quem faz a ação não é avisado dela)
+        from app.models import Usuario
         from app.modules.inicio.service import alertas
         admin = db.get(Usuario, admin_id)
         assert any("aguardando análise do seu setor" in a["titulo"]

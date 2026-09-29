@@ -18,8 +18,9 @@ Regras (as mesmas do sistema anterior):
 - Paciente → triagem por `ncps.triar_paciente`; trabalhador → `ncps.triar_trabalhador`.
 - A triagem encaminha a NCPS a um **setor**; os usuários vinculados ao setor
   (em Cadastros NCPS) fazem a análise (classificação, causas, risco, ações).
-- Quem tem `ncps.coordenar` consulta todas as do paciente; as do trabalhador
-  (dados de saúde, LGPD) só as encaminhadas ao seu setor.
+- Quem não faz triagem (analistas com `ncps.coordenar`, por exemplo) vê e
+  lista **somente** as NCPS encaminhadas ao seu setor — nem as de outros
+  setores, nem as que ainda aguardam triagem.
 - NCPS importadas do sistema anterior continuam com o coordenador de lá.
 
 As funções abaixo são puras (usuário + notificação → bool) para poderem
@@ -86,11 +87,9 @@ def naturezas_triagem(permissoes: set[str]) -> list[str]:
 
 
 def naturezas_visiveis(permissoes: set[str]) -> list[str]:
-    """Naturezas que o usuário vê por inteiro (além das atribuídas a ele)."""
-    naturezas = set(naturezas_triagem(permissoes))
-    if "ncps.coordenar" in permissoes:
-        naturezas.add("paciente")
-    return sorted(naturezas)
+    """Naturezas que o usuário vê por inteiro: só as que ele tria. Os demais
+    veem apenas as NCPS encaminhadas ao seu setor."""
+    return sorted(naturezas_triagem(permissoes))
 
 
 def filtrar_visiveis(consulta, usuario):

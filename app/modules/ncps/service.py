@@ -369,7 +369,8 @@ def acoes_atrasadas(n: Ncps, hoje: date | None = None) -> list[NcpsAcao]:
 
 # ------------------------------------------------------------------ tratativa
 
-def salvar_secao(db: Session, n: Ncps, secao: str, form, usuario) -> str:
+def salvar_secao(db: Session, n: Ncps, secao: str, form, usuario,
+                 base_url: str | None = None) -> str:
     """Aplica a seção enviada pela tela de análise; devolve a aba de retorno.
 
     Levanta NcpsProibido se o usuário não pode alterar a seção e NcpsErro
@@ -381,7 +382,7 @@ def salvar_secao(db: Session, n: Ncps, secao: str, form, usuario) -> str:
         raise NcpsProibido("Você não pode alterar esta etapa da notificação.")
 
     if triagem:
-        _salvar_triagem(db, n, form, usuario)
+        _salvar_triagem(db, n, form, usuario, base_url)
         aba = "triagem"
     elif secao == "classificacao":
         _salvar_classificacao(db, n, form)
@@ -409,7 +410,10 @@ def salvar_secao(db: Session, n: Ncps, secao: str, form, usuario) -> str:
     return aba
 
 
-def _salvar_triagem(db: Session, n: Ncps, form, usuario) -> None:
+def _salvar_triagem(db: Session, n: Ncps, form, usuario,
+                    base_url: str | None = None) -> None:
+    from app.modules.ncps import avisos
+
     natureza = _escolha(form, "natureza", cat.NATUREZA)
     if natureza and natureza != n.natureza and not n.confidencial:
         n.natureza = natureza
@@ -419,7 +423,8 @@ def _salvar_triagem(db: Session, n: Ncps, form, usuario) -> None:
     status_anterior = n.status
     n.status = _escolha(form, "status", cat.STATUS) or n.status
     if n.status != status_anterior and n.notificante_id and not n.anonima:
-        _avisar_notificante(db, n)
+        db.flush()
+        avisos.retorno_notificante(db, n, base_url)
 
     local_id, gestor_id = _inteiro(form, "local_id"), _inteiro(form, "gestor_id")
     n.local_id = local_id if local_id and db.scalar(select(NcpsLocal.id).where(
@@ -434,27 +439,9 @@ def _salvar_triagem(db: Session, n: Ncps, form, usuario) -> None:
     if n.confidencial:
         setor = None          # sigilosa é tratada pela Comissão, não por setor
     if setor and setor.id != n.setor_id:
-        from app.core.notifications import notify
-
         db.flush()
-        for membro in setor.usuarios:
-            notify(db, membro.id, f"NCPS #{n.id} encaminhada ao setor {setor.nome}",
-                   "Seu setor é o responsável pela análise desta notificação. "
-                   "Acesse NCPS para registrar a análise e o plano de ação.",
-                   tipo="warning", empresa_id=n.empresa_id)
+        avisos.encaminhada_ao_setor(db, n, setor, base_url, autor_id=usuario.id)
     n.setor_id = setor.id if setor else None
-
-
-def _avisar_notificante(db: Session, n: Ncps) -> None:
-    """Retorno a quem notificou de forma identificada: a situação mudou."""
-    from app.core.notifications import notify
-
-    rotulo, texto, _etapa = cat.SITUACAO_ACOMPANHAMENTO.get(
-        n.status, ("Em análise", "", 2))
-    db.flush()
-    notify(db, n.notificante_id, f"Sua NCPS #{n.id}: {rotulo}", texto,
-           tipo="success" if n.status in ("2", "3", "4") else "info",
-           empresa_id=n.empresa_id)
 
 
 def _salvar_classificacao(db: Session, n: Ncps, form) -> None:

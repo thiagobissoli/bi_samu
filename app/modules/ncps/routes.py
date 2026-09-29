@@ -27,7 +27,7 @@ from app.core.pagination import paginate
 from app.core.templating import render, templates
 from app.models import Usuario
 from app.modules.ncps import constants as cat
-from app.modules.ncps import service
+from app.modules.ncps import avisos, service
 from app.modules.ncps.models import (Ncps, NcpsGestor, NcpsGhe, NcpsLocal,
                                      NcpsOcupacional, NcpsPerigo, NcpsSetor)
 from app.modules.ncps.permissions import (naturezas_triagem, pode_tratar,
@@ -89,6 +89,7 @@ async def publico_enviar(request: Request, db: Session = Depends(get_session)):
                       erros=erros, enviada=None)
     _limite_envio.register(_ip(request))
     n, codigo = service.registrar(db, EMPRESA_PUBLICA, form, usuario=None)
+    avisos.nova_ncps(db, n, str(request.base_url))
     record_audit(db, tabela="ncps", acao="INSERT", registro_id=n.id,
                  valor_novo={"natureza": n.natureza, "publico": True},
                  request=request)
@@ -146,6 +147,7 @@ async def notificar_enviar(
         return _tela_notificar(request, db, usuario, dados=form, erros=erros,
                                enviada=None)
     n, codigo = service.registrar(db, usuario.empresa_id, form, usuario)
+    avisos.nova_ncps(db, n, str(request.base_url), autor_id=usuario.id)
     record_audit(db, tabela="ncps", acao="INSERT", registro_id=n.id,
                  valor_novo={"natureza": n.natureza, "anonima": n.anonima},
                  usuario=None if n.anonima else usuario, request=request)
@@ -183,8 +185,19 @@ def index(
         gestores=service.cadastro(db, NcpsGestor, usuario.empresa_id, so_ativos=False),
         locais=service.cadastro(db, NcpsLocal, usuario.empresa_id, so_ativos=False),
         triagem=naturezas_triagem(usuario.permissoes),
+        meus_setores=_nomes_setores(db, usuario),
         atrasadas=service.acoes_atrasadas, codigo_de=service.codigo_de,
         msg=request.query_params.get("msg"), erro=request.query_params.get("erro"))
+
+
+def _nomes_setores(db: Session, usuario) -> list[str]:
+    from app.modules.ncps.permissions import setores_do_usuario
+
+    ids = setores_do_usuario(usuario)
+    if not ids:
+        return []
+    return list(db.scalars(select(NcpsSetor.nome).where(NcpsSetor.id.in_(ids))
+                           .order_by(NcpsSetor.nome)))
 
 
 @router.get("/exportar", include_in_schema=False)
@@ -320,7 +333,8 @@ async def analise_salvar(
     antes = {"status": n.status, "setor_id": n.setor_id,
              "natureza": n.natureza}
     try:
-        aba = service.salvar_secao(db, n, secao, form, usuario)
+        aba = service.salvar_secao(db, n, secao, form, usuario,
+                                   str(request.base_url))
     except service.NcpsProibido as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except service.NcpsErro as exc:

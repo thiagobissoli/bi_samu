@@ -27,9 +27,24 @@ mantendo os mesmos códigos de classificação e as mesmas regras de acesso.
 As regras ficam em `permissions.py`. Um usuário vê uma notificação quando:
 
 - ela é **sigilosa** (violência/assédio) → só com `ncps.sigilosas` (Comissão de Integridade);
-- é do **paciente** → `ncps.triar_paciente` (Qualidade) ou `ncps.coordenar`;
+- é do **paciente** → `ncps.triar_paciente` (Qualidade);
 - é do **trabalhador** → `ncps.triar_trabalhador` (SESMT);
 - ou ele é **analista do setor** a que a NCPS foi encaminhada.
+
+Quem não faz triagem vê e lista **somente** as NCPS do seu setor — inclusive
+na lista, nos indicadores, na exportação e na investigação.
+
+## Avisos
+
+| Momento | Quem é avisado | Como |
+|---|---|---|
+| NCPS registrada | quem faz a triagem daquele tipo (Qualidade, SESMT ou, nas sigilosas, a Comissão) | notificação no sistema + e-mail |
+| Encaminhada a um setor | os analistas do setor | notificação no sistema + e-mail |
+| Status muda | quem notificou, se identificado | notificação no sistema + e-mail |
+
+Quem executa a ação não é avisado dela. Os e-mails nunca levam o relato nem
+dados do paciente (nas sigilosas, nem o tipo) — só o número e o link; saem em
+segundo plano e, sem SMTP configurado, vão para os Logs (`avisos.py`).
 
 Quem tria (`triar_*` / `sigilosas`) altera tudo e encaminha a NCPS a um
 **setor**. Os analistas do setor — usuários com `ncps.coordenar`, vinculados
