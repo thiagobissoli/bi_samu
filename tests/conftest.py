@@ -66,11 +66,13 @@ def limpar_registros_criados():
     from app.modules.investigacao.models import AnaliseOcorrencia
     from app.models import Notificacao
     from app.modules.ncps.models import Ncps, NcpsGestor, NcpsLocal, NcpsSetor
+    from app.modules.sesa.models import SesaEntrega
 
     # Ncps antes dos cadastros que ela referencia (filhas saem em cascata);
     # Notificacao: avisos que a tratativa das NCPS de teste dispara
+    # SesaEntrega: os anexos saem em cascata
     tabelas = [AnaliseOcorrencia, VskyProntuario, Ncps, NcpsGestor, NcpsLocal,
-               NcpsSetor, Notificacao]
+               NcpsSetor, Notificacao, SesaEntrega]
     db = SessionLocal()
     try:
         marcos = {m: (db.scalar(select(func.max(m.id))) or 0) for m in tabelas}

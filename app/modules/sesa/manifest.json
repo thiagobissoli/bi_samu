@@ -1,0 +1,41 @@
+{
+    "name": "SESA",
+    "version": "1.0.0",
+    "author": "Framework SaaS",
+    "dependencies": [],
+    "permissions": [
+        "sesa.visualizar",
+        "sesa.anexar",
+        "sesa.enviar",
+        "sesa.cadastros"
+    ],
+    "menu": [
+        {
+            "label": "Envios à SESA",
+            "url": "/sesa/",
+            "icon": "fa-calendar-check",
+            "permission": "sesa.visualizar",
+            "order": 40,
+            "group": "qualidade"
+        },
+        {
+            "label": "Certidões SESA",
+            "url": "/sesa/certidoes",
+            "icon": "fa-file-shield",
+            "permission": "sesa.visualizar",
+            "order": 41,
+            "group": "qualidade"
+        },
+        {
+            "label": "Cadastros SESA",
+            "url": "/sesa/cadastros",
+            "icon": "fa-list-check",
+            "permission": "sesa.cadastros",
+            "order": 42,
+            "group": "qualidade"
+        }
+    ],
+    "routes": [
+        "/sesa"
+    ]
+}

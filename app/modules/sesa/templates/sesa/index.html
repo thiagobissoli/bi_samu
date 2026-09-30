@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}<li class="breadcrumb-item active">Envios à SESA</li>{% endblock %}
+
+{% macro celula(o, s) -%}
+{% set url = "/sesa/" ~ o.chave ~ "/" ~ ("%04d-%02d" | format(s.competencia.year, s.competencia.month)) %}
+{% if s.estado == "nao_aplica" %}
+<span class="text-body-tertiary" title="Sem envio neste mês">—</span>
+{% elif s.estado == "enviada" %}
+<a href="{{ url }}" class="badge {{ 'text-bg-success' if s.no_prazo else 'text-bg-warning' }} text-decoration-none"
+   title="Enviado em {{ s.entrega.enviada_em.strftime('%d/%m/%Y') }}{{ ' (fora do prazo)' if not s.no_prazo }}{% if s.entrega.protocolo %} · protocolo {{ s.entrega.protocolo }}{% endif %}">
+    <i class="fa-solid fa-check"></i> {{ s.entrega.enviada_em.strftime('%d/%m') }}</a>
+{% elif s.estado == "atrasada" %}
+<a href="{{ url }}" class="badge text-bg-danger text-decoration-none" title="Prazo era {{ s.prazo.strftime('%d/%m/%Y') }}">
+    <i class="fa-solid fa-triangle-exclamation"></i> atrasado</a>
+{% elif s.estado == "vence" %}
+<a href="{{ url }}" class="badge text-bg-warning text-decoration-none" title="Prazo: {{ s.prazo.strftime('%d/%m/%Y') }}">
+    <i class="fa-regular fa-clock"></i> {{ s.prazo.strftime('%d/%m') }}</a>
+{% elif s.estado == "pendente" %}
+<a href="{{ url }}" class="badge text-bg-secondary text-decoration-none" title="Prazo: {{ s.prazo.strftime('%d/%m/%Y') }}">
+    {{ s.prazo.strftime('%d/%m') }}</a>
+{% else %}
+<a href="{{ url }}" class="small text-body-secondary text-decoration-none" title="Prazo: {{ s.prazo.strftime('%d/%m/%Y') }}">
+    {{ s.prazo.strftime('%d/%m') }}</a>
+{% endif %}
+{% if s.anexados and s.estado != "enviada" and s.estado != "nao_aplica" %}
+<div class="small text-body-secondary" title="Arquivos anexados">{{ s.anexados }}/{{ s.total }}</div>
+{% endif %}
+{%- endmacro %}
+
+{% block content %}
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+    <div class="btn-group">
+        <a class="btn btn-outline-secondary btn-sm" href="/sesa/?ano={{ ano - 1 }}" aria-label="Ano anterior"><i class="fa-solid fa-chevron-left"></i></a>
+        <span class="btn btn-outline-secondary btn-sm disabled fw-semibold">{{ ano }}</span>
+        <a class="btn btn-outline-secondary btn-sm" href="/sesa/?ano={{ ano + 1 }}" aria-label="Ano seguinte"><i class="fa-solid fa-chevron-right"></i></a>
+    </div>
+    <a class="btn btn-primary btn-sm" href="/sesa/certidoes/{{ competencia_atual }}"><i class="fa-solid fa-file-shield"></i> Certidões deste mês</a>
+    <div class="ms-auto small d-flex flex-wrap gap-2 align-items-center">
+        <span class="badge text-bg-success"><i class="fa-solid fa-check"></i></span> enviado no prazo
+        <span class="badge text-bg-warning"><i class="fa-solid fa-check"></i></span> enviado com atraso
+        <span class="badge text-bg-warning"><i class="fa-regular fa-clock"></i></span> vence em breve
+        <span class="badge text-bg-danger"><i class="fa-solid fa-triangle-exclamation"></i></span> atrasado
+        <span class="badge text-bg-secondary">dd/mm</span> prazo
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0 small">
+                <thead class="table-light">
+                <tr>
+                    <th style="min-width: 260px">O que enviar</th>
+                    {% for m in meses %}<th class="text-center{{ ' table-primary' if ano == hoje.year and loop.index == hoje.month }}">{{ m[:3] | capitalize }}</th>{% endfor %}
+                </tr>
+                </thead>
+                <tbody>
+                {% for linha in linhas %}{% set o = linha.obrigacao %}
+                <tr>
+                    <td>
+                        <div class="fw-semibold">{% if o.tipo == 'certidoes' %}<i class="fa-solid fa-file-shield text-primary me-1"></i>{% endif %}{{ o.nome }}</div>
+                        <div class="text-body-secondary">
+                            {{ descrever_prazo(o.prazo_tipo, o.prazo_dia) }}
+                            {% if o.periodicidade != 'mensal' %}· {{ periodicidades[o.periodicidade] | lower }}{% endif %}
+                            · {{ o.canal or '—' }} · <span title="{{ o.destinatario }}">{{ (o.destinatario or '—') | truncate(40) }}</span>
+                        </div>
+                    </td>
+                    {% for s in linha.meses %}<td class="text-center{{ ' table-primary' if ano == hoje.year and loop.index == hoje.month }}">{{ celula(o, s) }}</td>{% endfor %}
+                </tr>
+                {% else %}
+                <tr><td colspan="13" class="text-center text-body-secondary py-4">Nenhum envio cadastrado.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer small text-body-secondary">
+        Cada coluna é o mês do envio. Clique numa célula para anexar os arquivos e registrar o envio.
+        Prazos em dias úteis descontam fins de semana, feriados nacionais, Carnaval, Corpus Christi,
+        N. Sra. da Penha e os feriados extras dos <a href="/sesa/cadastros">Cadastros</a>.
+    </div>
+</div>
+{% endblock %}

@@ -248,6 +248,18 @@ CATALOGO: tuple[Grupo, ...] = (
                     "exigem que seja o mesmo do usuário."),
           )),
 
+    Grupo("Envios à SESA", "fa-calendar-check",
+          "Editável em Cadastros SESA.", (
+              Chave("sesa_cnpj", "CNPJ do SAMU",
+                    "Copiado nos portais das certidões e conferido em cada "
+                    "PDF lido.", padrao="28.141.190/0011-58",
+                    gerida_em="/sesa/cadastros"),
+              Chave("sesa_feriados_extras", "Feriados extras",
+                    "Datas que não contam como dia útil no prazo dos envios: "
+                    "dd/mm (todo ano) ou dd/mm/aaaa.",
+                    gerida_em="/sesa/cadastros"),
+          )),
+
     Grupo("Sistema", "fa-sliders", "", (
               Chave("timezone", "Fuso horário",
                     "Fuso de exibição das datas, ex.: America/Sao_Paulo. "

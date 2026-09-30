@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/sesa/?ano={{ d.competencia.year }}">Envios à SESA</a></li>
+<li class="breadcrumb-item active">{{ d.obrigacao.nome }}</li>
+{% endblock %}
+
+{% block content %}
+{% set o = d.obrigacao %}
+{% set ent = d.entrega %}
+{% set s = d.situacao %}
+{% set enviada = ent and ent.enviada_em %}
+{% set pode_anexar = 'sesa.anexar' in usuario_logado.permissoes and not enviada %}
+{% set base = "/sesa/" ~ o.chave ~ "/" ~ chave_comp(d.competencia) %}
+{% if msg %}<div class="alert alert-success alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if erro %}<div class="alert alert-danger alert-dismissible fade show">{{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+    <div class="btn-group">
+        <a class="btn btn-outline-secondary btn-sm" href="/sesa/{{ o.chave }}/{{ anterior }}" aria-label="Mês anterior"><i class="fa-solid fa-chevron-left"></i></a>
+        <span class="btn btn-outline-secondary btn-sm disabled fw-semibold text-capitalize">{{ rotulo(d.competencia) }}</span>
+        <a class="btn btn-outline-secondary btn-sm" href="/sesa/{{ o.chave }}/{{ seguinte }}" aria-label="Mês seguinte"><i class="fa-solid fa-chevron-right"></i></a>
+    </div>
+    {% if s.estado == 'nao_aplica' %}<span class="badge text-bg-light border">Sem envio neste mês</span>
+    {% elif s.estado == 'enviada' %}<span class="badge {{ 'text-bg-success' if s.no_prazo else 'text-bg-warning' }}"><i class="fa-solid fa-check"></i> Enviado em {{ ent.enviada_em.strftime('%d/%m/%Y') }}{{ ' (fora do prazo)' if not s.no_prazo }}</span>
+    {% elif s.estado == 'atrasada' %}<span class="badge text-bg-danger"><i class="fa-solid fa-triangle-exclamation"></i> Atrasado — prazo era {{ d.prazo.strftime('%d/%m/%Y') }}</span>
+    {% elif s.estado == 'vence' %}<span class="badge text-bg-warning"><i class="fa-regular fa-clock"></i> Prazo: {{ d.prazo.strftime('%d/%m/%Y') }}</span>
+    {% else %}<span class="badge text-bg-secondary">Prazo: {{ d.prazo.strftime('%d/%m/%Y') }}</span>{% endif %}
+    <span class="small text-body-secondary">{{ descrever_prazo(o.prazo_tipo, o.prazo_dia) }} · {{ o.canal or '—' }} · {{ o.destinatario or '—' }}</span>
+</div>
+
+<div class="row g-3">
+<div class="col-xl-8">
+    {% if d.certidoes %}
+    <div class="card mb-3">
+        <div class="card-body py-2 d-flex flex-wrap gap-3 align-items-center small">
+            <span><i class="fa-solid fa-building me-1"></i> CNPJ do SAMU:</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm js-copiar" data-texto="{{ cnpj }}" title="Copiar">
+                <i class="fa-regular fa-copy"></i> {{ cnpj }}</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm js-copiar" data-texto="{{ cnpj_digitos }}" title="Copiar só os números (Caixa)">
+                <i class="fa-regular fa-copy"></i> {{ cnpj_digitos }}</button>
+            <span class="text-body-secondary">Os portais pedem CAPTCHA: emita em cada link, baixe o PDF e anexe aqui — o sistema lê número, validade e resultado.</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {% for l in d.linhas %}{% set item = l.item %}{% set a = l.anexo %}
+    <div class="card mb-2 {{ 'border-danger' if l.avisos else ('border-success' if a) }}" id="item-{{ item.id }}">
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap gap-2 align-items-start">
+                <div class="me-auto">
+                    <div class="fw-semibold">
+                        {% if a and not l.avisos %}<i class="fa-solid fa-circle-check text-success"></i>
+                        {% elif l.avisos %}<i class="fa-solid fa-circle-exclamation text-danger"></i>
+                        {% else %}<i class="fa-regular fa-circle text-body-tertiary"></i>{% endif %}
+                        {{ item.nome }} {% if item.orgao %}<span class="fw-normal text-body-secondary">· {{ item.orgao }}</span>{% endif %}
+                    </div>
+                    {% if item.instrucoes %}<div class="small text-body-secondary">{{ item.instrucoes }}</div>{% endif %}
+                </div>
+                {% if item.link %}
+                <a class="btn btn-outline-primary btn-sm" href="{{ item.link }}" target="_blank" rel="noopener noreferrer">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> Abrir portal</a>
+                {% endif %}
+            </div>
+
+            {% if a %}
+            <div class="mt-2 p-2 rounded bg-body-tertiary small">
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
+                    <a href="/sesa/anexos/{{ a.id }}/arquivo" target="_blank" rel="noopener"><i class="fa-regular fa-file-pdf"></i> {{ a.arquivo.nome_original }}</a>
+                    {% if a.reaproveitado_de %}<span class="badge text-bg-info">reaproveitada de mês anterior</span>{% endif %}
+                    {% if d.certidoes and a.cnpj_confere %}<span class="badge text-bg-light border" title="O CNPJ lido no PDF é o do SAMU">CNPJ confere</span>{% endif %}
+                    {% if d.certidoes and l.serve_proximo %}<span class="badge text-bg-light border" title="Válida no prazo do próximo mês ({{ d.proximo_prazo.strftime('%d/%m/%Y') }})">serve também para o próximo mês</span>{% endif %}
+                    {% if pode_anexar %}
+                    <form method="post" action="/sesa/anexos/{{ a.id }}/remover" class="ms-auto" onsubmit="return confirm('Remover este arquivo do envio?')">
+                        <button class="btn btn-link btn-sm text-danger p-0">Remover</button></form>
+                    {% endif %}
+                </div>
+                {% for aviso in l.avisos %}<div class="text-danger"><i class="fa-solid fa-triangle-exclamation"></i> {{ aviso | capitalize }}</div>{% endfor %}
+                {% if d.certidoes %}
+                <form method="post" action="/sesa/anexos/{{ a.id }}" class="row g-2 align-items-end mt-1">
+                    <div class="col-sm-3"><label class="form-label small mb-0">Número</label>
+                        <input class="form-control form-control-sm" name="numero" value="{{ a.numero or '' }}" maxlength="80" {{ 'disabled' if not pode_anexar }}></div>
+                    <div class="col-sm-2"><label class="form-label small mb-0">Emitida em</label>
+                        <input type="date" class="form-control form-control-sm" name="emitida_em" value="{{ a.emitida_em or '' }}" {{ 'disabled' if not pode_anexar }}></div>
+                    <div class="col-sm-2"><label class="form-label small mb-0">Válida até</label>
+                        <input type="date" class="form-control form-control-sm" name="valida_ate" value="{{ a.valida_ate or '' }}" {{ 'disabled' if not pode_anexar }}></div>
+                    <div class="col-sm-3"><label class="form-label small mb-0">Resultado</label>
+                        <select class="form-select form-select-sm" name="resultado" {{ 'disabled' if not pode_anexar }}>
+                            <option value="">—</option>
+                            {% for r in resultados %}<option {{ 'selected' if a.resultado == r }}>{{ r }}</option>{% endfor %}
+                        </select></div>
+                    {% if pode_anexar %}<div class="col-sm-2"><button class="btn btn-outline-secondary btn-sm w-100">Salvar</button></div>{% endif %}
+                </form>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if pode_anexar %}
+            <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+                <form method="post" action="{{ base }}/anexar" enctype="multipart/form-data" class="d-flex gap-2 align-items-center">
+                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                    <input type="file" name="arquivo" class="form-control form-control-sm" required
+                           {% if d.certidoes %}accept="application/pdf,image/*"{% endif %} aria-label="Arquivo de {{ item.nome }}">
+                    <button class="btn btn-primary btn-sm text-nowrap"><i class="fa-solid fa-upload"></i> {{ 'Substituir' if a else 'Anexar' }}</button>
+                </form>
+                {% if l.sugestao %}{% set sg = l.sugestao %}
+                <form method="post" action="{{ base }}/reaproveitar">
+                    <input type="hidden" name="anexo_id" value="{{ sg.id }}">
+                    <button class="btn btn-outline-info btn-sm" title="{{ sg.arquivo.nome_original }}">
+                        <i class="fa-solid fa-recycle"></i> Reaproveitar a anterior (válida até {{ sg.valida_ate.strftime('%d/%m/%Y') }})</button>
+                </form>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="col-xl-4">
+    {% set anexados = d.linhas | selectattr('anexo') | list | length %}
+    <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title mb-0"><i class="fa-solid fa-paper-plane me-1"></i> Envio</h3></div>
+        <div class="card-body small">
+            <div class="mb-2">{{ anexados }} de {{ d.linhas | length }} arquivo(s) anexado(s).</div>
+            <div class="progress mb-3" role="progressbar" aria-label="Arquivos anexados" aria-valuenow="{{ anexados }}" aria-valuemin="0" aria-valuemax="{{ d.linhas | length }}" style="height: 6px">
+                <div class="progress-bar {{ 'bg-success' if d.completo and not d.com_aviso else '' }}" style="width: {{ (100 * anexados / (d.linhas | length or 1)) | round }}%"></div>
+            </div>
+            {% if anexados %}
+            <a class="btn btn-outline-secondary btn-sm w-100 mb-3" href="{{ base }}/pacote.zip"><i class="fa-solid fa-file-zipper"></i> Baixar todos (.zip)</a>
+            {% endif %}
+
+            {% if enviada %}
+            <dl class="row mb-2">
+                <dt class="col-5">Enviado em</dt><dd class="col-7">{{ ent.enviada_em.strftime('%d/%m/%Y') }}</dd>
+                <dt class="col-5">Protocolo</dt><dd class="col-7">{{ ent.protocolo or '—' }}</dd>
+                <dt class="col-5">Registrado por</dt><dd class="col-7">{{ ent.remetente.nome if ent.remetente else '—' }}</dd>
+                {% if ent.observacao %}<dt class="col-5">Observação</dt><dd class="col-7">{{ ent.observacao }}</dd>{% endif %}
+            </dl>
+            {% if 'sesa.enviar' in usuario_logado.permissoes %}
+            <form method="post" action="{{ base }}/desfazer" onsubmit="return confirm('Desfazer o registro do envio? Os arquivos continuam anexados.')">
+                <button class="btn btn-outline-danger btn-sm">Desfazer registro</button></form>
+            {% endif %}
+            {% elif 'sesa.enviar' in usuario_logado.permissoes and s.estado != 'nao_aplica' %}
+            {% if not d.completo %}<div class="alert alert-warning py-1 px-2 small mb-2">Ainda faltam arquivos.</div>
+            {% elif d.com_aviso %}<div class="alert alert-danger py-1 px-2 small mb-2">Há certidões com pendência (veja em vermelho).</div>{% endif %}
+            <form method="post" action="{{ base }}/enviar" class="vstack gap-2">
+                <div><label class="form-label small mb-0">Data do envio</label>
+                    <input type="date" class="form-control form-control-sm" name="enviada_em" value="{{ hoje }}" required></div>
+                <div><label class="form-label small mb-0">Protocolo {{ o.canal or '' }}</label>
+                    <input class="form-control form-control-sm" name="protocolo" maxlength="80" placeholder="{{ 'Ex.: 2026-ABC123' if o.canal == 'E-Docs' else 'Opcional' }}"></div>
+                <div><label class="form-label small mb-0">Observação</label>
+                    <textarea class="form-control form-control-sm" name="observacao" rows="2"></textarea></div>
+                <button class="btn btn-success btn-sm"><i class="fa-solid fa-check"></i> Registrar envio</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if anexados %}
+    <div class="card">
+        <div class="card-header d-flex align-items-center">
+            <h3 class="card-title mb-0 me-auto"><i class="fa-regular fa-file-lines me-1"></i> Texto do despacho</h3>
+            <button type="button" class="btn btn-outline-secondary btn-sm js-copiar" data-alvo="despacho"><i class="fa-regular fa-copy"></i> Copiar</button>
+        </div>
+        <div class="card-body p-2">
+            <textarea id="despacho" class="form-control form-control-sm font-monospace small" rows="10" aria-label="Texto do despacho">{{ despacho }}</textarea>
+        </div>
+    </div>
+    {% endif %}
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll(".js-copiar").forEach(function (b) {
+    b.addEventListener("click", function () {
+        var texto = b.dataset.alvo ? document.getElementById(b.dataset.alvo).value : b.dataset.texto;
+        navigator.clipboard.writeText(texto).then(function () {
+            var antes = b.innerHTML;
+            b.innerHTML = '<i class="fa-solid fa-check"></i> Copiado';
+            setTimeout(function () { b.innerHTML = antes; }, 1500);
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -66,7 +66,7 @@ def _alerta(nivel, icone, titulo, texto="", link=None, contagem=None,
 def alertas(db: Session, usuario) -> list[dict]:
     perms = usuario.permissoes
     lista: list[dict] = []
-    for fonte in (_alertas_ncps, _alertas_investigacao, _alertas_vsky,
+    for fonte in (_alertas_ncps, _alertas_investigacao, _alertas_sesa, _alertas_vsky,
                   _alertas_notificacoes, _alertas_conta):
         try:
             lista += fonte(db, usuario, perms)
@@ -195,6 +195,37 @@ def respostas_ncps(db: Session, usuario, dias: int = 30) -> list[dict]:
             "acoes_concluidas": sum(1 for a in acoes if a.status == "concluida"),
         })
     return resultado
+
+
+def _alertas_sesa(db, usuario, perms) -> list[dict]:
+    if "sesa.visualizar" not in perms:
+        return []
+    from app.modules.sesa import prazos
+    from app.modules.sesa.routes import _hoje
+    from app.modules.sesa.service import pendencias
+
+    # um alerta por estado (no começo do mês vencem vários envios juntos)
+    hoje = _hoje(db, usuario.empresa_id)
+    todas = pendencias(db, usuario.empresa_id, hoje)
+    lista = []
+    for estado, nivel in (("atrasada", "danger"), ("vence", "warning")):
+        grupo = [p for p in todas if p["estado"] == estado]
+        if not grupo:
+            continue
+        if len(grupo) == 1:
+            p = grupo[0]
+            titulo = f"SESA: {p['obrigacao'].nome} ({prazos.rotulo(p['competencia'])}) " + (
+                "atrasado" if estado == "atrasada" else f"vence em {p['prazo']:%d/%m}")
+            link = f"/sesa/{p['obrigacao'].chave}/{prazos.chave(p['competencia'])}"
+        else:
+            primeiro = min(p["prazo"] for p in grupo)
+            titulo = (f"SESA: {len(grupo)} envios atrasados" if estado == "atrasada"
+                      else f"SESA: {len(grupo)} envios vencem a partir de {primeiro:%d/%m}")
+            link = "/sesa/"
+        texto = "; ".join(f"{p['obrigacao'].nome} ({p['prazo']:%d/%m})" for p in grupo)
+        lista.append(_alerta(nivel, "fa-calendar-check", titulo, texto[:300], link,
+                             len(grupo), "qualidade"))
+    return lista
 
 
 def _alertas_investigacao(db, usuario, perms) -> list[dict]:

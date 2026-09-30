@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/sesa/">Envios à SESA</a></li>
+<li class="breadcrumb-item active">Cadastros</li>
+{% endblock %}
+
+{% block content %}
+{% if msg %}<div class="alert alert-success alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title mb-0"><i class="fa-solid fa-sliders me-1"></i> Dados gerais</h3></div>
+    <div class="card-body">
+        <form method="post" action="/sesa/cadastros/geral" class="row g-2 align-items-end">
+            <div class="col-md-3"><label class="form-label small mb-1">CNPJ do SAMU</label>
+                <input class="form-control form-control-sm" name="cnpj" value="{{ cnpj }}" maxlength="20" required></div>
+            <div class="col-md-7"><label class="form-label small mb-1">Feriados extras (não contam como dia útil)</label>
+                <input class="form-control form-control-sm" name="feriados" value="{{ feriados }}"
+                       placeholder="dd/mm repete todo ano; dd/mm/aaaa só naquele ano. Ex.: 08/09, 26/12, 02/01/2027"></div>
+            <div class="col-md-2"><button class="btn btn-primary btn-sm w-100">Salvar</button></div>
+        </form>
+        <div class="small text-body-secondary mt-2">O CNPJ aparece para copiar nos portais e é conferido em cada certidão lida.
+            Já são descontados: feriados nacionais, Carnaval, Paixão de Cristo, N. Sra. da Penha (ES) e Corpus Christi.</div>
+    </div>
+</div>
+
+<div class="accordion" id="obrigacoes">
+{% for o in obrigacoes %}
+<div class="accordion-item" id="o{{ o.id }}">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#c{{ o.id }}">
+            <span class="me-2 {{ 'text-body-tertiary text-decoration-line-through' if not o.ativo }}">{{ o.nome }}</span>
+            <span class="small text-body-secondary">{{ periodicidades[o.periodicidade] }} · {{ o.prazo_dia }}º {{ 'dia útil' if o.prazo_tipo == 'util' else 'dia do mês' }} · {{ o.canal or '—' }}</span>
+        </button>
+    </h2>
+    <div id="c{{ o.id }}" class="accordion-collapse collapse" data-bs-parent="#obrigacoes">
+        <div class="accordion-body">
+        <form method="post" action="/sesa/cadastros/obrigacao/{{ o.id }}">
+            <div class="row g-2 mb-3">
+                <div class="col-md-5"><label class="form-label small mb-1">Nome</label>
+                    <input class="form-control form-control-sm" name="nome" value="{{ o.nome }}" maxlength="160" required></div>
+                <div class="col-md-2"><label class="form-label small mb-1">Periodicidade</label>
+                    <select class="form-select form-select-sm" name="periodicidade">
+                        {% for k, v in periodicidades.items() %}<option value="{{ k }}" {{ 'selected' if o.periodicidade == k }}>{{ v }}</option>{% endfor %}
+                    </select></div>
+                <div class="col-md-2"><label class="form-label small mb-1">Prazo</label>
+                    <input type="number" class="form-control form-control-sm" name="prazo_dia" value="{{ o.prazo_dia }}" min="1" max="28"></div>
+                <div class="col-md-3"><label class="form-label small mb-1">Contagem</label>
+                    <select class="form-select form-select-sm" name="prazo_tipo">
+                        <option value="util" {{ 'selected' if o.prazo_tipo == 'util' }}>dia útil do mês</option>
+                        <option value="corrido" {{ 'selected' if o.prazo_tipo == 'corrido' }}>dia do mês (corrido)</option>
+                    </select></div>
+                <div class="col-12"><label class="form-label small mb-1">Meses de envio (trimestral/anual)</label>
+                    <div class="d-flex flex-wrap gap-2">
+                    {% set marcados = (o.meses or '').split(',') %}
+                    {% for m in range(1, 13) %}
+                    <label class="form-check form-check-inline small mb-0">
+                        <input class="form-check-input" type="checkbox" name="meses" value="{{ m }}" {{ 'checked' if m | string in marcados }}> {{ '%02d' | format(m) }}</label>
+                    {% endfor %}
+                    </div></div>
+                <div class="col-md-3"><label class="form-label small mb-1">Canal</label>
+                    <input class="form-control form-control-sm" name="canal" value="{{ o.canal or '' }}" maxlength="40" placeholder="E-Docs, E-mail"></div>
+                <div class="col-md-7"><label class="form-label small mb-1">Para quem</label>
+                    <input class="form-control form-control-sm" name="destinatario" value="{{ o.destinatario or '' }}"></div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <label class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="ativo" value="1" {{ 'checked' if o.ativo }}> Ativo</label></div>
+            </div>
+
+            <table class="table table-sm small align-middle">
+                <thead><tr><th>Documento</th><th>Órgão</th><th>Link</th><th>Instruções</th><th>Ativo</th></tr></thead>
+                <tbody>
+                {% for i in o.itens %}
+                <tr>
+                    <td><input class="form-control form-control-sm" name="item_{{ i.id }}_nome" value="{{ i.nome }}" maxlength="160" aria-label="Documento"></td>
+                    <td><input class="form-control form-control-sm" name="item_{{ i.id }}_orgao" value="{{ i.orgao or '' }}" maxlength="120" aria-label="Órgão"></td>
+                    <td><input class="form-control form-control-sm" name="item_{{ i.id }}_link" value="{{ i.link or '' }}" maxlength="500" aria-label="Link"></td>
+                    <td><textarea class="form-control form-control-sm" name="item_{{ i.id }}_instrucoes" rows="1" aria-label="Instruções">{{ i.instrucoes or '' }}</textarea></td>
+                    <td><input class="form-check-input" type="checkbox" name="item_{{ i.id }}_ativo" value="1" {{ 'checked' if i.ativo }} aria-label="Ativo"></td>
+                </tr>
+                {% endfor %}
+                <tr><td colspan="5"><input class="form-control form-control-sm" name="novo_item" maxlength="160" placeholder="+ Novo documento neste envio"></td></tr>
+                </tbody>
+            </table>
+            <button class="btn btn-primary btn-sm">Salvar</button>
+        </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+</div>
+{% endblock %}
