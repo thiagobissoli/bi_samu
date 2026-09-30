@@ -16,10 +16,14 @@ from app.core.config_service import get_config
 from app.core.storage import absolute_path, save_upload
 from app.modules.sesa import constants as cat
 from app.modules.sesa import extrator, prazos
-from app.modules.sesa.models import SesaAnexo, SesaEntrega, SesaItem, SesaObrigacao
+from app.modules.sesa.models import (SesaAnexo, SesaAvisoVencimento, SesaEntrega,
+                                     SesaItem, SesaObrigacao)
 
 CONFIG_CNPJ = "sesa_cnpj"
 CONFIG_FERIADOS = "sesa_feriados_extras"
+CONFIG_AVISO_DIAS = "sesa_aviso_vencimento_dias"
+CONFIG_ENDERECO = "sesa_endereco_sistema"
+AVISO_VENCIMENTO_PADRAO = 7
 AVISO_DIAS = 5            # a página inicial avisa a partir de 5 dias antes do prazo
 TIPOS_ACEITOS = ("application/pdf", "image/")
 
@@ -84,6 +88,14 @@ def cnpj(db: Session, empresa_id: int) -> str:
 
 def feriados_extras(db: Session, empresa_id: int) -> list[str]:
     return prazos.ler_extras(get_config(db, CONFIG_FERIADOS, "", empresa_id))
+
+
+def dias_aviso_vencimento(db: Session, empresa_id: int) -> int:
+    try:
+        return max(1, int(get_config(db, CONFIG_AVISO_DIAS, str(AVISO_VENCIMENTO_PADRAO),
+                                     empresa_id) or AVISO_VENCIMENTO_PADRAO))
+    except ValueError:
+        return AVISO_VENCIMENTO_PADRAO
 
 
 def prazo_de(obrig: SesaObrigacao, competencia: date, extras=()) -> date:
@@ -236,6 +248,9 @@ def detalhe(db: Session, empresa_id: int, obrig: SesaObrigacao, competencia: dat
     return {"obrigacao": obrig, "competencia": competencia, "entrega": ent,
             "situacao": sit, "prazo": limite, "proximo_prazo": proximo,
             "linhas": linhas, "certidoes": certidoes,
+            "portais_pendentes": [l["item"] for l in linhas if certidoes and l["item"].link
+                                  and ((not l["anexo"] and not l["sugestao"])
+                                       or l["avisos"])],
             "completo": all(l["anexo"] for l in linhas),
             "com_aviso": any(l["avisos"] for l in linhas)}
 
@@ -313,6 +328,46 @@ def desfazer_envio(db: Session, ent: SesaEntrega, usuario_id: int) -> None:
     ent.enviada_em = ent.protocolo = ent.enviada_por = None
     ent.updated_by = usuario_id
     db.commit()
+
+
+# ------------------------------------------------------------------ vencimento
+
+def certidoes_a_vencer(db: Session, empresa_id: int, hoje: date,
+                       dias: int) -> list[dict]:
+    """Certidões cuja validade mais recente termina nos próximos `dias`.
+
+    Vale a maior validade entre todos os anexos do item: se uma certidão nova
+    já foi anexada, a antiga não gera aviso. Vencidas há mais de 7 dias ficam
+    de fora (o aviso seria velho demais para ajudar)."""
+    from sqlalchemy import func
+
+    ultimas = dict(db.execute(
+        select(SesaAnexo.item_id, func.max(SesaAnexo.valida_ate))
+        .where(SesaAnexo.empresa_id == empresa_id, SesaAnexo.deleted_at.is_(None),
+               SesaAnexo.valida_ate.is_not(None))
+        .group_by(SesaAnexo.item_id)).all())
+    saida = []
+    for o in obrigacoes(db, empresa_id):
+        if o.tipo != cat.TIPO_CERTIDOES:
+            continue
+        for item in itens_ativos(o):
+            validade = ultimas.get(item.id)
+            if validade is None:
+                continue
+            restantes = (validade - hoje).days
+            if -7 <= restantes <= dias:
+                saida.append({"obrigacao": o, "item": item, "valida_ate": validade,
+                              "dias": restantes})
+    return sorted(saida, key=lambda c: c["valida_ate"])
+
+
+def avisos_pendentes(db: Session, empresa_id: int, hoje: date) -> list[dict]:
+    """As certidões a vencer que ainda não foram avisadas."""
+    ja = {(a.item_id, a.valida_ate) for a in db.scalars(select(SesaAvisoVencimento).where(
+        SesaAvisoVencimento.empresa_id == empresa_id))}
+    return [c for c in certidoes_a_vencer(db, empresa_id, hoje,
+                                          dias_aviso_vencimento(db, empresa_id))
+            if (c["item"].id, c["valida_ate"]) not in ja]
 
 
 # ------------------------------------------------------------------ pacote

@@ -258,6 +258,14 @@ CATALOGO: tuple[Grupo, ...] = (
                     "Datas que não contam como dia útil no prazo dos envios: "
                     "dd/mm (todo ano) ou dd/mm/aaaa.",
                     gerida_em="/sesa/cadastros"),
+              Chave("sesa_aviso_vencimento_dias", "Aviso de vencimento (dias)",
+                    "Com quantos dias de antecedência quem anexa certidões é "
+                    "avisado (sino e e-mail) de que uma certidão vai vencer.",
+                    padrao="7", tipo=NUMERO, gerida_em="/sesa/cadastros"),
+              Chave("sesa_endereco_sistema", "Endereço do sistema",
+                    "Usado no link dos e-mails automáticos. Preenchido na "
+                    "primeira visita às telas da SESA.",
+                    gerida_em="/sesa/cadastros"),
           )),
 
     Grupo("Sistema", "fa-sliders", "", (

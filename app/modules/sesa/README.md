@@ -53,5 +53,19 @@ A **competência** é o mês do envio, que corresponde às colunas da planilha.
 | `sesa.enviar` | registrar ou desfazer o envio |
 | `sesa.cadastros` | editar o catálogo |
 
+## Portais pendentes e aviso de vencimento
+
+- **Abrir portais pendentes**: um clique abre, em abas, os portais das
+  certidões que ainda não servem para o envio do mês. Entram as que faltam
+  sem nenhuma anterior válida para reaproveitar e as que têm pendência. Se o
+  navegador bloquear as abas, a tela pede para permitir pop-ups.
+- **Aviso de vencimento** (`avisos.py` e `scheduler.py`): todo dia às 7h, e
+  2 minutos depois do boot, quem tem `sesa.anexar` recebe no sino e por
+  e-mail as certidões que vencem em até `sesa_aviso_vencimento_dias` (7 por
+  padrão). O aviso sai uma vez por certidão (tabela
+  `sesa_avisos_vencimento`). Se uma certidão nova já foi anexada, a antiga
+  não gera aviso. O link do e-mail usa `sesa_endereco_sistema`, preenchido
+  na primeira visita às telas da SESA.
+
 A página inicial mostra alertas dos envios atrasados e dos que vencem em
 até 5 dias.

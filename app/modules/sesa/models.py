@@ -88,3 +88,16 @@ class SesaAnexo(BaseModel):
     entrega = relationship("SesaEntrega", back_populates="anexos")
     item = relationship("SesaItem", lazy="joined")
     arquivo = relationship("Arquivo", lazy="joined")
+
+
+class SesaAvisoVencimento(BaseModel):
+    """Aviso de vencimento já enviado: um por certidão (item + validade),
+    para o job diário não repetir o e-mail."""
+
+    __tablename__ = "sesa_avisos_vencimento"
+    __table_args__ = (UniqueConstraint("empresa_id", "item_id", "valida_ate",
+                                       name="uq_sesa_aviso_item_validade"),)
+
+    item_id: Mapped[int] = mapped_column(ForeignKey("sesa_itens.id"), index=True)
+    valida_ate: Mapped[date] = mapped_column(Date)
+    destinatarios: Mapped[int] = mapped_column(Integer, default=0)

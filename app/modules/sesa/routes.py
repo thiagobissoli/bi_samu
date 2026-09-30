@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit
 from app.core.auth import require_permission
-from app.core.config_service import set_config
+from app.core.config_service import get_config, set_config
 from app.core.database import get_session
 from app.core.export import tz_da_empresa
 from app.core.storage import absolute_path
@@ -29,6 +29,27 @@ from app.modules.sesa import prazos, service
 from app.modules.sesa.models import SesaAnexo, SesaItem, SesaObrigacao
 
 router = APIRouter(prefix="/sesa", tags=["SESA"])
+
+
+@router.on_event("startup")
+def _agendar_avisos() -> None:
+    """Job diário dos avisos de vencimento das certidões."""
+    try:
+        from app.modules.sesa import scheduler
+        scheduler.iniciar()
+    except Exception:  # noqa: BLE001 — sem agendador o resto do sistema segue
+        import logging
+        logging.getLogger("uvicorn.error").exception("SESA: agendador não iniciou")
+
+
+def _lembrar_endereco(request: Request, db: Session, empresa_id: int) -> None:
+    """Guarda o endereço do sistema (para o link dos e-mails do job, que roda
+    fora de uma requisição) na primeira visita; depois é editável nos Cadastros."""
+    from app.core.config_service import get_config
+
+    if not get_config(db, service.CONFIG_ENDERECO, "", empresa_id):
+        set_config(db, service.CONFIG_ENDERECO, str(request.base_url).rstrip("/"),
+                   empresa_id)
 
 
 def _hoje(db: Session, empresa_id: int) -> date:
@@ -66,6 +87,7 @@ def index(request: Request, ano: int | None = None,
           usuario: Usuario = Depends(require_permission("sesa.visualizar")),
           db: Session = Depends(get_session)):
     service.garantir_catalogo(db, usuario.empresa_id)
+    _lembrar_endereco(request, db, usuario.empresa_id)
     hoje = _hoje(db, usuario.empresa_id)
     ano = ano if ano and 2000 <= ano <= 2100 else hoje.year
     return render(request, "sesa/index.html", usuario, page_title="Envios à SESA",
@@ -94,19 +116,30 @@ def cadastros(request: Request, msg: str = "",
                   obrigacoes=service.obrigacoes(db, usuario.empresa_id, so_ativas=False),
                   cnpj=service.cnpj(db, usuario.empresa_id),
                   feriados=", ".join(service.feriados_extras(db, usuario.empresa_id)),
+                  aviso_dias=service.dias_aviso_vencimento(db, usuario.empresa_id),
+                  endereco=get_config(db, service.CONFIG_ENDERECO, "", usuario.empresa_id),
                   periodicidades=cat.PERIODICIDADES, msg=msg)
 
 
 @router.post("/cadastros/geral", include_in_schema=False)
 def cadastros_geral(request: Request, cnpj: str = Form(""), feriados: str = Form(""),
+                    aviso_dias: str = Form(""), endereco: str = Form(""),
                     usuario: Usuario = Depends(require_permission("sesa.cadastros")),
                     db: Session = Depends(get_session)):
     set_config(db, service.CONFIG_CNPJ, cnpj.strip() or cat.CNPJ_PADRAO,
                usuario.empresa_id, updated_by=usuario.id)
     set_config(db, service.CONFIG_FERIADOS, ", ".join(prazos.ler_extras(feriados)),
                usuario.empresa_id, updated_by=usuario.id)
+    dias = aviso_dias.strip()
+    set_config(db, service.CONFIG_AVISO_DIAS,
+               str(max(1, min(60, int(dias)))) if dias.isdigit() else
+               str(service.AVISO_VENCIMENTO_PADRAO), usuario.empresa_id, updated_by=usuario.id)
+    set_config(db, service.CONFIG_ENDERECO, endereco.strip().rstrip("/"),
+               usuario.empresa_id, updated_by=usuario.id)
     record_audit(db, tabela="configuracoes", acao="UPDATE",
-                 valor_novo={"sesa_cnpj": cnpj, "sesa_feriados_extras": feriados},
+                 valor_novo={"sesa_cnpj": cnpj, "sesa_feriados_extras": feriados,
+                             "sesa_aviso_vencimento_dias": aviso_dias,
+                             "sesa_endereco_sistema": endereco},
                  usuario=usuario, request=request)
     return RedirectResponse(f"/sesa/cadastros?msg={quote('Dados gerais salvos.')}",
                             status_code=303)
@@ -225,6 +258,7 @@ def detalhe(request: Request, chave: str, competencia: str, msg: str = "", erro:
     o = _obrigacao(db, usuario, chave)
     if o is None:
         return RedirectResponse("/sesa/", status_code=303)
+    _lembrar_endereco(request, db, usuario.empresa_id)
     hoje = _hoje(db, usuario.empresa_id)
     comp = prazos.competencia_de(competencia, hoje)
     dados = service.detalhe(db, usuario.empresa_id, o, comp, hoje)

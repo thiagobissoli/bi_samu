@@ -14,13 +14,19 @@
         <form method="post" action="/sesa/cadastros/geral" class="row g-2 align-items-end">
             <div class="col-md-3"><label class="form-label small mb-1">CNPJ do SAMU</label>
                 <input class="form-control form-control-sm" name="cnpj" value="{{ cnpj }}" maxlength="20" required></div>
-            <div class="col-md-7"><label class="form-label small mb-1">Feriados extras (não contam como dia útil)</label>
+            <div class="col-md-9"><label class="form-label small mb-1">Feriados extras (não contam como dia útil)</label>
                 <input class="form-control form-control-sm" name="feriados" value="{{ feriados }}"
                        placeholder="dd/mm repete todo ano; dd/mm/aaaa só naquele ano. Ex.: 08/09, 26/12, 02/01/2027"></div>
+            <div class="col-md-3"><label class="form-label small mb-1">Avisar vencimento com (dias)</label>
+                <input type="number" class="form-control form-control-sm" name="aviso_dias" value="{{ aviso_dias }}" min="1" max="60"></div>
+            <div class="col-md-7"><label class="form-label small mb-1">Endereço do sistema (link nos e-mails)</label>
+                <input class="form-control form-control-sm" name="endereco" value="{{ endereco }}" placeholder="https://qualidade.exemplo.gov.br"></div>
             <div class="col-md-2"><button class="btn btn-primary btn-sm w-100">Salvar</button></div>
         </form>
         <div class="small text-body-secondary mt-2">O CNPJ aparece para copiar nos portais e é conferido em cada certidão lida.
-            Já são descontados: feriados nacionais, Carnaval, Paixão de Cristo, N. Sra. da Penha (ES) e Corpus Christi.</div>
+            Já são descontados: feriados nacionais, Carnaval, Paixão de Cristo, N. Sra. da Penha (ES) e Corpus Christi.
+            Todo dia às 7h, quem tem a permissão <code>sesa.anexar</code> recebe no sino e por e-mail as certidões que vencem
+            dentro do número de dias acima — uma vez por certidão.</div>
     </div>
 </div>
 

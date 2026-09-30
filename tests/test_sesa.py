@@ -282,3 +282,82 @@ def test_cadastros_editam_prazo_e_itens():
         db.commit()
     finally:
         db.close()
+
+
+# ------------------------------------------------------------------ portais e avisos
+
+def test_abrir_portais_pendentes():
+    _login()
+    d = _detalhe("2032-01")
+    assert {i.chave for i in d["portais_pendentes"]} == {
+        "estadual", "uniao", "fgts", "serra", "trabalhista"}
+    html = client.get("/sesa/certidoes/2032-01", headers=HTML).text
+    assert "Abrir portais pendentes (5)" in html and "consulta-crf.caixa.gov.br" in html
+
+
+TRABALHISTA = ("CERTIDÃO NEGATIVA DE DÉBITOS TRABALHISTAS\nCNPJ: 28.141.190/0011-58\n"
+               "Certidão nº: 99990001/2031\nExpedição: 01/09/2031\nValidade: 10/09/2031")
+
+
+def test_aviso_de_vencimento_sai_uma_vez(upload_temporario, monkeypatch):
+    from app.core import mail
+    from app.core.database import SessionLocal
+    from app.modules.sesa import avisos
+
+    enviados = []
+    monkeypatch.setattr(mail, "send_mail",
+                        lambda db, para, assunto, corpo, **k: enviados.append(assunto))
+    _login()
+    trab = _item("trabalhista")
+    client.post("/sesa/certidoes/2031-09/anexar", data={"item_id": trab},
+                files={"arquivo": ("cndt.pdf", _pdf(TRABALHISTA), "application/pdf")})
+    # a pendência some da lista de portais: já tem certidão (sem aviso)
+    assert "trabalhista" not in {i.chave for i in _detalhe("2031-09")["portais_pendentes"]}
+
+    db = SessionLocal()
+    try:
+        longe = service.certidoes_a_vencer(db, 1, date(2031, 8, 20), 7)
+        assert trab not in {c["item"].id for c in longe}
+        pend = service.avisos_pendentes(db, 1, date(2031, 9, 5))
+        assert [(c["item"].id, c["dias"]) for c in pend] == [(trab, 5)]
+        assert avisos.avisar_vencimentos(db, 1, date(2031, 9, 5)) == 1
+        assert enviados and "Trabalhista" in enviados[0]
+        # no dia seguinte não repete
+        assert avisos.avisar_vencimentos(db, 1, date(2031, 9, 6)) == 0
+    finally:
+        db.close()
+
+    # certidão nova anexada: a antiga deixa de contar
+    novo = TRABALHISTA.replace("99990001", "99990002").replace("10/09/2031", "10/03/2032")
+    client.post("/sesa/certidoes/2031-10/anexar", data={"item_id": trab},
+                files={"arquivo": ("cndt2.pdf", _pdf(novo), "application/pdf")})
+    db = SessionLocal()
+    try:
+        assert trab not in {c["item"].id for c in
+                            service.certidoes_a_vencer(db, 1, date(2031, 9, 5), 7)}
+    finally:
+        db.close()
+
+
+def test_job_diario_roda_sem_erro(monkeypatch):
+    from app.core import mail
+    from app.modules.sesa import scheduler
+
+    monkeypatch.setattr(mail, "send_mail", lambda *a, **k: True)
+    assert scheduler.executar() >= 0
+
+
+def test_cadastros_gerais_guardam_dias_e_endereco():
+    from app.core.config_service import get_config
+    from app.core.database import SessionLocal
+
+    _login()
+    client.post("/sesa/cadastros/geral", data={"cnpj": CNPJ, "feriados": "",
+                                               "aviso_dias": "10",
+                                               "endereco": "https://q.exemplo/"})
+    db = SessionLocal()
+    try:
+        assert service.dias_aviso_vencimento(db, 1) == 10
+        assert get_config(db, service.CONFIG_ENDERECO, "", 1) == "https://q.exemplo"
+    finally:
+        db.close()

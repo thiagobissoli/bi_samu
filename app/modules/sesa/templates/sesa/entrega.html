@@ -39,7 +39,15 @@
                 <i class="fa-regular fa-copy"></i> {{ cnpj }}</button>
             <button type="button" class="btn btn-outline-secondary btn-sm js-copiar" data-texto="{{ cnpj_digitos }}" title="Copiar só os números (Caixa)">
                 <i class="fa-regular fa-copy"></i> {{ cnpj_digitos }}</button>
+            {% if d.portais_pendentes and not enviada %}
+            <button type="button" class="btn btn-primary btn-sm" id="abrir-portais"
+                    data-links='{{ d.portais_pendentes | map(attribute="link") | list | tojson }}'
+                    title="{{ d.portais_pendentes | map(attribute='nome') | join(', ') }}">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i> Abrir portais pendentes ({{ d.portais_pendentes | length }})</button>
+            {% endif %}
             <span class="text-body-secondary">Os portais pedem CAPTCHA: emita em cada link, baixe o PDF e anexe aqui — o sistema lê número, validade e resultado.</span>
+            <div id="aviso-popup" class="alert alert-warning py-1 px-2 mb-0 w-100 d-none">
+                O navegador bloqueou parte das abas. Permita pop-ups para este site (ícone na barra de endereço) e clique de novo.</div>
         </div>
     </div>
     {% endif %}
@@ -174,6 +182,18 @@
 
 {% block scripts %}
 <script>
+(function () {
+    var botao = document.getElementById("abrir-portais");
+    if (!botao) return;
+    botao.addEventListener("click", function () {
+        var bloqueado = false;
+        JSON.parse(botao.dataset.links).forEach(function (url) {
+            var aba = window.open(url, "_blank");
+            if (aba) { aba.opener = null; } else { bloqueado = true; }
+        });
+        document.getElementById("aviso-popup").classList.toggle("d-none", !bloqueado);
+    });
+})();
 document.querySelectorAll(".js-copiar").forEach(function (b) {
     b.addEventListener("click", function () {
         var texto = b.dataset.alvo ? document.getElementById(b.dataset.alvo).value : b.dataset.texto;
