@@ -38,3 +38,11 @@ def test_itens_soltos_primeiro_e_grupos_na_ordem():
 def test_todo_item_dos_modulos_tem_grupo():
     assert len(get_menu()) > 10
     assert all(i.get("group") in MENU_GRUPOS for i in get_menu())
+
+
+def test_documentos_sesa_tem_grupo_proprio():
+    sesa = [i for i in get_menu() if i["url"].startswith("/sesa")]
+    assert len(sesa) == 3 and all(i["group"] == "sesa" for i in sesa)
+    arvore = agrupar_menu(sesa, "/sesa/certidoes")
+    grupo = next(n for n in arvore if n.get("chave") == "sesa")
+    assert grupo["label"] == "Documentos SESA" and grupo["aberto"]

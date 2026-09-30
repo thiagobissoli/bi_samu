@@ -11,28 +11,28 @@
     ],
     "menu": [
         {
-            "label": "Envios à SESA",
+            "label": "Envios do ano",
             "url": "/sesa/",
             "icon": "fa-calendar-check",
             "permission": "sesa.visualizar",
             "order": 40,
-            "group": "qualidade"
+            "group": "sesa"
         },
         {
-            "label": "Certidões SESA",
+            "label": "Certidões do mês",
             "url": "/sesa/certidoes",
             "icon": "fa-file-shield",
             "permission": "sesa.visualizar",
             "order": 41,
-            "group": "qualidade"
+            "group": "sesa"
         },
         {
-            "label": "Cadastros SESA",
+            "label": "Cadastros",
             "url": "/sesa/cadastros",
             "icon": "fa-list-check",
             "permission": "sesa.cadastros",
             "order": 42,
-            "group": "qualidade"
+            "group": "sesa"
         }
     ],
     "routes": [

@@ -51,6 +51,7 @@ def discover_modules(app: FastAPI) -> None:
 MENU_GRUPOS = {
     "indicadores": {"label": "Indicadores", "icon": "fa-chart-line", "order": 10},
     "qualidade": {"label": "Qualidade", "icon": "fa-shield-heart", "order": 20},
+    "sesa": {"label": "Documentos SESA", "icon": "fa-building-columns", "order": 25},
     "dados": {"label": "Dados", "icon": "fa-database", "order": 30},
     "acesso": {"label": "Usuários e Acesso", "icon": "fa-users-gear", "order": 40},
     "sistema": {"label": "Sistema", "icon": "fa-gears", "order": 50},
