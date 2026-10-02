@@ -118,5 +118,9 @@ PERIODICIDADES = {"mensal": "Mensal", "trimestral": "Trimestral", "anual": "Anua
 
 
 # Itens com documento gerado pelo sistema: (obrigação, item) → tela do gerador
-GERADORES = {("adversidades", "i01"): "/sesa/encaminhamentos"}
+GERADORES = {
+    ("adversidades", "i01"): "/sesa/encaminhamentos",
+    ("convenio_007", "i04"): "/sesa/saida-usa",
+    ("convenio_008", "i03"): "/sesa/saida-usa",
+}
 CONFIG_LOGO = "sesa_logo_arquivo_id"

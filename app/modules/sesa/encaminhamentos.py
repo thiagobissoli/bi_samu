@@ -337,8 +337,6 @@ def gerar_docx(paginas: list[dict], periodo: str, logo: bytes | None = None) -> 
 
 def periodo_dos_dados(competencia: date) -> tuple[date, date]:
     """Envio de outubro → dados de 01/09 a 30/09."""
-    from app.modules.sesa.prazos import somar_meses
+    from app.modules.sesa.prazos import periodo_competencia_anterior
 
-    inicio = somar_meses(competencia, -1)
-    fim = date.fromordinal(competencia.toordinal() - 1)
-    return inicio, fim
+    return periodo_competencia_anterior(competencia)

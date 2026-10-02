@@ -48,6 +48,20 @@ O item "Encaminhamento dos Hospitais" do envio de Adversidades tem o botão
 Total = recebidos do SAMU; secundário = Inter-hospitalar; primário (APH) =
 Pré-hospitalar. O brasão do cabeçalho é enviado em Cadastros SESA.
 
+## Saída de USA (documento gerado)
+
+Item das prestações de contas dos convênios 007 e 008. O botão **Gerar a
+partir do vSky** leva a `/sesa/saida-usa/{AAAA-MM}?para={convênio}`.
+
+Diferente dos Encaminhamentos, não há upload: o relatório é calculado dos
+registros que o sistema já importa do vSky. Uma **saída** é um empenho que
+iniciou deslocamento — a mesma regra do módulo de Indicadores
+(`tema_saidas_ambulancia`); daí separa-se USA de USB pela coluna `recurso`.
+
+A tela mostra o resumo (saídas de USA/USB, total, média/dia) e as quebras por
+unidade, município, código e dia. O botão gera uma planilha `.xlsx` (uma aba
+por quebra) e a anexa ao envio. Período: o mês anterior ao envio.
+
 ## Prazos
 
 `prazos.py` tem só funções puras. Um prazo pode ser o n-ésimo dia útil do mês

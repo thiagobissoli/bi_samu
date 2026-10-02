@@ -142,7 +142,7 @@ def test_fluxo_planilha_ate_o_anexo(upload_temporario):
         o = service.obrigacao_por_chave(db, 1, "adversidades")
         dados = service.detalhe(db, 1, o, prazos.competencia_de(COMP), date(2031, 10, 1))
         linha = next(l for l in dados["linhas"] if l["item"].chave == "i01")
-        assert linha["gerador"] == f"/sesa/encaminhamentos/{COMP}"
+        assert linha["gerador"] == f"/sesa/encaminhamentos/{COMP}?para=adversidades"
         anexo = linha["anexo"]
         assert anexo.arquivo.nome_original == "Encaminhamentos do SAMU - 09-2031.docx"
         from app.core.storage import absolute_path

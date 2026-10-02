@@ -237,7 +237,8 @@ def detalhe(db: Session, empresa_id: int, obrig: SesaObrigacao, competencia: dat
         anexo = anexo_do_item(ent, item.id)
         gerador = cat.GERADORES.get((obrig.chave, item.chave))
         linha = {"item": item, "anexo": anexo, "avisos": [], "sugestao": None,
-                 "gerador": f"{gerador}/{prazos.chave(competencia)}" if gerador else None}
+                 "gerador": (f"{gerador}/{prazos.chave(competencia)}?para={obrig.chave}"
+                             if gerador else None)}
         if anexo and certidoes:
             linha["avisos"] = avisos_do_anexo(anexo, limite)
             linha["serve_proximo"] = bool(anexo.valida_ate and anexo.valida_ate >= proximo)
@@ -456,6 +457,49 @@ def gerar_encaminhamentos(db: Session, empresa_id: int, competencia: date,
     arquivo = UploadFile(io.BytesIO(conteudo), filename=nome, headers=Headers(
         {"content-type": "application/vnd.openxmlformats-officedocument."
                          "wordprocessingml.document"}))
+    return anexar(db, empresa_id, obrig, competencia, item, arquivo, usuario_id)
+
+
+# ------------------------------------------------------------------ saída de usa
+
+def item_do_gerador(db: Session, empresa_id: int, obrig_chave: str, gerador: str):
+    """(obrigação, item) do envio que tem o gerador `gerador` (ex.: /sesa/saida-usa)."""
+    obrig = obrigacao_por_chave(db, empresa_id, obrig_chave)
+    if obrig is None:
+        return None, None
+    for item in itens_ativos(obrig):
+        if cat.GERADORES.get((obrig.chave, item.chave)) == gerador:
+            return obrig, item
+    return obrig, None
+
+
+def dados_saida_usa(empresa_id: int, competencia: date) -> dict:
+    """Calcula a Saída de USA do mês anterior ao envio, do núcleo de indicadores."""
+    from app.modules.indicadores import nucleo
+    from app.modules.sesa import saida_usa
+
+    inicio, fim = prazos.periodo_competencia_anterior(competencia)
+    df = nucleo.carregar(empresa_id)
+    return saida_usa.calcular(df, inicio, fim)
+
+
+def gerar_saida_usa(db: Session, empresa_id: int, obrig_chave: str, competencia: date,
+                    usuario_id: int):
+    """Gera a planilha da Saída de USA e a anexa ao item do envio."""
+    from starlette.datastructures import Headers
+
+    from app.modules.sesa import saida_usa
+
+    obrig, item = item_do_gerador(db, empresa_id, obrig_chave, "/sesa/saida-usa")
+    if obrig is None or item is None:
+        raise ValueError("O item \"Saída de USA\" não está neste envio.")
+    inicio, _ = prazos.periodo_competencia_anterior(competencia)
+    dados = dados_saida_usa(empresa_id, competencia)
+    conteudo = saida_usa.gerar_xlsx(dados, prazos.rotulo(inicio))
+    nome = f"Saida de USA - {inicio:%m-%Y}.xlsx"
+    arquivo = UploadFile(io.BytesIO(conteudo), filename=nome, headers=Headers(
+        {"content-type": "application/vnd.openxmlformats-officedocument."
+                         "spreadsheetml.sheet"}))
     return anexar(db, empresa_id, obrig, competencia, item, arquivo, usuario_id)
 
 

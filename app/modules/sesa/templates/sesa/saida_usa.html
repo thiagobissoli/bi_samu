@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/sesa/?ano={{ comp.year }}">Envios à SESA</a></li>
+<li class="breadcrumb-item"><a href="/sesa/{{ para }}/{{ chave_comp }}">{{ obrig.nome }}</a></li>
+<li class="breadcrumb-item active">Saída de USA</li>
+{% endblock %}
+
+{% block content %}
+{% if msg %}<div class="alert alert-success alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if erro %}<div class="alert alert-danger alert-dismissible fade show">{{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% set pode = 'sesa.anexar' in usuario_logado.permissoes %}
+
+<p class="text-body-secondary small mb-3">
+    Saídas de Unidade de Suporte Avançado de
+    <strong>{{ inicio.strftime('%d/%m/%Y') }} a {{ fim.strftime('%d/%m/%Y') }}</strong>,
+    calculadas dos atendimentos que o sistema já importa do vSky.
+    Uma <strong>saída</strong> é um empenho que iniciou deslocamento — a mesma regra dos Indicadores.
+    A planilha gerada é anexada ao envio <strong>{{ obrig.nome }}</strong>.
+</p>
+
+{% if dados %}
+<div class="row g-3 mb-3">
+    {% macro kpi(rotulo, valor, sub, cor='primary') %}
+    <div class="col-6 col-lg-3">
+        <div class="card h-100"><div class="card-body py-3">
+            <div class="text-body-secondary small">{{ rotulo }}</div>
+            <div class="fs-3 fw-semibold text-{{ cor }}">{{ valor }}</div>
+            {% if sub %}<div class="small text-body-secondary">{{ sub }}</div>{% endif %}
+        </div></div>
+    </div>
+    {% endmacro %}
+    {{ kpi('Saídas de USA', '{:,}'.format(dados.usa).replace(',', '.'),
+           (dados.usa * 100 // dados.total ~ '% do total') if dados.total else '') }}
+    {{ kpi('Saídas de USB', '{:,}'.format(dados.usb).replace(',', '.'),
+           (dados.usb * 100 // dados.total ~ '% do total') if dados.total else '', 'secondary') }}
+    {{ kpi('Total de saídas', '{:,}'.format(dados.total).replace(',', '.'), 'USA + USB', 'dark') }}
+    {{ kpi('Média USA/dia', (dados.usa // dados.dias) if dados.dias else 0,
+           dados.dias ~ ' dias com registro', 'info') }}
+</div>
+
+{% if pode %}
+<form method="post" action="/sesa/saida-usa/{{ chave_comp }}/gerar" class="mb-3">
+    <input type="hidden" name="para" value="{{ para }}">
+    <button class="btn btn-success"><i class="fa-solid fa-file-excel"></i> Gerar planilha e anexar ao envio</button>
+    <span class="small text-body-secondary ms-2">A planilha tem resumo e as quebras por unidade, município, código e dia.</span>
+</form>
+{% endif %}
+
+<div class="row g-3">
+    {% macro tabela(titulo, colunas, linhas, total) %}
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header py-2"><h3 class="card-title mb-0 fs-6">{{ titulo }}</h3></div>
+            <div class="card-body p-0"><div class="table-responsive" style="max-height: 360px">
+                <table class="table table-sm table-striped table-hover small mb-0">
+                    <thead style="position: sticky; top: 0" class="table-light">
+                        <tr><th>{{ colunas[0] }}</th><th class="text-end">{{ colunas[1] }}</th><th class="text-end">%</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for rot, n in linhas %}
+                    <tr><td>{{ rot }}</td><td class="text-end">{{ n }}</td>
+                        <td class="text-end text-body-secondary">{{ '%.1f'|format(n * 100 / total) if total else '0.0' }}%</td></tr>
+                    {% else %}
+                    <tr><td colspan="3" class="text-center text-body-secondary py-3">Sem registros.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div></div>
+        </div>
+    </div>
+    {% endmacro %}
+    {{ tabela('Por unidade', ('Unidade', 'Saídas'), dados.por_unidade, dados.usa) }}
+    {{ tabela('Por município', ('Município', 'Saídas'), dados.por_municipio, dados.usa) }}
+    {{ tabela('Por código', ('Código', 'Saídas'), dados.por_cor, dados.usa) }}
+    {% set dias_fmt = [] %}
+    {% for d, n in dados.por_dia %}{% set _ = dias_fmt.append((d.strftime('%d/%m'), n)) %}{% endfor %}
+    {{ tabela('Por dia', ('Dia', 'Saídas'), dias_fmt, dados.usa) }}
+</div>
+{% elif not erro %}
+<div class="card"><div class="card-body text-center text-body-secondary py-5">
+    Calculando… se não aparecer, verifique se há dados do vSky importados para o período.
+</div></div>
+{% endif %}
+{% endblock %}

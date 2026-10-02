@@ -122,3 +122,10 @@ def aplica(meses: str | None, competencia: date) -> bool:
     if not meses:
         return True
     return competencia.month in {int(x) for x in re.findall(r"\d+", meses)}
+
+
+def periodo_competencia_anterior(competencia: date) -> tuple[date, date]:
+    """Dados de um envio são do mês anterior: envio de out → 01/09 a 30/09."""
+    inicio = somar_meses(competencia, -1)
+    fim = date.fromordinal(competencia.toordinal() - 1)
+    return inicio, fim

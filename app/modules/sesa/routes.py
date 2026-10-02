@@ -33,7 +33,14 @@ router = APIRouter(prefix="/sesa", tags=["SESA"])
 
 @router.on_event("startup")
 def _agendar_avisos() -> None:
-    """Job diário dos avisos de vencimento das certidões."""
+    """Job diário dos avisos de vencimento das certidões.
+
+    Não sobe sob o pytest: o agendador é um thread que, 2 minutos após o
+    boot, grava no banco — numa suíte longa com SQLite isso trava a base.
+    O job em si é testado chamando scheduler.executar() direto."""
+    import sys
+    if "pytest" in sys.modules:
+        return
     try:
         from app.modules.sesa import scheduler
         scheduler.iniciar()
@@ -369,6 +376,62 @@ async def encaminhamentos_gerar(request: Request, competencia: str,
                              "competencia": prazos.chave(comp), "planilha": planilha},
                  usuario=usuario, request=request)
     return _voltar("adversidades", comp, "Documento de Encaminhamentos gerado e anexado.",
+                   ancora=f"item-{anexo.item_id}")
+
+
+# ------------------------------------------------------------------ saída de usa
+
+@router.get("/saida-usa/{competencia}", include_in_schema=False)
+def saida_usa(request: Request, competencia: str, para: str = "convenio_007",
+              erro: str = "", msg: str = "",
+              usuario: Usuario = Depends(require_permission("sesa.visualizar")),
+              db: Session = Depends(get_session)):
+    service.garantir_catalogo(db, usuario.empresa_id)
+    comp = prazos.competencia_de(competencia, _hoje(db, usuario.empresa_id))
+    inicio, fim = prazos.periodo_competencia_anterior(comp)
+    obrig, item = service.item_do_gerador(db, usuario.empresa_id, para, "/sesa/saida-usa")
+    if obrig is None or item is None:
+        return RedirectResponse("/sesa/", status_code=303)
+    dados = None
+    try:
+        dados = service.dados_saida_usa(usuario.empresa_id, comp)
+    except Exception:  # noqa: BLE001 — sem dados importados a página ainda abre
+        import logging
+        logging.getLogger("uvicorn.error").exception("Saída de USA: falha ao calcular")
+        erro = erro or ("Não foi possível calcular agora. Verifique se há dados do vSky "
+                        "importados para o período.")
+    return render(request, "sesa/saida_usa.html", usuario,
+                  page_title=f"Saída de USA — {prazos.rotulo(inicio)}",
+                  comp=comp, chave_comp=prazos.chave(comp), para=para, obrig=obrig,
+                  inicio=inicio, fim=fim, rotulo=prazos.rotulo, dados=dados,
+                  erro=erro, msg=msg)
+
+
+@router.post("/saida-usa/{competencia}/gerar", include_in_schema=False)
+def saida_usa_gerar(request: Request, competencia: str, para: str = Form("convenio_007"),
+                    usuario: Usuario = Depends(require_permission("sesa.anexar")),
+                    db: Session = Depends(get_session)):
+    comp = prazos.competencia_de(competencia)
+    obrig = service.obrigacao_por_chave(db, usuario.empresa_id, para)
+    if obrig is None:
+        return RedirectResponse("/sesa/", status_code=303)
+    ent = service.entrega(db, usuario.empresa_id, obrig, comp)
+    if ent and ent.enviada_em:
+        return RedirectResponse(
+            f"/sesa/saida-usa/{prazos.chave(comp)}?para={para}&erro="
+            + quote("Envio já registrado: desfaça o registro antes de gerar de novo."),
+            status_code=303)
+    try:
+        anexo = service.gerar_saida_usa(db, usuario.empresa_id, para, comp, usuario.id)
+    except ValueError as exc:
+        return RedirectResponse(
+            f"/sesa/saida-usa/{prazos.chave(comp)}?para={para}&erro={quote(str(exc))}",
+            status_code=303)
+    record_audit(db, tabela="sesa_anexos", acao="GERAR", registro_id=anexo.id,
+                 valor_novo={"documento": anexo.arquivo.nome_original, "envio": para,
+                             "competencia": prazos.chave(comp)},
+                 usuario=usuario, request=request)
+    return _voltar(para, comp, "Planilha de Saída de USA gerada e anexada.",
                    ancora=f"item-{anexo.item_id}")
 
 
