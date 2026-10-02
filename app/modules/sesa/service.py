@@ -17,7 +17,7 @@ from app.core.storage import absolute_path, save_upload
 from app.modules.sesa import constants as cat
 from app.modules.sesa import extrator, prazos
 from app.modules.sesa.models import (SesaAnexo, SesaAvisoVencimento, SesaEntrega,
-                                     SesaItem, SesaObrigacao)
+                                     SesaHospital, SesaItem, SesaObrigacao)
 
 CONFIG_CNPJ = "sesa_cnpj"
 CONFIG_FERIADOS = "sesa_feriados_extras"
@@ -235,7 +235,9 @@ def detalhe(db: Session, empresa_id: int, obrig: SesaObrigacao, competencia: dat
     linhas = []
     for item in itens_ativos(obrig):
         anexo = anexo_do_item(ent, item.id)
-        linha = {"item": item, "anexo": anexo, "avisos": [], "sugestao": None}
+        gerador = cat.GERADORES.get((obrig.chave, item.chave))
+        linha = {"item": item, "anexo": anexo, "avisos": [], "sugestao": None,
+                 "gerador": f"{gerador}/{prazos.chave(competencia)}" if gerador else None}
         if anexo and certidoes:
             linha["avisos"] = avisos_do_anexo(anexo, limite)
             linha["serve_proximo"] = bool(anexo.valida_ate and anexo.valida_ate >= proximo)
@@ -368,6 +370,93 @@ def avisos_pendentes(db: Session, empresa_id: int, hoje: date) -> list[dict]:
     return [c for c in certidoes_a_vencer(db, empresa_id, hoje,
                                           dias_aviso_vencimento(db, empresa_id))
             if (c["item"].id, c["valida_ate"]) not in ja]
+
+
+# ------------------------------------------------------------------ encaminhamentos
+
+def hospitais(db: Session, empresa_id: int) -> dict[str, SesaHospital]:
+    return {h.nome_vsky: h for h in db.scalars(select(SesaHospital).where(
+        SesaHospital.empresa_id == empresa_id, SesaHospital.deleted_at.is_(None)))}
+
+
+def conferir_planilha(db: Session, empresa_id: int, linhas: list[dict]) -> list[dict]:
+    """Junta os números da planilha ao cadastro dos hospitais. Hospital novo
+    entra no cadastro com nome e sigla sugeridos; os já cadastrados mantêm o
+    que foi ajustado. Os marcados que não vieram na planilha aparecem zerados."""
+    from app.modules.sesa import encaminhamentos as enc
+
+    cadastro = hospitais(db, empresa_id)
+    for linha in linhas:
+        if linha["hospital"] not in cadastro:
+            nome, sigla = enc.nome_documento(linha["hospital"])
+            h = SesaHospital(empresa_id=empresa_id, nome_vsky=linha["hospital"][:200],
+                             nome_documento=nome[:200], sigla=sigla,
+                             incluir=enc.incluir_por_padrao(linha["hospital"]))
+            db.add(h)
+            cadastro[linha["hospital"]] = h
+    db.commit()
+    numeros = {l["hospital"]: l for l in linhas}
+    saida = []
+    for nome_vsky, h in cadastro.items():
+        n = numeros.get(nome_vsky)
+        if n is None and not h.incluir:
+            continue
+        saida.append({"hospital": h, "na_planilha": n is not None,
+                      "municipio": n["municipio"] if n else "",
+                      "total": n["total"] if n else 0, "pre": n["pre"] if n else 0,
+                      "inter": n["inter"] if n else 0})
+    return sorted(saida, key=lambda x: (not x["hospital"].incluir,
+                                        x["hospital"].nome_documento.lower()))
+
+
+def salvar_selecao(db: Session, empresa_id: int, form) -> None:
+    """Campos hosp_<id>_incluir / _nome / _sigla vindos da tela."""
+    for h in hospitais(db, empresa_id).values():
+        pref = f"hosp_{h.id}_"
+        if pref + "nome" not in form:
+            continue
+        h.incluir = form.get(pref + "incluir") == "1"
+        h.nome_documento = (form.get(pref + "nome") or h.nome_documento).strip()[:200]
+        h.sigla = (form.get(pref + "sigla") or "").strip()[:20] or None
+    db.commit()
+
+
+def logo(db: Session, empresa_id: int) -> bytes | None:
+    from app.models import Arquivo
+
+    try:
+        arquivo = db.get(Arquivo, int(get_config(db, cat.CONFIG_LOGO, "", empresa_id) or 0))
+    except ValueError:
+        return None
+    if arquivo is None or arquivo.deleted_at is not None or arquivo.empresa_id != empresa_id:
+        return None
+    caminho = absolute_path(arquivo)
+    return caminho.read_bytes() if caminho.is_file() else None
+
+
+def gerar_encaminhamentos(db: Session, empresa_id: int, competencia: date,
+                          linhas: list[dict], usuario_id: int) -> SesaAnexo:
+    """Gera o .docx dos hospitais marcados e o anexa ao item do envio."""
+    from starlette.datastructures import Headers
+
+    from app.modules.sesa import encaminhamentos as enc
+
+    paginas = [{"nome": l["hospital"].nome_documento, "sigla": l["hospital"].sigla,
+                "total": l["total"], "pre": l["pre"], "inter": l["inter"]}
+               for l in conferir_planilha(db, empresa_id, linhas) if l["hospital"].incluir]
+    if not paginas:
+        raise ValueError("Marque ao menos um hospital para o documento.")
+    inicio, _ = enc.periodo_dos_dados(competencia)
+    conteudo = enc.gerar_docx(paginas, prazos.rotulo(inicio), logo(db, empresa_id))
+    obrig = obrigacao_por_chave(db, empresa_id, "adversidades")
+    item = next((i for i in (obrig.itens if obrig else []) if i.chave == "i01"), None)
+    if obrig is None or item is None:
+        raise ValueError("O envio de Encaminhamentos não está no catálogo.")
+    nome = f"Encaminhamentos do SAMU - {inicio:%m-%Y}.docx"
+    arquivo = UploadFile(io.BytesIO(conteudo), filename=nome, headers=Headers(
+        {"content-type": "application/vnd.openxmlformats-officedocument."
+                         "wordprocessingml.document"}))
+    return anexar(db, empresa_id, obrig, competencia, item, arquivo, usuario_id)
 
 
 # ------------------------------------------------------------------ pacote

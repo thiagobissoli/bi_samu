@@ -65,6 +65,9 @@
                     </div>
                     {% if item.instrucoes %}<div class="small text-body-secondary">{{ item.instrucoes }}</div>{% endif %}
                 </div>
+                {% if l.gerador and pode_anexar %}
+                <a class="btn btn-success btn-sm" href="{{ l.gerador }}"><i class="fa-solid fa-wand-magic-sparkles"></i> Gerar a partir do vSky</a>
+                {% endif %}
                 {% if item.link %}
                 <a class="btn btn-outline-primary btn-sm" href="{{ item.link }}" target="_blank" rel="noopener noreferrer">
                     <i class="fa-solid fa-arrow-up-right-from-square"></i> Abrir portal</a>

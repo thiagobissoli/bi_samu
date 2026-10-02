@@ -11,7 +11,7 @@
 <div class="card mb-3">
     <div class="card-header"><h3 class="card-title mb-0"><i class="fa-solid fa-sliders me-1"></i> Dados gerais</h3></div>
     <div class="card-body">
-        <form method="post" action="/sesa/cadastros/geral" class="row g-2 align-items-end">
+        <form method="post" action="/sesa/cadastros/geral" class="row g-2 align-items-end" enctype="multipart/form-data">
             <div class="col-md-3"><label class="form-label small mb-1">CNPJ do SAMU</label>
                 <input class="form-control form-control-sm" name="cnpj" value="{{ cnpj }}" maxlength="20" required></div>
             <div class="col-md-9"><label class="form-label small mb-1">Feriados extras (não contam como dia útil)</label>
@@ -21,7 +21,13 @@
                 <input type="number" class="form-control form-control-sm" name="aviso_dias" value="{{ aviso_dias }}" min="1" max="60"></div>
             <div class="col-md-7"><label class="form-label small mb-1">Endereço do sistema (link nos e-mails)</label>
                 <input class="form-control form-control-sm" name="endereco" value="{{ endereco }}" placeholder="https://qualidade.exemplo.gov.br"></div>
-            <div class="col-md-2"><button class="btn btn-primary btn-sm w-100">Salvar</button></div>
+            <div class="col-md-9"><label class="form-label small mb-1">Brasão da SESA (cabeçalho dos documentos gerados)</label>
+                <div class="d-flex gap-2 align-items-center">
+                    <input type="file" class="form-control form-control-sm" name="logo" accept="image/png,image/jpeg" aria-label="Brasão">
+                    {% if tem_logo %}<label class="form-check small text-nowrap mb-0"><input class="form-check-input" type="checkbox" name="remover_logo" value="1"> remover o atual</label>{% endif %}
+                </div>
+                <div class="small text-body-secondary">{{ 'Brasão cadastrado.' if tem_logo else 'Sem brasão: o cabeçalho sai só com o texto.' }}</div></div>
+            <div class="col-md-3"><button class="btn btn-primary btn-sm w-100">Salvar</button></div>
         </form>
         <div class="small text-body-secondary mt-2">O CNPJ aparece para copiar nos portais e é conferido em cada certidão lida.
             Já são descontados: feriados nacionais, Carnaval, Paixão de Cristo, N. Sra. da Penha (ES) e Corpus Christi.

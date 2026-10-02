@@ -101,3 +101,18 @@ class SesaAvisoVencimento(BaseModel):
     item_id: Mapped[int] = mapped_column(ForeignKey("sesa_itens.id"), index=True)
     valida_ate: Mapped[date] = mapped_column(Date)
     destinatarios: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SesaHospital(BaseModel):
+    """Hospital de destino do relatório 115 do vReport, e como ele aparece no
+    documento "Encaminhamentos do SAMU". A seleção fica salva de um mês
+    para o outro; hospital novo na planilha entra aqui na primeira leitura."""
+
+    __tablename__ = "sesa_hospitais"
+    __table_args__ = (UniqueConstraint("empresa_id", "nome_vsky",
+                                       name="uq_sesa_hospital_nome"),)
+
+    nome_vsky: Mapped[str] = mapped_column(String(200))
+    nome_documento: Mapped[str] = mapped_column(String(200))
+    sigla: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    incluir: Mapped[bool] = mapped_column(default=False)

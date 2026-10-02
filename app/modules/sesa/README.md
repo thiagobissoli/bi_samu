@@ -31,6 +31,23 @@ feita por uma pessoa. O sistema cuida do resto:
 - **Registro do envio**, com data e protocolo. Depois do registro, os arquivos
   ficam travados até alguém desfazê-lo.
 
+## Encaminhamentos do SAMU (documento gerado)
+
+O item "Encaminhamento dos Hospitais" do envio de Adversidades tem o botão
+**Gerar a partir do vSky**, que leva a `/sesa/encaminhamentos/{AAAA-MM}`.
+
+1. A tela mostra os filtros do relatório 115 do vReport ("Atendimentos por
+   Hospital de Destino") para o mês anterior ao envio.
+2. A pessoa envia o `Report.xls` (Save → Microsoft Excel).
+3. Confere os hospitais: quem entra no documento, o nome e a sigla. A seleção
+   fica salva em `sesa_hospitais`.
+4. O sistema gera o `.docx` (`encaminhamentos.py`), com uma página por
+   hospital no modelo da SESA: tabela de compromisso e memória de cálculo com
+   os números por extenso. O documento é anexado ao envio.
+
+Total = recebidos do SAMU; secundário = Inter-hospitalar; primário (APH) =
+Pré-hospitalar. O brasão do cabeçalho é enviado em Cadastros SESA.
+
 ## Prazos
 
 `prazos.py` tem só funções puras. Um prazo pode ser o n-ésimo dia útil do mês

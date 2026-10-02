@@ -118,12 +118,14 @@ def cadastros(request: Request, msg: str = "",
                   feriados=", ".join(service.feriados_extras(db, usuario.empresa_id)),
                   aviso_dias=service.dias_aviso_vencimento(db, usuario.empresa_id),
                   endereco=get_config(db, service.CONFIG_ENDERECO, "", usuario.empresa_id),
+                  tem_logo=service.logo(db, usuario.empresa_id) is not None,
                   periodicidades=cat.PERIODICIDADES, msg=msg)
 
 
 @router.post("/cadastros/geral", include_in_schema=False)
 def cadastros_geral(request: Request, cnpj: str = Form(""), feriados: str = Form(""),
                     aviso_dias: str = Form(""), endereco: str = Form(""),
+                    logo: UploadFile | None = File(None), remover_logo: str = Form(""),
                     usuario: Usuario = Depends(require_permission("sesa.cadastros")),
                     db: Session = Depends(get_session)):
     set_config(db, service.CONFIG_CNPJ, cnpj.strip() or cat.CNPJ_PADRAO,
@@ -136,6 +138,17 @@ def cadastros_geral(request: Request, cnpj: str = Form(""), feriados: str = Form
                str(service.AVISO_VENCIMENTO_PADRAO), usuario.empresa_id, updated_by=usuario.id)
     set_config(db, service.CONFIG_ENDERECO, endereco.strip().rstrip("/"),
                usuario.empresa_id, updated_by=usuario.id)
+    if remover_logo == "1":
+        set_config(db, cat.CONFIG_LOGO, "", usuario.empresa_id, updated_by=usuario.id)
+    elif logo is not None and logo.filename:
+        from app.core.storage import save_upload
+
+        if not (logo.content_type or "").startswith("image/"):
+            return RedirectResponse(f"/sesa/cadastros?msg={quote('O brasão precisa ser uma imagem (PNG ou JPG).')}",
+                                    status_code=303)
+        salvo = save_upload(db, logo, usuario.empresa_id, "sesa", created_by=usuario.id)
+        set_config(db, cat.CONFIG_LOGO, str(salvo.id), usuario.empresa_id,
+                   updated_by=usuario.id)
     record_audit(db, tabela="configuracoes", acao="UPDATE",
                  valor_novo={"sesa_cnpj": cnpj, "sesa_feriados_extras": feriados,
                              "sesa_aviso_vencimento_dias": aviso_dias,
@@ -247,6 +260,116 @@ def remover_anexo(request: Request, anexo_id: int,
     db.commit()
     return _voltar(ent.obrigacao.chave, ent.competencia, "Arquivo removido.",
                    ancora=f"item-{a.item_id}")
+
+
+# ------------------------------------------------------------------ encaminhamentos
+
+def _planilha(db, usuario, arquivo_id) -> bytes | None:
+    """Conteúdo do Report.xls enviado nesta tela (só arquivos do módulo)."""
+    from app.models import Arquivo
+
+    a = db.get(Arquivo, arquivo_id) if arquivo_id else None
+    if a is None or a.deleted_at is not None or a.empresa_id != usuario.empresa_id \
+            or a.modulo != "sesa":
+        return None
+    caminho = absolute_path(a)
+    return caminho.read_bytes() if caminho.is_file() else None
+
+
+def _encaminhamentos_url(comp: date, planilha: int | None = None, erro: str = "") -> str:
+    url = f"/sesa/encaminhamentos/{prazos.chave(comp)}"
+    params = []
+    if planilha:
+        params.append(f"planilha={planilha}")
+    if erro:
+        params.append(f"erro={quote(erro)}")
+    return url + ("?" + "&".join(params) if params else "")
+
+
+@router.get("/encaminhamentos/{competencia}", include_in_schema=False)
+def encaminhamentos(request: Request, competencia: str, planilha: int | None = None,
+                    erro: str = "",
+                    usuario: Usuario = Depends(require_permission("sesa.visualizar")),
+                    db: Session = Depends(get_session)):
+    from app.modules.sesa import encaminhamentos as enc
+
+    service.garantir_catalogo(db, usuario.empresa_id)
+    comp = prazos.competencia_de(competencia, _hoje(db, usuario.empresa_id))
+    inicio, fim = enc.periodo_dos_dados(comp)
+    linhas = None
+    conteudo = _planilha(db, usuario, planilha)
+    if conteudo is not None:
+        try:
+            linhas = service.conferir_planilha(db, usuario.empresa_id,
+                                               enc.ler_relatorio(conteudo))
+        except ValueError as exc:
+            erro = str(exc)
+    return render(request, "sesa/encaminhamentos.html", usuario,
+                  page_title=f"Encaminhamentos do SAMU — {prazos.rotulo(inicio)}",
+                  comp=comp, chave_comp=prazos.chave(comp), inicio=inicio, fim=fim,
+                  rotulo=prazos.rotulo, filtros=enc.FILTROS_VSKY, url_vsky=enc.URL_RELATORIO,
+                  linhas=linhas, planilha=planilha if linhas is not None else None,
+                  erro=erro, tem_logo=service.logo(db, usuario.empresa_id) is not None)
+
+
+@router.post("/encaminhamentos/{competencia}/planilha", include_in_schema=False)
+def encaminhamentos_planilha(request: Request, competencia: str,
+                             arquivo: UploadFile = File(...),
+                             usuario: Usuario = Depends(require_permission("sesa.anexar")),
+                             db: Session = Depends(get_session)):
+    from app.core.storage import save_upload
+    from app.modules.sesa import encaminhamentos as enc
+
+    comp = prazos.competencia_de(competencia)
+    conteudo = arquivo.file.read()
+    arquivo.file.seek(0)
+    try:
+        enc.ler_relatorio(conteudo)
+        salvo = save_upload(db, arquivo, usuario.empresa_id, "sesa", created_by=usuario.id)
+    except ValueError as exc:
+        return RedirectResponse(_encaminhamentos_url(comp, erro=str(exc)), status_code=303)
+    record_audit(db, tabela="arquivos", acao="UPLOAD", registro_id=salvo.id,
+                 valor_novo={"envio": "Encaminhamentos do SAMU",
+                             "competencia": prazos.chave(comp),
+                             "arquivo": salvo.nome_original}, usuario=usuario, request=request)
+    return RedirectResponse(_encaminhamentos_url(comp, salvo.id), status_code=303)
+
+
+@router.post("/encaminhamentos/{competencia}/gerar", include_in_schema=False)
+async def encaminhamentos_gerar(request: Request, competencia: str,
+                                usuario: Usuario = Depends(require_permission("sesa.anexar")),
+                                db: Session = Depends(get_session)):
+    from app.modules.sesa import encaminhamentos as enc
+
+    comp = prazos.competencia_de(competencia)
+    form = await request.form()
+    try:
+        planilha = int(form.get("planilha") or 0)
+    except ValueError:
+        planilha = 0
+    conteudo = _planilha(db, usuario, planilha)
+    if conteudo is None:
+        return RedirectResponse(_encaminhamentos_url(comp, erro="Envie o Report.xls de novo."),
+                                status_code=303)
+    obrig = service.obrigacao_por_chave(db, usuario.empresa_id, "adversidades")
+    ent = service.entrega(db, usuario.empresa_id, obrig, comp) if obrig else None
+    if ent and ent.enviada_em:
+        return RedirectResponse(_encaminhamentos_url(
+            comp, planilha, "Envio já registrado: desfaça o registro antes de gerar de novo."),
+            status_code=303)
+    service.salvar_selecao(db, usuario.empresa_id, form)
+    try:
+        anexo = service.gerar_encaminhamentos(db, usuario.empresa_id, comp,
+                                              enc.ler_relatorio(conteudo), usuario.id)
+    except ValueError as exc:
+        return RedirectResponse(_encaminhamentos_url(comp, planilha, str(exc)),
+                                status_code=303)
+    record_audit(db, tabela="sesa_anexos", acao="GERAR", registro_id=anexo.id,
+                 valor_novo={"documento": anexo.arquivo.nome_original,
+                             "competencia": prazos.chave(comp), "planilha": planilha},
+                 usuario=usuario, request=request)
+    return _voltar("adversidades", comp, "Documento de Encaminhamentos gerado e anexado.",
+                   ancora=f"item-{anexo.item_id}")
 
 
 # ------------------------------------------------------------------ um envio

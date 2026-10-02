@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/sesa/?ano={{ comp.year }}">Envios à SESA</a></li>
+<li class="breadcrumb-item"><a href="/sesa/adversidades/{{ chave_comp }}">Adversidades e Encaminhamentos</a></li>
+<li class="breadcrumb-item active">Encaminhamentos do SAMU</li>
+{% endblock %}
+
+{% block content %}
+{% if erro %}<div class="alert alert-danger alert-dismissible fade show">{{ erro }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% set pode = 'sesa.anexar' in usuario_logado.permissoes %}
+
+<p class="text-body-secondary small mb-3">
+    Envio de <strong class="text-capitalize">{{ rotulo(comp) }}</strong> com os dados de
+    <strong>{{ inicio.strftime('%d/%m/%Y') }} a {{ fim.strftime('%d/%m/%Y') }}</strong>.
+    O documento sai com uma página por hospital marcado, no modelo da SESA, e fica anexado ao envio.
+</p>
+
+<div class="row g-3">
+<div class="col-lg-5">
+    <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title mb-0"><span class="badge text-bg-primary me-1">1</span> Baixe a planilha do vSky</h3></div>
+        <div class="card-body small">
+            <p class="mb-2">Entre no vSky e abra o relatório <strong>Atendimentos por Hospital de Destino</strong>:</p>
+            <a class="btn btn-outline-primary btn-sm mb-3" href="{{ url_vsky }}" target="_blank" rel="noopener noreferrer">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i> Abrir o relatório no vReport</a>
+            <table class="table table-sm small mb-2">
+                <tbody>
+                <tr><th class="fw-normal text-body-secondary">Data inicial</th><td>{{ inicio.strftime('%d/%m/%Y') }}</td></tr>
+                <tr><th class="fw-normal text-body-secondary">Data final</th><td>{{ fim.strftime('%d/%m/%Y') }}</td></tr>
+                {% for rotulo_f, valor in filtros %}
+                <tr><th class="fw-normal text-body-secondary">{{ rotulo_f }}</th><td>{{ valor }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <p class="mb-0">Clique em <strong>Gerar</strong> e aguarde cerca de 1 minuto. Depois <strong>Save</strong> →
+                <strong>Microsoft Excel</strong> baixa o <code>Report.xls</code>.</p>
+        </div>
+    </div>
+
+    {% if pode %}
+    <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title mb-0"><span class="badge text-bg-primary me-1">2</span> Envie o Report.xls</h3></div>
+        <div class="card-body">
+            <form method="post" action="/sesa/encaminhamentos/{{ chave_comp }}/planilha" enctype="multipart/form-data" class="d-flex gap-2">
+                <input type="file" name="arquivo" class="form-control form-control-sm" accept=".xls,.xlsx" required aria-label="Report.xls">
+                <button class="btn btn-primary btn-sm text-nowrap"><i class="fa-solid fa-upload"></i> Ler planilha</button>
+            </form>
+            {% if not tem_logo %}
+            <div class="small text-body-secondary mt-2">Sem brasão cadastrado: o cabeçalho sai só com o texto.
+                Envie a imagem em <a href="/sesa/cadastros">Cadastros</a>.</div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="col-lg-7">
+    {% if linhas is not none %}
+    {% set marcados = linhas | selectattr('hospital.incluir') | list %}
+    <form method="post" action="/sesa/encaminhamentos/{{ chave_comp }}/gerar">
+    <input type="hidden" name="planilha" value="{{ planilha }}">
+    <div class="card">
+        <div class="card-header d-flex align-items-center flex-wrap gap-2">
+            <h3 class="card-title mb-0 me-auto"><span class="badge text-bg-primary me-1">3</span> Confira os hospitais</h3>
+            <input type="search" class="form-control form-control-sm" style="max-width: 220px" placeholder="Filtrar" id="filtro-hosp" aria-label="Filtrar hospitais">
+        </div>
+        <div class="card-body p-0">
+            <div class="small text-body-secondary px-3 py-2 border-bottom">
+                Marque quem entra no documento e ajuste o nome e a sigla como devem aparecer. A seleção fica
+                salva para os próximos meses. <strong>Secundário</strong> = transferências (Inter-hospitalar);
+                <strong>Primário</strong> = APH (Pré-hospitalar).
+            </div>
+            <div class="table-responsive" style="max-height: 60vh">
+                <table class="table table-sm table-hover align-middle small mb-0">
+                    <thead class="table-light" style="position: sticky; top: 0; z-index: 1">
+                    <tr><th></th><th>Nome no documento</th><th>Sigla</th><th class="text-end">Total</th>
+                        <th class="text-end">Secundário</th><th class="text-end">Primário</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for l in linhas %}{% set h = l.hospital %}
+                    <tr class="js-hosp" data-busca="{{ (h.nome_vsky ~ ' ' ~ h.nome_documento) | lower }}">
+                        <td><input class="form-check-input" type="checkbox" name="hosp_{{ h.id }}_incluir" value="1" {{ 'checked' if h.incluir }} {{ 'disabled' if not pode }} aria-label="Incluir {{ h.nome_documento }}"></td>
+                        <td>
+                            <input class="form-control form-control-sm" name="hosp_{{ h.id }}_nome" value="{{ h.nome_documento }}" maxlength="200" {{ 'disabled' if not pode }} aria-label="Nome no documento">
+                            <div class="text-body-tertiary" style="font-size: .75rem">{{ h.nome_vsky }}{% if l.municipio %} · {{ l.municipio }}{% endif %}
+                                {% if not l.na_planilha %}<span class="text-danger">· não veio na planilha (sai zerado)</span>{% endif %}</div>
+                        </td>
+                        <td style="width: 90px"><input class="form-control form-control-sm" name="hosp_{{ h.id }}_sigla" value="{{ h.sigla or '' }}" maxlength="20" {{ 'disabled' if not pode }} aria-label="Sigla"></td>
+                        <td class="text-end fw-semibold">{{ l.total }}</td>
+                        <td class="text-end">{{ l.inter }}</td>
+                        <td class="text-end">{{ l.pre }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% if pode %}
+        <div class="card-footer d-flex align-items-center gap-2">
+            <span class="small text-body-secondary me-auto">{{ marcados | length }} hospital(is) marcado(s) ao abrir a tela.</span>
+            <button class="btn btn-success btn-sm"><i class="fa-solid fa-file-word"></i> Gerar documento e anexar ao envio</button>
+        </div>
+        {% endif %}
+    </div>
+    </form>
+    {% else %}
+    <div class="card"><div class="card-body text-center text-body-secondary py-5">
+        <i class="fa-regular fa-file-excel fa-2x mb-2"></i>
+        <div>Envie o <code>Report.xls</code> para conferir os hospitais e gerar o documento.</div>
+    </div></div>
+    {% endif %}
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var campo = document.getElementById("filtro-hosp");
+    if (!campo) return;
+    campo.addEventListener("input", function () {
+        var termo = campo.value.trim().toLowerCase();
+        document.querySelectorAll(".js-hosp").forEach(function (tr) {
+            tr.classList.toggle("d-none", termo && tr.dataset.busca.indexOf(termo) < 0);
+        });
+    });
+})();
+</script>
+{% endblock %}

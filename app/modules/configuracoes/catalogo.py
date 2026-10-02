@@ -262,6 +262,10 @@ CATALOGO: tuple[Grupo, ...] = (
                     "Com quantos dias de antecedência quem anexa certidões é "
                     "avisado (sino e e-mail) de que uma certidão vai vencer.",
                     padrao="7", tipo=NUMERO, gerida_em="/sesa/cadastros"),
+              Chave("sesa_logo_arquivo_id", "Brasão (id do arquivo)",
+                    "Imagem do cabeçalho dos documentos gerados para a SESA. "
+                    "Preenchido ao enviar o brasão em Cadastros SESA.",
+                    gerida_em="/sesa/cadastros"),
               Chave("sesa_endereco_sistema", "Endereço do sistema",
                     "Usado no link dos e-mails automáticos. Preenchido na "
                     "primeira visita às telas da SESA.",
