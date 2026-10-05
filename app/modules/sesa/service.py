@@ -503,6 +503,38 @@ def gerar_saida_usa(db: Session, empresa_id: int, obrig_chave: str, competencia:
     return anexar(db, empresa_id, obrig, competencia, item, arquivo, usuario_id)
 
 
+# ------------------------------------------------------------------ relatórios operacionais
+
+def dados_operacional(empresa_id: int, tipo: str, competencia: date) -> dict:
+    """Calcula um relatório operacional do mês anterior ao envio."""
+    from app.modules.indicadores import nucleo
+    from app.modules.sesa import relatorios_op
+
+    inicio, fim = prazos.periodo_competencia_anterior(competencia)
+    return relatorios_op.calcular(tipo, nucleo.carregar(empresa_id), inicio, fim)
+
+
+def gerar_operacional(db: Session, empresa_id: int, obrig_chave: str, tipo: str,
+                      competencia: date, usuario_id: int):
+    """Gera a planilha do relatório operacional e a anexa ao item do envio."""
+    from starlette.datastructures import Headers
+
+    from app.modules.sesa import relatorios_op
+
+    gerador = f"/sesa/operacional/{tipo}"
+    obrig, item = item_do_gerador(db, empresa_id, obrig_chave, gerador)
+    if obrig is None or item is None:
+        raise ValueError("Este relatório não está neste envio.")
+    inicio, _ = prazos.periodo_competencia_anterior(competencia)
+    dados = dados_operacional(empresa_id, tipo, competencia)
+    conteudo = relatorios_op.gerar_xlsx(dados, prazos.rotulo(inicio))
+    nome = f"{relatorios_op.TIPOS[tipo]['titulo']} - {inicio:%m-%Y}.xlsx"
+    arquivo = UploadFile(io.BytesIO(conteudo), filename=nome, headers=Headers(
+        {"content-type": "application/vnd.openxmlformats-officedocument."
+                         "spreadsheetml.sheet"}))
+    return anexar(db, empresa_id, obrig, competencia, item, arquivo, usuario_id)
+
+
 # ------------------------------------------------------------------ pacote
 
 def _nome_seguro(texto: str) -> str:

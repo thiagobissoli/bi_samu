@@ -435,6 +435,72 @@ def saida_usa_gerar(request: Request, competencia: str, para: str = Form("conven
                    ancora=f"item-{anexo.item_id}")
 
 
+# ------------------------------------------------------------------ relatórios operacionais
+
+@router.get("/operacional/{tipo}/{competencia}", include_in_schema=False)
+def operacional(request: Request, tipo: str, competencia: str, para: str = "dados_mensais",
+                erro: str = "", msg: str = "",
+                usuario: Usuario = Depends(require_permission("sesa.visualizar")),
+                db: Session = Depends(get_session)):
+    from app.modules.sesa import relatorios_op
+
+    if tipo not in relatorios_op.TIPOS:
+        return RedirectResponse("/sesa/", status_code=303)
+    service.garantir_catalogo(db, usuario.empresa_id)
+    comp = prazos.competencia_de(competencia, _hoje(db, usuario.empresa_id))
+    inicio, fim = prazos.periodo_competencia_anterior(comp)
+    gerador = f"/sesa/operacional/{tipo}"
+    obrig, item = service.item_do_gerador(db, usuario.empresa_id, para, gerador)
+    if obrig is None or item is None:
+        return RedirectResponse("/sesa/", status_code=303)
+    dados = None
+    try:
+        dados = service.dados_operacional(usuario.empresa_id, tipo, comp)
+    except Exception:  # noqa: BLE001 — sem dados importados a página ainda abre
+        import logging
+        logging.getLogger("uvicorn.error").exception("SESA operacional: falha ao calcular")
+        erro = erro or ("Não foi possível calcular agora. Verifique se há dados do vSky "
+                        "importados para o período.")
+    return render(request, "sesa/operacional.html", usuario,
+                  page_title=f"{relatorios_op.TIPOS[tipo]['titulo']} — {prazos.rotulo(inicio)}",
+                  tipo=tipo, titulo=relatorios_op.TIPOS[tipo]["titulo"], comp=comp,
+                  chave_comp=prazos.chave(comp), para=para, obrig=obrig, inicio=inicio,
+                  fim=fim, rotulo=prazos.rotulo, dados=dados, erro=erro, msg=msg)
+
+
+@router.post("/operacional/{tipo}/{competencia}/gerar", include_in_schema=False)
+def operacional_gerar(request: Request, tipo: str, competencia: str,
+                      para: str = Form("dados_mensais"),
+                      usuario: Usuario = Depends(require_permission("sesa.anexar")),
+                      db: Session = Depends(get_session)):
+    from app.modules.sesa import relatorios_op
+
+    if tipo not in relatorios_op.TIPOS:
+        return RedirectResponse("/sesa/", status_code=303)
+    comp = prazos.competencia_de(competencia)
+    obrig = service.obrigacao_por_chave(db, usuario.empresa_id, para)
+    if obrig is None:
+        return RedirectResponse("/sesa/", status_code=303)
+    ent = service.entrega(db, usuario.empresa_id, obrig, comp)
+    if ent and ent.enviada_em:
+        return RedirectResponse(
+            f"/sesa/operacional/{tipo}/{prazos.chave(comp)}?para={para}&erro="
+            + quote("Envio já registrado: desfaça o registro antes de gerar de novo."),
+            status_code=303)
+    try:
+        anexo = service.gerar_operacional(db, usuario.empresa_id, para, tipo, comp, usuario.id)
+    except ValueError as exc:
+        return RedirectResponse(
+            f"/sesa/operacional/{tipo}/{prazos.chave(comp)}?para={para}&erro={quote(str(exc))}",
+            status_code=303)
+    record_audit(db, tabela="sesa_anexos", acao="GERAR", registro_id=anexo.id,
+                 valor_novo={"documento": anexo.arquivo.nome_original, "envio": para,
+                             "tipo": tipo, "competencia": prazos.chave(comp)},
+                 usuario=usuario, request=request)
+    return _voltar(para, comp, f"{relatorios_op.TIPOS[tipo]['titulo']}: planilha gerada "
+                   "e anexada.", ancora=f"item-{anexo.item_id}")
+
+
 # ------------------------------------------------------------------ um envio
 
 @router.get("/{chave}/{competencia}", include_in_schema=False)

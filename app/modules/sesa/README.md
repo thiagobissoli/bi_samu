@@ -62,6 +62,24 @@ A tela mostra o resumo (saídas de USA/USB, total, média/dia) e as quebras por
 unidade, município, código e dia. O botão gera uma planilha `.xlsx` (uma aba
 por quebra) e a anexa ao envio. Período: o mês anterior ao envio.
 
+## Relatórios operacionais (Saída de Ambulância, Tempo de Deslocamento)
+
+Três itens do "Relatório de dados mensais", calculados dos registros que o
+sistema já importa do vSky (`relatorios_op.py`), com botão **Gerar a partir
+do vSky** em `/sesa/operacional/{tipo}/{AAAA-MM}`:
+
+- **Saída de Ambulância por Município** e **por Código** — saídas (empenhos
+  que iniciaram deslocamento) com USA/USB e total.
+- **Tempo de Deslocamento** — média e mediana do deslocamento dos urgentes
+  (Vermelho/Amarelo) pelos 4 municípios (Cariacica, Serra, Vitória, Vila
+  Velha). Tempo = chegada no local − início do deslocamento.
+
+Cada um gera uma planilha `.xlsx` anexada ao envio, para o mês anterior.
+
+Os três relatórios "Dados de Atendimento Sintético" (geral, por município e
+por unidade) continuam sendo baixados prontos do vSky: reproduzi-los exigiria
+casar exatamente a agregação do vSky, sem referência real para validar.
+
 ## Prazos
 
 `prazos.py` tem só funções puras. Um prazo pode ser o n-ésimo dia útil do mês
