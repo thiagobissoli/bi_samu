@@ -125,5 +125,6 @@ GERADORES = {
     ("dados_mensais", "i04"): "/sesa/operacional/saida-municipio",
     ("dados_mensais", "i05"): "/sesa/operacional/saida-codigo",
     ("dados_mensais", "i06"): "/sesa/operacional/tempo-deslocamento",
+    ("ranking", "i01"): "/sesa/operacional/ranking-acionamento",
 }
 CONFIG_LOGO = "sesa_logo_arquivo_id"

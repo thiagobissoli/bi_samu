@@ -110,3 +110,52 @@ def test_fluxo_gera_e_anexa(tipo, item_chave, monkeypatch, tmp_path):
         assert linha["anexo"].arquivo.nome_original.endswith("- 09-2026.xlsx")
     finally:
         db.close()
+
+
+# ------------------------------------------------------------------ ranking de acionamento
+
+def test_ranking_de_acionamento_conta_empenhos():
+    # acionamento = viatura acionada (unidade presente), saiu ou não
+    amostra = _df([
+        _l(date(2026, 9, 1), "USA 10", "USA", "vermelho", "VITORIA", 600),
+        _l(date(2026, 9, 1), "USB 42", "USB", "amarelo", "SERRA", None, saiu=False),  # acionou, não saiu
+        _l(date(2026, 9, 2), "USB 44", "USB", "amarelo", "SERRA", 300),
+        {"dt_ocorr": datetime(2026, 9, 3, 8), "dia": date(2026, 9, 3), "unidade_curta": None,
+         "recurso": None, "codigo_cor": "orientacao_medica", "cidade": "VITORIA",
+         "dt_inicio_deslocamento": pd.NaT, "t_deslocamento": None},            # ligação sem viatura
+    ])
+    d = RO.calcular("ranking-acionamento", amostra, date(2026, 9, 1), date(2026, 9, 30))
+    assert d["ranking"] is True
+    assert d["resumo"]["total"] == 3                 # 3 com viatura; a orientação não entra
+    linhas = {l["rotulo"]: l for l in d["linhas"]}
+    assert linhas["SERRA"]["total"] == 2 and linhas["VITORIA"]["total"] == 1
+    assert d["linhas"][0]["rotulo"] == "SERRA"       # maior primeiro
+
+
+def test_ranking_fluxo(monkeypatch, tmp_path):
+    from app.core.config import settings
+    from app.core.database import SessionLocal
+    from openpyxl import load_workbook
+
+    from app.core.storage import absolute_path
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+    comp = "2026-10"
+    _login()
+    html = client.get(f"/sesa/operacional/ranking-acionamento/{comp}?para=ranking",
+                      headers=HTML).text
+    assert "Ranking de Acionamento" in html and "acionamento" in html.lower()
+    r = client.post(f"/sesa/operacional/ranking-acionamento/{comp}/gerar",
+                    data={"para": "ranking"}, follow_redirects=False)
+    assert r.headers["location"].startswith(f"/sesa/ranking/{comp}")
+    db = SessionLocal()
+    try:
+        o = service.obrigacao_por_chave(db, 1, "ranking")
+        dados = service.detalhe(db, 1, o, prazos.competencia_de(comp), date(2026, 10, 5))
+        linha = next(l for l in dados["linhas"] if l["item"].chave == "i01")
+        assert "ranking-acionamento" in linha["gerador"]
+        anexo = linha["anexo"]
+        assert anexo is not None and anexo.arquivo.nome_original.startswith("Ranking de Acionamento")
+        wb = load_workbook(absolute_path(anexo.arquivo))
+        assert wb.active.cell(4, 1).value == "Posição"
+    finally:
+        db.close()

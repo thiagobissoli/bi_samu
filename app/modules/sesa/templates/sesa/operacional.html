@@ -17,6 +17,8 @@
     calculado dos atendimentos que o sistema já importa do vSky.
     {% if tipo == 'tempo-deslocamento' %}
     Urgentes (Vermelho/Amarelo); tempo = chegada no local − início do deslocamento.
+    {% elif tipo == 'ranking-acionamento' %}
+    Um <strong>acionamento</strong> é uma viatura acionada (tenha saído ou não), por município, do maior para o menor.
     {% else %}
     Uma <strong>saída</strong> é um empenho que iniciou deslocamento (mesma regra dos Indicadores).
     {% endif %}
@@ -50,6 +52,26 @@
                 <td class="text-end">{{ dados.geral.n }}</td>
                 <td class="text-end">{{ dados.geral.media if dados.geral.media is not none else '—' }}</td>
                 <td class="text-end">{{ dados.geral.mediana if dados.geral.mediana is not none else '—' }}</td></tr>
+            </tbody>
+        </table>
+    {% elif dados.ranking %}
+        <table class="table table-sm table-striped table-hover small mb-0">
+            <thead class="table-light" style="position: sticky; top: 0"><tr>
+                <th class="text-end">#</th><th>Município</th><th class="text-end">USA</th>
+                <th class="text-end">USB</th><th class="text-end">Acionamentos</th><th class="text-end">%</th>
+            </tr></thead>
+            <tbody>
+            {% for l in dados.linhas %}
+            <tr><td class="text-end text-body-secondary">{{ loop.index }}</td><td>{{ l.rotulo }}</td>
+                <td class="text-end">{{ l.usa }}</td><td class="text-end">{{ l.usb }}</td>
+                <td class="text-end fw-semibold">{{ l.total }}</td>
+                <td class="text-end text-body-secondary">{{ '%.1f'|format(l.total * 100 / dados.resumo.total) if dados.resumo.total else '0.0' }}%</td></tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-body-secondary py-3">Sem registros no período.</td></tr>
+            {% endfor %}
+            <tr class="table-light fw-semibold"><td></td><td>Total</td>
+                <td class="text-end">{{ dados.resumo.usa }}</td><td class="text-end">{{ dados.resumo.usb }}</td>
+                <td class="text-end">{{ dados.resumo.total }}</td><td class="text-end">100%</td></tr>
             </tbody>
         </table>
     {% else %}

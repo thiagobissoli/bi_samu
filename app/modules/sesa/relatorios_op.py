@@ -33,7 +33,15 @@ TIPOS = {
                      "item": "Saída de Ambulância por Código"},
     "tempo-deslocamento": {"titulo": "Tempo de Deslocamento",
                            "item": "Tempo de deslocamento"},
+    "ranking-acionamento": {"titulo": "Ranking de Acionamento",
+                            "item": "Ranking de Acionamento"},
 }
+
+
+def acionamentos(df):
+    """Empenhos: registros em que uma viatura foi acionada (unidade presente),
+    tenha ela saído ou não. É a leitura de "acionamento" do Ranking."""
+    return df[df["unidade_curta"].notna() & df["unidade_curta"].ne("")]
 
 
 def _no_periodo(df, inicio: date, fim: date):
@@ -100,6 +108,20 @@ def calcular(tipo: str, df, inicio: date, fim: date) -> dict:
                           "media": round(geral.mean() / 60, 1) if len(geral) else None,
                           "mediana": round(geral.median() / 60, 1) if len(geral) else None}}
 
+    if tipo == "ranking-acionamento":
+        base = acionamentos(df)
+        if "dia" in base.columns:
+            base = base[(base["dia"] >= inicio) & (base["dia"] <= fim)]
+        total = len(base)
+        resumo = {"total": total,
+                  "usa": int((base["recurso"] == "USA").sum()),
+                  "usb": int((base["recurso"] == "USB").sum())}
+        linhas = _por(base, "cidade")
+        linhas.sort(key=lambda l: l["total"], reverse=True)
+        return {"tipo": tipo, "resumo": resumo, "ranking": True,
+                "colunas": ("Posição", "Município", "USA", "USB", "Acionamentos", "%"),
+                "linhas": linhas, "inicio": inicio, "fim": fim}
+
     raise ValueError(f"Tipo de relatório desconhecido: {tipo}")
 
 
@@ -152,6 +174,21 @@ def gerar_xlsx(dados: dict, periodo_rotulo: str, orgao: str = "SAMU 192 ES") -> 
         for j, v in enumerate((g["n"], g["media"], g["mediana"]), start=2):
             cel = ws.cell(linha, j, v if v is not None else "—")
             cel.font, cel.alignment = negrito, centro
+    elif dados.get("ranking"):
+        total = dados["resumo"]["total"]
+        for pos, l in enumerate(dados["linhas"], start=1):
+            ws.cell(linha, 1, pos).alignment = centro
+            ws.cell(linha, 2, l["rotulo"])
+            ws.cell(linha, 3, l["usa"]).alignment = centro
+            ws.cell(linha, 4, l["usb"]).alignment = centro
+            ws.cell(linha, 5, l["total"]).alignment = centro
+            ws.cell(linha, 6, f'{_pct(l["total"], total)}%').alignment = centro
+            linha += 1
+        ws.cell(linha, 2, "Total").font = negrito
+        r = dados["resumo"]
+        for j, v in enumerate((r["usa"], r["usb"], r["total"], "100%"), start=3):
+            cel = ws.cell(linha, j, v)
+            cel.font, cel.alignment = negrito, centro
     else:
         total = dados["resumo"]["total"]
         for l in dados["linhas"]:
@@ -167,7 +204,10 @@ def gerar_xlsx(dados: dict, periodo_rotulo: str, orgao: str = "SAMU 192 ES") -> 
             cel = ws.cell(linha, j, v)
             cel.font, cel.alignment = negrito, centro
 
-    larguras = [34] + [14] * (len(colunas) - 1)
+    if dados.get("ranking"):
+        larguras = [9, 34, 12, 12, 16, 10]
+    else:
+        larguras = [34] + [14] * (len(colunas) - 1)
     for j, w in enumerate(larguras, start=1):
         ws.column_dimensions[get_column_letter(j)].width = w
 

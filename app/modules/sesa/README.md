@@ -70,6 +70,7 @@ do vSky** em `/sesa/operacional/{tipo}/{AAAA-MM}`:
 
 - **Saída de Ambulância por Município** e **por Código** — saídas (empenhos
   que iniciaram deslocamento) com USA/USB e total.
+- **Ranking de Acionamento** — municípios do maior ao menor nº de acionamentos (viatura acionada, tenha saído ou não), com USA/USB.
 - **Tempo de Deslocamento** — média e mediana do deslocamento dos urgentes
   (Vermelho/Amarelo) pelos 4 municípios (Cariacica, Serra, Vitória, Vila
   Velha). Tempo = chegada no local − início do deslocamento.
